@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """
-LLM Wiki — Query 流程
+LLM Wiki — Query 流程 (biz-delivery thin wrapper)
 问题 → 读 index.md → 定位相关页面 → 读页面内容 → 综合回答 → 归档有价值的回答
 
+复用 biz-delivery 的 smart_routing (意图识别) + query_cache (缓存)
 参考：Karpathy LLM Wiki 模式
 https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
 """
 
 import re
 import json
+import time
+import hashlib
+import argparse
+import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 
 try:
@@ -30,6 +35,39 @@ except ImportError:
         FRONTMATTER_RE
     )
 
+# ──────────────────────────────────────────────
+# Import biz-delivery core
+# ──────────────────────────────────────────────
+
+_BD_SCRIPTS = Path(__file__).parents[1] / "scripts"
+if str(_BD_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_BD_SCRIPTS.parent))
+
+try:
+    from scripts.smart_routing import extract_intent as _bd_extract_intent
+    _HAS_BD = True
+except ImportError:
+    _HAS_BD = False
+
+    # Fallback: inline minimal intent extraction
+    def _bd_extract_intent(query: str) -> Tuple[str, float]:
+        patterns = {
+            "query": ["查询", "查看", "获取", "查找", "检索", "query", "search"],
+            "question": ["什么", "如何", "怎么", "为什么", "what", "how", "why"],
+            "explain": ["解释", "说明", "原理", "explain"],
+            "compare": ["对比", "比较", "区别", "compare", "diff"],
+            "debug": ["排障", "错误", "问题", "bug", "error"],
+        }
+        q = query.lower()
+        scores = {}
+        for intent, pats in patterns.items():
+            s = sum(1 for p in pats if p.lower() in q)
+            if s > 0:
+                scores[intent] = min(s / len(pats), 1.0)
+        if not scores:
+            return ("unknown", 0.0)
+        return max(scores, key=scores.get), scores[max(scores, key=scores.get)]
+
 
 # ──────────────────────────────────────────────
 # 1. Wiki 搜索 — 多层融合
@@ -44,17 +82,13 @@ def search_index(query: str, wiki: WikiContext, top_k: int = 10) -> List[Path]:
     index_path = wiki.wiki_root / 'index.md'
     index_content = read_file(index_path) or ''
 
-    # 解析 index.md 条目
     for line in index_content.split('\n'):
         line = line.strip()
-        # 匹配: - [[title]] — summary
         m = re.match(r'- \[\[([^\]]+)\]\]\s*—\s*(.*)', line)
         if m:
             title = m.group(1)
             summary = m.group(2)
             title_lower = title.lower()
-
-            # 计算匹配分数
             hits = sum(1 for w in query_words if w in title_lower or w in summary)
             if hits > 0:
                 score = hits / max(len(query_words), 1)
@@ -62,7 +96,6 @@ def search_index(query: str, wiki: WikiContext, top_k: int = 10) -> List[Path]:
 
     scored.sort(key=lambda x: x[0], reverse=True)
 
-    # 返回对应的页面路径
     results = []
     for _, title in scored[:top_k]:
         for path, page in wiki.pages.items():
@@ -84,7 +117,6 @@ def search_pages_by_content(query: str, wiki: WikiContext, top_k: int = 10) -> L
         hits = sum(1 for w in query_words if w in search_text)
         if hits > 0:
             score = hits / max(len(query_words), 1)
-            # 实体/concept 类型加分
             type_bonus = 1.3 if page.page_type in ('entity', 'concept') else 1.0
             scored.append((score * type_bonus, path))
 
@@ -109,11 +141,22 @@ def search_pages_by_wikilinks(query: str, wiki: WikiContext, top_k: int = 10) ->
     return [p for _, p in scored[:top_k]]
 
 
-def wiki_search(query: str, wiki: WikiContext, top_k: int = 10) -> Dict[str, Any]:
+def wiki_search(query: str, wiki: WikiContext, top_k: int = 10,
+                cache: Optional[Any] = None, intent: str = "unknown",
+                confidence: float = 0.0) -> Dict[str, Any]:
     """
     多路 wiki 搜索 — 融合 index.md + 内容 + wikilinks
     返回排序后的页面列表和详细信息
     """
+    params = f"k={top_k}:intent={intent}:conf={confidence:.2f}"
+    
+    # 检查缓存
+    if cache:
+        cached = cache.get(query, ["wiki"])
+        if cached and "results" in cached:
+            cached["retrieved_from"] = "cache"
+            return cached
+
     # 三路搜索
     index_results = search_index(query, wiki, top_k)
     content_results = search_pages_by_content(query, wiki, top_k)
@@ -132,7 +175,6 @@ def wiki_search(query: str, wiki: WikiContext, top_k: int = 10) -> Dict[str, Any
 
     scored_sorted = sorted(scored.items(), key=lambda x: x[1], reverse=True)[:top_k]
 
-    # 组装结果
     results = []
     for path, rrf_score in scored_sorted:
         page = wiki.pages[path]
@@ -146,7 +188,7 @@ def wiki_search(query: str, wiki: WikiContext, top_k: int = 10) -> Dict[str, Any
             'headings': page.headings[:5],
         })
 
-    return {
+    result = {
         'query': query,
         'results': results,
         'total': len(results),
@@ -156,6 +198,11 @@ def wiki_search(query: str, wiki: WikiContext, top_k: int = 10) -> Dict[str, Any
             'wikilinks': len(wikilink_results),
         }
     }
+
+    if cache:
+        cache.set(query, ["wiki"], result)
+
+    return result
 
 
 # ──────────────────────────────────────────────
@@ -179,7 +226,6 @@ def synthesize_answer(query: str, search_result: Dict[str, Any], wiki: WikiConte
             lines.append(f'Headings: {" | ".join(r["headings"][:3])}\n')
         lines.append('\n')
 
-    # 如果结果中有 wikilinks 链接到的页面
     if search_result['results']:
         linked_pages = set()
         for r in search_result['results']:
@@ -228,8 +274,13 @@ def query(wiki_path: str, question: str, archive: bool = False) -> Dict[str, Any
     wiki = WikiContext(Path(wiki_path))
     wiki.load_all()
 
-    # 搜索
-    search_result = wiki_search(question, wiki, top_k=10)
+    # 意图识别
+    if _HAS_BD:
+        intent, confidence = _bd_extract_intent(question)
+    else:
+        intent, confidence = _bd_extract_intent(question)
+
+    search_result = wiki_search(question, wiki, top_k=10, intent=intent, confidence=confidence)
 
     # 综合
     answer = synthesize_answer(question, search_result, wiki)
@@ -242,32 +293,85 @@ def query(wiki_path: str, question: str, archive: bool = False) -> Dict[str, Any
         wiki.append_log('query', question,
                        [str(archived_path.relative_to(wiki.wiki_root.parent)) if archived_path else ''])
 
-    # 更新 log
     wiki.append_log('query', question)
 
     result = {
         'query': question,
+        'intent': intent,
+        'confidence': confidence,
         'search': search_result,
         'answer': answer,
         'archived_path': str(archived_path) if archived_path else None,
+        'retrieved_from': 'fresh',
     }
 
     return result
 
 
 # ──────────────────────────────────────────────
-# CLI 入口
+# CLI 入口 — 带意图识别 + 缓存
 # ──────────────────────────────────────────────
 
 if __name__ == '__main__':
-    import sys
-    if len(sys.argv) < 3:
-        print("Usage: python query.py <wiki_path> <question> [--archive]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="LLM Wiki Query — biz-delivery wrapper")
+    parser.add_argument("wiki_path", help="Wiki 根目录")
+    parser.add_argument("question", help="查询问题")
+    parser.add_argument("--archive", action="store_true", help="归档结果")
+    parser.add_argument("--cache-dir", default=None, help="缓存目录")
+    parser.add_argument("--clear-cache", action="store_true", help="清除缓存")
 
-    wiki_path = sys.argv[1]
-    question = ' '.join(sys.argv[2:])
-    archive = '--archive' in sys.argv
+    args = parser.parse_args()
 
-    result = query(wiki_path, question, archive)
+    # 缓存
+    cache = None
+    if args.cache_dir:
+        cache_dir = Path(args.cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        if args.clear_cache:
+            for f in cache_dir.glob("*.json"):
+                f.unlink()
+            print("✅ 缓存已清除")
+            sys.exit(0)
+
+        # Try to import biz-delivery QueryCache
+        try:
+            from scripts.query_cache import QueryCache
+            cache = QueryCache(cache_dir, ttl_seconds=3600)
+        except ImportError:
+            # Fallback inline cache
+            class _SimpleCache:
+                def __init__(self, d, ttl=3600):
+                    self.d = d
+                    self.ttl = ttl
+                def get(self, q, scopes):
+                    p = self.d / f"{hashlib.md5(f'{q}'.encode()).hexdigest()}.json"
+                    if not p.exists():
+                        return None
+                    if time.time() - p.stat().st_mtime > self.ttl:
+                        p.unlink()
+                        return None
+                    try:
+                        return json.loads(p.read_text())
+                    except Exception:
+                        return None
+                def set(self, q, scopes, data):
+                    p = self.d / f"{hashlib.md5(f'{q}'.encode()).hexdigest()}.json"
+                    data["cached_at"] = time.time()
+                    p.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+            cache = _SimpleCache(cache_dir)
+
+    # 意图识别 + 搜索
+    if _HAS_BD:
+        intent, conf = _bd_extract_intent(args.question)
+    else:
+        intent, conf = _bd_extract_intent(args.question)
+    print(f"🎯 意图: {intent} (置信度: {conf:.3f})")
+
+    result = query(args.wiki_path, args.question, archive=args.archive)
+
+    # 缓存最终结果
+    if cache:
+        cache.set(args.question, ["wiki"], result)
+
     print(result['answer'])
