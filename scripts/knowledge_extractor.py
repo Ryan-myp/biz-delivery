@@ -141,22 +141,47 @@ class FlowBuilder:
         return entry_points
     
     def _search_patterns(self, repo_root: Path, patterns: List[str], language: str) -> List[dict]:
-        """在代码库中搜索入口点模式"""
+        """在代码库中搜索入口点模式 - 使用 ripgrep 加速"""
         results = []
         
-        for py_file in repo_root.rglob(f"*.{language}"):
-            try:
-                source = py_file.read_text(encoding="utf-8")
+        try:
+            from .search import ripgrep_search_simple
+            # 合并多个 pattern 为 OR 查询
+            pattern_str = "|".join([f"(?:{p})" for p in patterns])
+            search_results = ripgrep_search_simple(
+                pattern=pattern_str,
+                path=str(repo_root),
+                include_extensions=[language],
+                case_sensitive=False,
+                context_lines=0,
+                max_results=500,
+            )
+            for r in search_results:
                 for pattern in patterns:
-                    for match in re.finditer(pattern, source):
+                    if re.search(pattern, r.line_text):
                         results.append({
                             "type": "entry_point",
-                            "file": str(py_file.relative_to(repo_root)),
-                            "route": match.group(match.lastindex),
+                            "file": str(r.file),
+                            "line": r.line,
+                            "route": r.match_text,
                             "pattern": pattern,
                         })
-            except Exception:
-                continue
+                        break
+        except Exception:
+            # fallback: Python 方式
+            for py_file in repo_root.rglob(f"*.{language}"):
+                try:
+                    source = py_file.read_text(encoding="utf-8")
+                    for pattern in patterns:
+                        for match in re.finditer(pattern, source):
+                            results.append({
+                                "type": "entry_point",
+                                "file": str(py_file.relative_to(repo_root)),
+                                "route": match.group(match.lastindex),
+                                "pattern": pattern,
+                            })
+                except Exception:
+                    continue
         
         return results
     

@@ -1,0 +1,283 @@
+{
+  "query": "我想看 Redis 相关的书",
+  "intent": "query",
+  "confidence": 0.048,
+  "scope_weights": {
+    "file_content": 0.8,
+    "file_name": 0.5,
+    "tags": 0.7,
+    "directory_path": 0.6
+  },
+  "paths": [
+    {
+      "path": "file_content",
+      "weight": 0.419,
+      "count": 4
+    },
+    {
+      "path": "file_name",
+      "weight": 0.157,
+      "count": 0
+    },
+    {
+      "path": "tags",
+      "weight": 0.293,
+      "count": 0
+    },
+    {
+      "path": "directory_path",
+      "weight": 0.157,
+      "count": 0
+    }
+  ],
+  "results": [
+    {
+      "file_path": "/Users/yanping.ma/ryan-personal-knowledge/books/reading-list.md",
+      "file_name": "reading-list.md",
+      "directory": "books",
+      "parent_dir": "ryan-personal-knowledge",
+      "tags": [],
+      "headings": [
+        "待读书单 — Ryan 的成长计划",
+        "Tier 1：必读（1-3 个月）",
+        "Tier 2：重要（3-6 个月）",
+        "Tier 3：扩展（6-12 个月）",
+        "微信读书书架已有书籍（需要精读）",
+        "每周学习计划"
+      ],
+      "content_preview": "# 待读书单 — Ryan 的成长计划\n\n**最后更新**: 2026-06-08\n\n## Tier 1：必读（1-3 个月）\n\n| 书名 | 领域 | 优先级 | 状态 |\n|------|------|--------|------|\n| 系统设计导论 | 架构设计 | P0 | 待开始 |\n| 深入理解计算机系统 | 系统底层 | P0 | 待开始 |\n| Go 语言设计与实现 | Go 深入 | P0 | 待开始 |\n| RAG 实战 | Agent/AI | P0 | ✅ 在读（微信读书） |\n| 广告算法与实践 | 广告业务 | P0 | 待开始 |\n\n## Tier 2：重要（3-6 个月）\n\n| 书名 | 领域 | 优先级 | 状态 |\n|------|------|--------|------|\n| Redis 设计与实现 | Redis | P1 | 待开始 |\n| MySQL 技术内幕 | MySQL | P1 | 待开始 |\n| 数据密集型应用系统设计 | 系统架构 | P1 | 待开始 |\n| 设计模式 | 设计模式 | P1 | 待开始 |\n| Click",
+      "full_content": "# 待读书单 — Ryan 的成长计划\n\n**最后更新**: 2026-06-08\n\n## Tier 1：必读（1-3 个月）\n\n| 书名 | 领域 | 优先级 | 状态 |\n|------|------|--------|------|\n| 系统设计导论 | 架构设计 | P0 | 待开始 |\n| 深入理解计算机系统 | 系统底层 | P0 | 待开始 |\n| Go 语言设计与实现 | Go 深入 | P0 | 待开始 |\n| RAG 实战 | Agent/AI | P0 | ✅ 在读（微信读书） |\n| 广告算法与实践 | 广告业务 | P0 | 待开始 |\n\n## Tier 2：重要（3-6 个月）\n\n| 书名 | 领域 | 优先级 | 状态 |\n|------|------|--------|------|\n| Redis 设计与实现 | Redis | P1 | 待开始 |\n| MySQL 技术内幕 | MySQL | P1 | 待开始 |\n| 数据密集型应用系统设计 | 系统架构 | P1 | 待开始 |\n| 设计模式 | 设计模式 | P1 | 待开始 |\n| ClickHouse 内核剖析 | 大数据 | P1 | 待开始 |\n| 大规模深度学习系统 | 大数据 | P1 | 待开始 |\n\n## Tier 3：扩展（6-12 个月）\n\n| 书名 | 领域 | 优先级 | 状态 |\n|------|------|--------|------|\n| 架构整洁之道 | 架构 | P2 | 待开始 |\n| Kubernetes 权威指南 | DevOps | P2 | 待开始 |\n| 机器学习系统设计 | AI/ML | P2 | 待开始 |\n| 广告技术架构与实战 | 广告 | P2 | 待开始 |\n\n## 微信读书书架已有书籍（需要精读）\n\n| 书名 | 领域 | 优先级 | 状态 |\n|------|------|--------|------|\n| Agent设计模式 | AI/Agent | P0 | ✅ 在读 |\n| 大模型RAG实战 | AI/RAG | P0 | ✅ 在读 |\n| 智能体一本通 | AI/Agent | P1 | 待开始 |\n| 这就是GEO | AI商业化 | P1 | 待开始 |\n| 精通AST-GREP | 工具 | P1 | 待开始 |\n| 技术管理必修课 | 管理 | P1 | 待开始 |\n| Shopee跨境电商 | 电商 | P2 | 待开始 |\n| 管好你的钱 | 投资 | P2 | 待开始 |\n| 慢慢变富 | 投资 | P2 | 待开始 |\n\n## 每周学习计划\n\n- **周一**: 技术深度（Redis/MySQL/Go）— 30min\n- **周二**: Agent/AI 技术 — 30min\n- **周三**: 广告业务深度 — 30min\n- **周四**: 架构与工程 — 30min\n- **周五**: 每周复盘 + 下周计划 — 30min\n- **周末**: 大块学习时间（选读）— 2-4h\n",
+      "word_count": 320,
+      "is_entry_file": false,
+      "created": "",
+      "rrf_score": 0.006762,
+      "source_scores": [
+        [
+          "file_content",
+          0.006762
+        ]
+      ],
+      "intent": "query",
+      "confidence": 0.048
+    },
+    {
+      "file_path": "/Users/yanping.ma/ryan-personal-knowledge/knowledge/agent-tech/knowledge-extraction-engine.md",
+      "file_name": "knowledge-extraction-engine.md",
+      "directory": "agent-tech",
+      "parent_dir": "knowledge",
+      "tags": [
+        "#agent-架构",
+        "#知识提取",
+        "#AST",
+        "#CFG",
+        "#DFG"
+      ],
+      "headings": [
+        "代码知识提取引擎",
+        "核心问题",
+        "知识分层模型",
+        "关键实现思路",
+        "1. AST 解析 — Python 优先",
+        "使用 Python 标准库 ast，零依赖",
+        "2. CFG 构建 — 基本块 + 分支",
+        "3. DFG 构建 — 变量追踪",
+        "4. Flow 构建 — 业务流从入口点开始",
+        "存储方案",
+        "轻量方案（本地文件）",
+        "图谱方案（SQLite + FTS5）",
+        "查询模式",
+        "1. 代码知识查询",
+        "\"订单创建接口在哪里实现？\"",
+        "返回: file, line, context excerpt",
+        "2. 调用链查询",
+        "\"谁调用了 OrderService.create？\"",
+        "返回: [Controller → Handler → Service → create()]",
+        "3. 数据流查询",
+        "\"User表 status 字段的值从哪来？\"",
+        "返回: [API 参数 → DTO → Entity → DB]",
+        "4. 影响分析",
+        "\"改了 OrderService.create 会影响哪些地方？\"",
+        "返回: [调用者 → 测试用例 → 依赖服务]",
+        "与现有 ad-knowledge-query 的关系",
+        "实施路径",
+        "Phase 1: AST 解析 (Python)",
+        "Phase 2: 图谱构建",
+        "Phase 3: 多语言支持",
+        "Phase 4: 业务流发现",
+        "Phase 5: 知识查询服务",
+        "技术选型"
+      ],
+      "content_preview": "# 代码知识提取引擎\n\n**日期**: 2025-06-05\n**标签**: #agent-架构 #知识提取 #AST #CFG #DFG\n\n## 核心问题\n\n> 如何把代码、文档、Schema 变成可查询的知识？\n\n现有方案大多停留在\"全文搜索\"层面，但真正的知识是结构化的：\n- **谁调用谁** (调用关系)\n- **数据从哪来到哪去** (数据流)\n- **代码怎么组织** (控制流)\n- **接口怎么定义** (API契约)\n\n## 知识分层模型\n\n```text\n代码/文档\n    │\n    ▼\n┌─ Layer 0: 原始文本 ────────────────────────────┐\n│ .py .java .yaml .md .json .sql               │\n└────────────────────────────────────────────────┘\n    │ 解析\n    ▼\n┌─ Layer 1: 结构化抽象 ─────────────────────────┐\n│                                   ",
+      "full_content": "# 代码知识提取引擎\n\n**日期**: 2025-06-05\n**标签**: #agent-架构 #知识提取 #AST #CFG #DFG\n\n## 核心问题\n\n> 如何把代码、文档、Schema 变成可查询的知识？\n\n现有方案大多停留在\"全文搜索\"层面，但真正的知识是结构化的：\n- **谁调用谁** (调用关系)\n- **数据从哪来到哪去** (数据流)\n- **代码怎么组织** (控制流)\n- **接口怎么定义** (API契约)\n\n## 知识分层模型\n\n```text\n代码/文档\n    │\n    ▼\n┌─ Layer 0: 原始文本 ────────────────────────────┐\n│ .py .java .yaml .md .json .sql               │\n└────────────────────────────────────────────────┘\n    │ 解析\n    ▼\n┌─ Layer 1: 结构化抽象 ─────────────────────────┐\n│                                                  │\n│  AST (Abstract Syntax Tree) — 语法结构           │\n│    ├── 函数定义 (function, class, method)        │\n│    ├── 变量声明与赋值                             │\n│    ├── 控制流 (if/for/while/try/except)         │\n│    └── 表达式与操作符                             │\n│                                                  │\n│  CFG (Control Flow Graph) — 执行路径            │\n│    ├── 基本块 (basic blocks)                     │\n│    ├── 分支条件                                 │\n│    ├── 循环结构                                 │\n│    └── 异常处理路径                              │\n│                                                  │\n│  DFG (Data Flow Graph) — 数据传播               │\n│    ├── 变量来源 (definition)                    │\n│    ├── 变量消费 (use)                           │\n│    ├── 数据转换 (transformation)                │\n│    └── 边界情况 (null, default, error)          │\n│                                                  │\n│  SIG (Signature Graph) — 接口契约               │\n│    ├── 函数签名 (参数、返回类型、装饰器)          │\n│    ├── 类继承关系                               │\n│    └── 模块导出                                 │\n│                                                  │\n│  TSG (Type/Schema Graph) — 类型与 Schema         │\n│    ├── 数据库表结构                             │\n│    ├── API 请求/响应 schema                      │\n│    └── Proto/gRPC 定义                          │\n│                                                  │\n│  Flow (Business Flow) — 业务流                  │\n│    ├── 入口点 (entry points: API route, handler) │\n│    ├── 调用拓扑 (caller → callee)                │\n│    ├── 数据落点 (tables, queues, cache)          │\n│    └── 外部依赖 (Provider, Third-party API)      │\n│                                                  │\n└──────────────────────────────────────────────────┘\n    │ 索引\n    ▼\n┌─ Layer 2: 知识索引 ────────────────────────────┐\n│                                                  │\n│  • BM25 索引 — 文本关键词匹配                   │\n│  • 向量索引 — 语义相似度                         │\n│  • 图谱索引 — 关系查询                            │\n│  • 元数据索引 — 文件路径、行号、语言、修改时间      │\n│                                                  │\n└──────────────────────────────────────────────────┘\n    │ 查询\n    ▼\n┌─ Layer 3: 知识查询服务 ─────────────────────────┐\n│                                                  │\n│  • 代码知识查询 — \"这个功能在哪里实现？\"          │\n│  • 数据流查询 — \"这个字段的值从哪来？\"            │\n│  • 调用链查询 — \"谁调用了这个方法？\"              │\n│  • 影响分析 — \"改了这个函数会影响哪些地方？\"      │\n│  • 业务流查询 — \"订单创建的全链路是什么？\"         │\n│                                                  │\n└──────────────────────────────────────────────────┘\n```\n\n## 关键实现思路\n\n### 1. AST 解析 — Python 优先\n\n```python\n# 使用 Python 标准库 ast，零依赖\nimport ast\n\nclass CodeVisitor(ast.NodeVisitor):\n    \"\"\"遍历 AST 提取结构化信息\"\"\"\n    \n    def visit_FunctionDef(self, node):\n        \"\"\"提取函数定义\"\"\"\n        return {\n            \"type\": \"function\",\n            \"name\": node.name,\n            \"args\": [self._get_arg(a) for a in node.args.args],\n            \"returns\": self._get_type(node.returns),\n            \"decorators\": [self._get_name(d) for d in node.decorator_list],\n            \"lines\": (node.lineno, node.end_lineno),\n            \"children\": [self.visit(child) for child in ast.walk(node)],\n        }\n    \n    def visit_ClassDef(self, node):\n        \"\"\"提取类定义\"\"\"\n        return {\n            \"type\": \"class\",\n            \"name\": node.name,\n            \"bases\": [self._get_name(b) for b in node.bases],\n            \"methods\": [self.visit(m) for m in node.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))],\n        }\n```\n\n### 2. CFG 构建 — 基本块 + 分支\n\n```python\nclass CFGBuilder:\n    \"\"\"从 AST/字节码构建控制流图\"\"\"\n    \n    def build(self, node):\n        \"\"\"返回 CFG: {basic_block_id: {successors: [...], predicates: [...]}}\"\"\"\n        # 关键：识别分支点 (if/elif/else/for/while/try)\n        # 每个分支点就是一个决策节点\n        # 叶节点是 return/raise/continue/break\n        pass\n```\n\n### 3. DFG 构建 — 变量追踪\n\n```python\nclass DataFlowAnalyzer:\n    \"\"\"追踪变量从定义到消费的路径\"\"\"\n    \n    def analyze(self, node):\n        \"\"\"\n        返回 DFG:\n        {\n          \"var_name\": {\n            \"definitions\": [{\"file\": \"a.py\", \"line\": 10}],\n            \"uses\": [{\"file\": \"b.py\", \"line\": 25}],\n            \"transforms\": [{\"op\": \"+\", \"file\": \"c.py\", \"line\": 30}],\n            \"null_path\": True/False,\n            \"source_system\": \"database|api|config|constant\"\n          }\n        }\n        \"\"\"\n        pass\n```\n\n### 4. Flow 构建 — 业务流从入口点开始\n\n```python\nclass FlowBuilder:\n    \"\"\"从入口点构建业务流\"\"\"\n    \n    def discover_entry_points(self, repo):\n        \"\"\"自动发现入口点\"\"\"\n        # Python FastAPI: @app.route 装饰器\n        # Python Flask: @app.route 装饰器\n        # Java Spring: @RestController, @GetMapping\n        # Go Gin: router.POST(...)\n        pass\n    \n    def build_call_graph(self, entry_point):\n        \"\"\"从入口点开始 BFS 构建调用拓扑\"\"\"\n        # 调用邻居: 直接调用、反射调用、动态派发\n        # 跳过: 第三方库、标准库(可配置)\n        pass\n    \n    def find_data_sinks(self, call_graph):\n        \"\"\"从调用拓扑中找到数据落点\"\"\"\n        # SQL 查询 → 数据库表\n        # API 调用 → 外部服务\n        # Cache 读写 → Redis/Memcached\n        # 文件读写 → 对象存储/文件系统\n        pass\n```\n\n## 存储方案\n\n### 轻量方案（本地文件）\n\n```\nknowledge_graph/\n├── nodes.jsonl          # 节点: {id, type, name, file, line, metadata}\n├── edges.jsonl          # 边: {from, to, type, weight}\n└── index/\n    ├── bm25.json        # BM25 倒排索引\n    └── meta.json        # 元数据索引\n```\n\n### 图谱方案（SQLite + FTS5）\n\n```sql\nCREATE TABLE nodes (\n    id TEXT PRIMARY KEY,\n    type TEXT NOT NULL,          -- function, class, table, api, route...\n    name TEXT NOT NULL,\n    file TEXT,\n    line_start INTEGER,\n    line_end INTEGER,\n    metadata JSON,\n    content TEXT,                -- 可全文搜索的内容\n    created_at TEXT,\n    updated_at TEXT\n);\n\nCREATE INDEX idx_nodes_type ON nodes(type);\nCREATE INDEX idx_nodes_file ON nodes(file);\nCREATE FTS5 nodes_content_fts ON nodes(content);\n\nCREATE TABLE edges (\n    from_id TEXT,\n    to_id TEXT,\n    type TEXT NOT NULL,          -- calls, depends_on, reads, writes...\n    weight REAL DEFAULT 1.0\n);\n\nCREATE INDEX idx_edges FROM ON edges(from_id);\nCREATE INDEX idx_edges TO ON edges(to_id);\n```\n\n## 查询模式\n\n### 1. 代码知识查询\n\n```python\n# \"订单创建接口在哪里实现？\"\nquery = \"order create\"\nresults = search(\n    text=query,\n    scope=[\"code\", \"schema\"],\n    language=\"python\",\n    min_confidence=0.7\n)\n# 返回: file, line, context excerpt\n```\n\n### 2. 调用链查询\n\n```python\n# \"谁调用了 OrderService.create？\"\nresults = query_graph(\n    query=\"who calls OrderService.create\",\n    relation=\"calls\",\n    direction=\"reverse\",\n    depth=3\n)\n# 返回: [Controller → Handler → Service → create()]\n```\n\n### 3. 数据流查询\n\n```python\n# \"User表 status 字段的值从哪来？\"\nresults = query_dataflow(\n    entity=\"User.status\",\n    direction=\"upstream\",\n    include_transforms=True\n)\n# 返回: [API 参数 → DTO → Entity → DB]\n```\n\n### 4. 影响分析\n\n```python\n# \"改了 OrderService.create 会影响哪些地方？\"\nresults = query_impact(\n    symbol=\"OrderService.create\",\n    direction=\"downstream\",\n    include_tests=True\n)\n# 返回: [调用者 → 测试用例 → 依赖服务]\n```\n\n## 与现有 ad-knowledge-query 的关系\n\n| 维度 | ad-knowledge-query | 知识提取引擎 |\n|------|-------------------|-------------|\n| 输入 | 代码文件 | 代码文件 |\n| 解析 | grep/ripgrep | AST/CFG/DFG |\n| 索引 | SQLite + FTS5 | SQLite FTS5 + 图谱 |\n| 查询 | 关键词/语义 | 结构化查询 + 关系遍历 |\n| 粒度 | 文件/行级 | 函数/变量/类型级 |\n| 知识密度 | 低 | 高 |\n\n**互补关系**：\n- 知识提取引擎是**上游**：把代码变成结构化知识\n- ad-knowledge-query 是**下游**：消费结构化知识\n\n## 实施路径\n\n### Phase 1: AST 解析 (Python)\n- 实现 Python AST 提取器\n- 支持函数、类、方法提取\n- 输出 JSONL 格式\n\n### Phase 2: 图谱构建\n- SQLite + FTS5 存储\n- 节点+边模型\n- 基础关系查询\n\n### Phase 3: 多语言支持\n- Java (JavaParser)\n- TypeScript (ts-morph)\n- Go (golang.org/x/tools/go/ast)\n\n### Phase 4: 业务流发现\n- 入口点自动发现\n- 调用拓扑构建\n- 数据落点识别\n\n### Phase 5: 知识查询服务\n- 集成到 biz-delivery\n- 统一的查询 API\n- 与 agentmemory 结合\n\n## 技术选型\n\n| 组件 | 方案 | 理由 |\n|------|------|------|\n| Python AST | 标准库 ast | 零依赖 |\n| Java AST | JavaParser | 成熟稳定 |\n| TS AST | ts-morph | 基于 TypeScript Compiler API |\n| 存储 | SQLite | 轻量、FTS5、零依赖 |\n| 索引 | BM25 + 向量 | 混合搜索 |\n| 图谱查询 | SQL JOIN + 递归CTE | SQLite 支持 |\n",
+      "word_count": 986,
+      "is_entry_file": false,
+      "created": "",
+      "rrf_score": 0.006654,
+      "source_scores": [
+        [
+          "file_content",
+          0.006654
+        ]
+      ],
+      "intent": "query",
+      "confidence": 0.048
+    },
+    {
+      "file_path": "/Users/yanping.ma/ryan-personal-knowledge/knowledge/growth-plan/growth-roadmap.md",
+      "file_name": "growth-roadmap.md",
+      "directory": "growth-plan",
+      "parent_dir": "knowledge",
+      "tags": [
+        "#成长规划",
+        "#技术专家",
+        "#广告业务"
+      ],
+      "headings": [
+        "Ryan 的成长体系 — 从 TL 到高级/资深专家",
+        "当前定位",
+        "成长维度与深度要求",
+        "维度 1：技术深度",
+        "维度 2：架构与工程",
+        "维度 3：业务能力（广告方向）",
+        "维度 4：视野与管理",
+        "推荐书单与学习计划",
+        "核心书籍（按优先级排序）",
+        "Tier 1：必读（1-3 个月）",
+        "Tier 2：重要（3-6 个月）",
+        "Tier 3：扩展（6-12 个月）",
+        "你的微信读书书架已有书籍（需要精读）",
+        "学习方式与监督机制",
+        "每周学习节奏（碎片时间优化）",
+        "学习监督机制",
+        "1. 阅读进度跟踪",
+        "查看微信读书阅读进度",
+        "本周读了什么书？读了多少页？",
+        "查看微信读书阅读统计",
+        "本周阅读时长、天数、偏好",
+        "2. 知识沉淀要求",
+        "3. 季度目标设定",
+        "监督规则",
+        "与微信读书的集成",
+        "学习流程",
+        "微信读书能力",
+        "成长指标（OKR）",
+        "O1：技术深度 — 从\"会用\"到\"源码级理解\"",
+        "O2：架构与工程 — 从\"写代码\"到\"设计系统\"",
+        "O3：广告业务 — 从\"了解\"到\"深厚造诣\"",
+        "O4：领导力 — 从\"TL\"到\"高级专家\""
+      ],
+      "content_preview": "# Ryan 的成长体系 — 从 TL 到高级/资深专家\n\n**日期**: 2025-06-05\n**标签**: #成长规划 #技术专家 #广告业务\n\n## 当前定位\n\n- **角色**: TL（团队 Leader）\n- **级别**: 专家工程师 → 目标：高级专家 / 资深专家\n- **时间框架**: 6-12 个月加速成长\n\n## 成长维度与深度要求\n\n### 维度 1：技术深度\n\n> 不能停留在\"会用\"层面，要达到深刻理解源码原理、性能调优、架构设计的水平\n\n| 技术领域 | 当前水平 | 目标水平 | 核心学习要点 |\n|---------|---------|---------|-------------|\n| **Redis** | 会用 | 源码级理解、集群架构、性能调优、一致性保证 | 数据结构源码、持久化机制、集群分片算法、缓存一致性方案、热点 Key 治理 |\n| **MySQL** | 会用 | 锁机制深入、执行计划优化、分库分表、高可用架构 | InnoDB 引擎源码、MVCC 原理、B+Tree 优化、XA 事务、主从复制原理 |\n| **Elasticse",
+      "full_content": "# Ryan 的成长体系 — 从 TL 到高级/资深专家\n\n**日期**: 2025-06-05\n**标签**: #成长规划 #技术专家 #广告业务\n\n## 当前定位\n\n- **角色**: TL（团队 Leader）\n- **级别**: 专家工程师 → 目标：高级专家 / 资深专家\n- **时间框架**: 6-12 个月加速成长\n\n## 成长维度与深度要求\n\n### 维度 1：技术深度\n\n> 不能停留在\"会用\"层面，要达到深刻理解源码原理、性能调优、架构设计的水平\n\n| 技术领域 | 当前水平 | 目标水平 | 核心学习要点 |\n|---------|---------|---------|-------------|\n| **Redis** | 会用 | 源码级理解、集群架构、性能调优、一致性保证 | 数据结构源码、持久化机制、集群分片算法、缓存一致性方案、热点 Key 治理 |\n| **MySQL** | 会用 | 锁机制深入、执行计划优化、分库分表、高可用架构 | InnoDB 引擎源码、MVCC 原理、B+Tree 优化、XA 事务、主从复制原理 |\n| **Elasticsearch** | 会用 | 倒排索引原理、分词优化、集群调优、大数据量场景 | Lucene 底层原理、搜索性能优化、分片策略、数据倾斜治理 |\n| **ClickHouse** | 了解 | 列式存储架构、MergeTree 引擎原理、 OLAP 调优 | 向量化执行、数据压缩、物化视图、分布式查询优化 |\n| **Go** | 会用 | 并发模型深入、GC 调优、性能剖析、标准库源码 | GMP 调度器、GC 三色标记、runtime 源码、pprof 深度使用 |\n| **大数据** | 了解 | Hadoop/Spark 架构、数据管道设计、流批一体 | 数据建模、ETL 设计、实时计算、数据治理 |\n| **数据分析** | 基础 | 统计方法、指标体系设计、归因分析 | A/B Test、LTV/CAC、归因模型、数据驱动决策 |\n\n### 维度 2：架构与工程\n\n> 从\"能写代码\"到\"能设计系统\"，从\"能调 bug\"到\"能预防问题\"\n\n| 领域 | 当前水平 | 目标水平 | 核心学习要点 |\n|------|---------|---------|-------------|\n| **设计模式** | 了解 | 能灵活组合使用、能识别坏味道、能写重构方案 | 23 种模式 + 组合模式、架构模式（CQRS/EventSourcing）、反模式识别 |\n| **系统架构** | 一般 | 能独立设计分布式系统、容量规划、容灾 | 微服务治理、服务网格、分布式事务、CAP 取舍、混沌工程 |\n| **Agent 大模型** | 起步 | 能设计生产级 Agent 系统 | LangChain/LlamaIndex、多 Agent 编排、RAG 架构、Function Calling、ReAct 模式 |\n| **DevOps** | 一般 | 能设计 CI/CD 流水线、可观测性体系 | Kubernetes、Prometheus、Grafana、OpenTelemetry |\n\n### 维度 3：业务能力（广告方向）\n\n> 广告是核心战场，要从\"了解\"到\"深厚造诣\"\n\n| 广告领域 | 深度要求 | 学习目标 |\n|---------|---------|---------|\n| **广告系统架构** | 深刻理解 | 竞价系统（RTB）、广告排序、流量分配、竞价策略 |\n| **投放产品** | 全面掌握 | Google Ads (PMax/GMX)、Meta (Advantage+)、TikTok (Spark Ads)、DV360 |\n| **数据与归因** | 精通 | 数据回流、归因模型、LTV 计算、ROI 优化 |\n| **广告平台 API** | 专家级 | Marketing API 设计、数据同步、批量操作、错误处理 |\n| **行业洞察** | 前沿跟踪 | AI 在广告中的应用、隐私计算、第一方数据策略 |\n\n### 维度 4：视野与管理\n\n> 从\"管项目\"到\"管战略\"，从\"写代码\"到\"带人\"\n\n| 领域 | 学习目标 |\n|------|---------|\n| **技术领导力** | 技术愿景规划、架构决策、技术债务管理 |\n| **团队管理** | 人才选拔培养、绩效体系、团队协作机制 |\n| **商业思维** | 产品思维、ROI 意识、商业敏感度 |\n| **行业影响力** | 技术分享、开源贡献、行业演讲 |\n\n## 推荐书单与学习计划\n\n### 核心书籍（按优先级排序）\n\n#### Tier 1：必读（1-3 个月）\n\n| 书籍 | 领域 | 核心价值 | 预计学习时长 |\n|------|------|---------|-------------|\n| **《系统设计导论》** | 架构设计 | 分布式系统设计方法论 | 3 周 |\n| **《深入理解计算机系统》** | 系统底层 | CSAPP 经典，理解底层原理 | 6 周 |\n| **《Go 语言设计与实现》** | Go 深入 | 源码级 Go 理解 | 4 周 |\n| **《RAG 实战》** | Agent/AI | RAG 系统设计实战 | 3 周 |\n| **《广告算法与实践》** | 广告业务 | 广告竞价/排序/推荐算法 | 4 周 |\n\n#### Tier 2：重要（3-6 个月）\n\n| 书籍 | 领域 | 核心价值 | 预计学习时长 |\n|------|------|---------|-------------|\n| **《Redis 设计与实现》** | Redis | Redis 源码深入理解 | 2 周 |\n| **《MySQL 技术内幕》** | MySQL | InnoDB 引擎原理 | 2 周 |\n| **《数据密集型应用系统设计》** | 系统架构 | DDD 经典，数据系统设计 | 4 周 |\n| **《设计模式：可复用面向对象软件的基础》** | 设计模式 | 23 种设计模式 | 4 周 |\n| **《ClickHouse 内核剖析》** | 大数据 | ClickHouse 原理与调优 | 2 周 |\n| **《大规模深度学习系统》** | 大数据 | 大规模 ML 工程实践 | 3 周 |\n\n#### Tier 3：扩展（6-12 个月）\n\n| 书籍 | 领域 | 核心价值 | 预计学习时长 |\n|------|------|---------|-------------|\n| **《架构整洁之道》** | 架构 | 整洁架构思想 | 2 周 |\n| **《Kubernetes 权威指南》** | DevOps | K8s 系统级掌握 | 3 周 |\n| **《机器学习系统设计》** | AI/ML | ML 系统从理论到工程 | 4 周 |\n| **《广告技术架构与实战》** | 广告 | 广告系统全链路 | 4 周 |\n\n### 你的微信读书书架已有书籍（需要精读）\n\n**AI/Agent 相关：**\n- ✅ `Agent设计模式` — 精读，做笔记\n- ✅ `大模型RAG实战` — 精读，做笔记\n- ✅ `智能体一本通` — 精读，提炼实践方法\n- ✅ `这就是GEO：在AI流量红利中抢占先机` — 精读，理解商业应用\n\n**技术深入：**\n- ✅ `精通AST-GREP` — 精读，掌握代码理解工具\n- ✅ `奇妙的JavaScript` — 选读\n- ✅ `技术管理必修课` — 精读，TL 必备\n\n**电商/商业：**\n- ✅ `Shopee跨境电商卖家实战指南` — 精读，辅助开店\n- ✅ `管好你的钱` — 选读\n- ✅ `慢慢变富` — 选读\n\n## 学习方式与监督机制\n\n### 每周学习节奏（碎片时间优化）\n\n| 时间 | 学习内容 | 预计时长 |\n|------|---------|---------|\n| **周一** | 技术深度（Redis/MySQL/Go） | 30min × 1 |\n| **周二** | Agent/AI 技术 | 30min × 1 |\n| **周三** | 广告业务深度 | 30min × 1 |\n| **周四** | 架构与工程 | 30min × 1 |\n| **周五** | 每周复盘 + 下周计划 | 30min × 1 |\n| **周末** | 大块学习时间（选读） | 2-4h |\n\n### 学习监督机制\n\n#### 1. 阅读进度跟踪\n\n每周检查：\n```bash\n# 查看微信读书阅读进度\n# 本周读了什么书？读了多少页？\n\n# 查看微信读书阅读统计\n# 本周阅读时长、天数、偏好\n```\n\n#### 2. 知识沉淀要求\n\n每读完一本书（或一本书的核心章节），必须：\n- **写读书笔记** — 存在 `ryan-personal-knowledge/knowledge/` 下\n- **提炼实践要点** — 这本书的什么技能可以应用到工作中\n- **更新知识图谱** — 新增/更新节点到知识图谱\n\n#### 3. 季度目标设定\n\n每 3 个月回顾：\n- 完成了哪些里程碑？\n- 阅读进度是否符合预期？\n- 技术/业务/管理维度是否均衡？\n- 是否需要调整书单？\n\n### 监督规则\n\n1. **每周日晚** — 我来检查你的微信读书阅读进度\n2. **每月 1 号** — 回顾上月阅读笔记，检查知识沉淀\n3. **每季度** — 重新评估成长目标，更新书单\n4. **每本新书读完** — 必须产出知识笔记\n\n## 与微信读书的集成\n\n### 学习流程\n\n```text\n微信读书书架\n    │\n    ▼\n推荐书籍 → 加入待读书单\n    │\n    ▼\n阅读进度跟踪 → 每周检查\n    │\n    ▼\n划线/想法 → 自动提取\n    │\n    ▼\n知识笔记生成 → 沉淀到知识库\n    │\n    ▼\n知识图谱更新 → 持续进化\n```\n\n### 微信读书能力\n\n已集成的能力：\n- 📚 **书架管理** — 查看书架、阅读进度\n- 📝 **笔记划线** — 查看个人笔记、导出笔记\n- 📊 **阅读统计** — 时长、天数、偏好分析\n- 🔍 **书籍搜索** — 发现新书\n- ⭐ **书籍点评** — 查看公开点评\n- 📖 **推荐好书** — 个性化推荐\n\n## 成长指标（OKR）\n\n### O1：技术深度 — 从\"会用\"到\"源码级理解\"\n\n| KR | 衡量标准 | 目标时间 |\n|----|---------|---------|\n| Redis 源码级理解 | 能解释 GMP 调度、持久化、集群原理 | Q3 2025 |\n| Go 并发模型深入 | 能写高性能并发程序，会用 pprof | Q3 2025 |\n| 数据库内核理解 | 能优化慢查询、设计分库分表方案 | Q4 2025 |\n| ClickHouse 精通 | 能设计 OLAP 系统、性能调优 | Q4 2025 |\n\n### O2：架构与工程 — 从\"写代码\"到\"设计系统\"\n\n| KR | 衡量标准 | 目标时间 |\n|----|---------|---------|\n| 系统架构设计 | 能独立设计大型分布式系统 | Q3 2025 |\n| 设计模式精通 | 能识别并重构坏代码 | Q3 2025 |\n| Agent 系统设计 | 能设计生产级多 Agent 系统 | Q4 2025 |\n\n### O3：广告业务 — 从\"了解\"到\"深厚造诣\"\n\n| KR | 衡量标准 | 目标时间 |\n|----|---------|---------|\n| 广告系统架构 | 能解释竞价/排序/流量分配原理 | Q3 2025 |\n| 多平台 API 专家级 | 熟悉 Google/Meta/TikTok/DV360 | Q4 2025 |\n| 数据驱动广告 | 能设计归因模型、优化 ROI | Q4 2025 |\n\n### O4：领导力 — 从\"TL\"到\"高级专家\"\n\n| KR | 衡量标准 | 目标时间 |\n|----|---------|---------|\n| 技术领导力 | 制定团队技术路线图 | Q3 2025 |\n| 人才培养 | 建立梯队、培养 2-3 名骨干 | Q4 2025 |\n| 行业影响力 | 技术分享/文章/演讲 | 持续进行 |\n",
+      "word_count": 928,
+      "is_entry_file": false,
+      "created": "",
+      "rrf_score": 0.00655,
+      "source_scores": [
+        [
+          "file_content",
+          0.00655
+        ]
+      ],
+      "intent": "query",
+      "confidence": 0.048
+    },
+    {
+      "file_path": "/Users/yanping.ma/ryan-personal-knowledge/SKILL.md",
+      "file_name": "SKILL.md",
+      "directory": "ryan-personal-knowledge",
+      "parent_dir": "yanping.ma",
+      "tags": [
+        "#agent-architecture",
+        "#skill-engineering",
+        "#ad-api",
+        "#ad-dataflow",
+        "#fullstack",
+        "#frontend",
+        "#backend",
+        "#devops",
+        "#前沿-llm",
+        "#前沿-agent",
+        "#前沿-mlops",
+        "#排障经验",
+        "#工具对比",
+        "#agent-技术",
+        "#15min",
+        "#skill",
+        "#20min",
+        "#广告",
+        "#30min",
+        "#agent",
+        "#60min",
+        "#tag",
+        "#前沿"
+      ],
+      "headings": [
+        "Ryan 个人学习仪表盘 + 知识库",
+        "概述",
+        "目录结构",
+        "一、学习路线总览",
+        "1. Agent 技术 (核心重点)",
+        "2. 全栈开发",
+        "3. 广告业务深度",
+        "4. 前沿追踪",
+        "二、知识库使用",
+        "添加知识笔记",
+        "1. 复制模板",
+        "2. 编辑内容",
+        "填写：日期、标签、核心概念、实践心得、相关 links",
+        "笔记标签体系",
+        "三、碎片任务管理",
+        "待办",
+        "进行中",
+        "已完成（归档到 history/）",
+        "碎片任务原则",
+        "四、进度日志",
+        "2025-01-15",
+        "五、使用场景",
+        "场景 1: 收到新任务时",
+        "场景 2: 碎片时间学习时",
+        "场景 3: 积累到一定量时",
+        "场景 4: 前沿追踪",
+        "六、与 Hermes 现有体系的关系",
+        "七、知识库搜索 — 如何快速查找知识",
+        "快速使用",
+        "进入 knowledge-search 目录",
+        "基础搜索 — 关键词匹配",
+        "查询意图 — 自动识别\"查找/查看\"类查询",
+        "提问意图 — 自动识别\"怎么/如何\"类问题",
+        "对比意图 — 自动识别\"对比/比较\"类查询",
+        "排障意图 — 自动识别\"排障/错误\"类问题",
+        "搜索维度",
+        "意图自动识别",
+        "高级选项",
+        "重建索引（当新增/修改文件后）",
+        "清除查询缓存",
+        "查看详细信息",
+        "工作原理",
+        "与 biz-delivery 的关系",
+        "八、已知问题与排障",
+        "新增技能",
+        "agentmemory 集成 (2025-06-05)",
+        "七、GitHub 仓库",
+        "八、个人 Sub-skill 体系"
+      ],
+      "content_preview": "---\nname: ryan-personal-knowledge\ndescription: \"Ryan 的个人学习仪表盘 + 知识库：追踪学习进度、沉淀广告业务/Agent技术知识、记录前沿洞察、管理碎片时间任务。\"\nversion: 1.1.0\nauthor: ryan\nplatforms: [linux, macos]\nmetadata:\n  hermes:\n    tags: [personal, learning, knowledge, progress, blogwatcher, notes]\n---\n\n# Ryan 个人学习仪表盘 + 知识库\n\n## 概述\n\n这是 Ryan 的个人学习与知识管理体系。包含：\n1. **成长计划** — 从 TL 到高级/资深专家的学习路线、目标、监督机制\n2. **知识库** — 广告业务、Agent技术、全栈开发、前沿追踪的知识笔记\n3. **碎片任务管理** — 适合 15-30min 碎片时间完成的学习/沉淀任务\n4. **前沿监控** — 通过 blogwatcher 自动推送\n\n## 目录结构\n\n```\nryan-persona",
+      "full_content": "---\nname: ryan-personal-knowledge\ndescription: \"Ryan 的个人学习仪表盘 + 知识库：追踪学习进度、沉淀广告业务/Agent技术知识、记录前沿洞察、管理碎片时间任务。\"\nversion: 1.1.0\nauthor: ryan\nplatforms: [linux, macos]\nmetadata:\n  hermes:\n    tags: [personal, learning, knowledge, progress, blogwatcher, notes]\n---\n\n# Ryan 个人学习仪表盘 + 知识库\n\n## 概述\n\n这是 Ryan 的个人学习与知识管理体系。包含：\n1. **成长计划** — 从 TL 到高级/资深专家的学习路线、目标、监督机制\n2. **知识库** — 广告业务、Agent技术、全栈开发、前沿追踪的知识笔记\n3. **碎片任务管理** — 适合 15-30min 碎片时间完成的学习/沉淀任务\n4. **前沿监控** — 通过 blogwatcher 自动推送\n\n## 目录结构\n\n```\nryan-personal-knowledge/\n├── SKILL.md                              ← 主文件，定义使用规则\n├── references/\n│   └── distilling-principles.md          ← 从经验蒸馏 skill 的决策框架\n├── templates/\n│   ├── learning-note.md                  ← 知识笔记模板\n│   ├── progress-log.md                   ← 学习进度日志模板\n│   └── 前沿-insight.md                   ← 前沿洞察模板\n├── progress/\n│   └── roadmap.md                        ← 学习路线总览\n├── knowledge/\n│   ├── advertising/                      ← 广告业务知识\n│   │   ├── google/                       ← Google Ads, PMax, GMX\n│   │   ├── meta/                         ← FB Ads, IG, Advantage+\n│   │   ├── tiktok/                       ← TikTok Ads, Pangle\n│   │   ├── snapchat/                     ← Snapchat Ads\n│   │   ├── amazon/                       ← Amazon DSP\n│   │   ├── microsoft/                    ← Microsoft Advertising\n│   │   ├── x/                            ← X/Twitter Ads\n│   ├── agent-tech/                       ← Agent 技术知识\n│   ├── fullstack/                        ← 全栈开发知识\n│   ├── 前沿/                             ← 前沿追踪\n│   └── growth-plan/                      ← 成长计划（新增）\n│       └── growth-roadmap.md             ← 从TL到高级专家路线图\n├── books/\n│   ├── reading-list.md                   ← 待读书单\n│   ├── reading-progress.md               ← 阅读进度跟踪\n│   └── notes/                            ← 读书笔记\n│       └── {book-name}.md               ← 每本书的笔记\n└── tasks/\n    └── 碎片任务.md                       ← 碎片任务看板\n```\n    └──碎片任务.md                     # 碎片任务看板\n```\n\n## 一、学习路线总览\n\n当前四条学习线：\n\n### 1. Agent 技术 (核心重点)\n- **目标**: 深入理解 Agent 架构、编排、Skill 工程、多 Agent 协作\n- **进度**: 查看 `progress/roadmap.md`\n- **里程碑**:\n  - [ ] 掌握 Hermes 配置与扩展\n  - [ ] 理解并实践多 Agent 并行调度\n  - [ ] 能够编写高质量 Skill\n  - [ ] 对比 Claude Code / Codex / OpenCode\n  - [ ] 构建个人 Skill 生态\n\n### 2. 全栈开发\n- **目标**: 提升工程能力，覆盖前后端 + DevOps\n- **进度**: 查看 `progress/roadmap.md`\n- **里程碑**:\n  - [ ] 掌握 TDD 工作流\n  - [ ] 系统化调试能力\n  - [ ] 熟练 Git worktree + PR 流程\n\n### 3. 广告业务深度\n- **目标**: 深入理解广告平台架构、API、数据流\n- **进度**: 查看 `progress/roadmap.md`\n- **里程碑**:\n  - [ ] 熟练 ad-knowledge-query 定位实现\n  - [ ] 能够沉淀业务文档\n  - [ ] 掌握测试设计流程\n\n### 4. 前沿追踪\n- **目标**: 持续跟踪 LLM / Agent / MLOps 前沿\n- **进度**: 通过 blogwatcher 自动推送，笔记存于 `knowledge/前沿/`\n- **工具**: blogwatcher + arxiv + llm-wiki\n\n## 二、知识库使用\n\n### 添加知识笔记\n\n当学习/工作中获得新认知时，使用 `templates/learning-note.md` 模板：\n\n```bash\n# 1. 复制模板\ncp templates/learning-note.md knowledge/agent-tech/某个主题.md\n\n# 2. 编辑内容\n# 填写：日期、标签、核心概念、实践心得、相关 links\n```\n\n### 笔记标签体系\n\n- `#agent-architecture` — Agent 架构相关\n- `#skill-engineering` — Skill 编写经验\n- `#ad-api` — 广告 API 知识\n- `#ad-dataflow` — 数据流/调用链\n- `#fullstack` — 全栈开发实践\n- `#frontend` — 前端相关\n- `#backend` — 后端相关\n- `#devops` — 运维/部署\n- `#前沿-llm` — LLM 前沿\n- `#前沿-agent` — Agent 前沿\n- `#前沿-mlops` — MLOps 前沿\n- `#排障经验` — 排坑记录\n- `#工具对比` — 工具选型对比\n\n## 三、碎片任务管理\n\n任务存储在 `tasks/碎片任务.md`，格式：\n\n```markdown\n## 待办\n- [ ] #agent-技术 #15min 读一篇 blogwatcher 推送的文章\n- [ ] #skill #20min 把 ad-knowledge-query 的坑蒸馏成 skill\n- [ ] #广告 #30min 给某个模块写知识库\n\n## 进行中\n- [x] #agent #30min 写第一个个人 skill\n\n## 已完成（归档到 history/）\n```\n\n### 碎片任务原则\n- 每个任务标注预计时间 (#15min / #20min / #30min / #60min)\n- 任务完成后更新状态，积累的经验蒸馏进知识库\n- 每周回顾一次，更新 roadmap.md\n\n## 四、进度日志\n\n每次学习后记录进度到 `progress/progress-log-YYYY-MM.md`：\n\n```markdown\n## 2025-01-15\n- 学习了什么\n- 实践了什么\n- 产出（笔记链接）\n- 下一步\n```\n\n## 五、使用场景\n\n### 场景 1: 收到新任务时\n1. 检查 `knowledge/` 是否有相关笔记\n2. 如果有，先复习再动手\n3. 完成后更新/新增笔记\n\n### 场景 2: 碎片时间学习时\n1. 查看 `tasks/碎片任务.md`，选一个任务\n2. 完成后更新进度 + 写笔记\n3. 把经验蒸馏成 skill（如果需要）\n\n### 场景 3: 积累到一定量时\n1. 考虑是否值得把经验蒸馏成独立 skill\n2. 更新 roadmap.md 的里程碑状态\n3. 清理过时的碎片任务\n\n### 场景 4: 前沿追踪\n1. blogwatcher 自动推送（需配置）\n2. 有价值的文章 → 写前沿洞察笔记\n3. 定期汇总到 `knowledge/前沿/summary-YYYY-QN.md`\n\n## 六、与 Hermes 现有体系的关系\n\n- 本 skill 是个人知识管理，不影响现有 111 个 skills\n- 经验蒸馏成可复用 skill 时，写到 `~/.hermes/skills/` 下\n- 本 skill 的笔记供个人回顾，不自动加载到 agent prompt\n- 用 `session_search` 也可以搜历史对话中的知识点\n\n## 七、知识库搜索 — 如何快速查找知识\n\n知识库内置了基于 biz-delivery 框架的轻量级搜索引擎 `knowledge-search/`，支持意图识别 + 多路融合查询。\n\n### 快速使用\n\n```bash\n# 进入 knowledge-search 目录\ncd knowledge-search\n\n# 基础搜索 — 关键词匹配\npython3 query_knowledge.py \"Redis 相关的书\"\n\n# 查询意图 — 自动识别\"查找/查看\"类查询\npython3 query_knowledge.py \"我想看 Redis 相关的书\"\n\n# 提问意图 — 自动识别\"怎么/如何\"类问题\npython3 query_knowledge.py \"怎么集成 agentmemory\"\n\n# 对比意图 — 自动识别\"对比/比较\"类查询\npython3 query_knowledge.py \"对比 agentmemory 的三种方案\"\n\n# 排障意图 — 自动识别\"排障/错误\"类问题\npython3 query_knowledge.py \"seaTalk bridge 怎么排障\"\n```\n\n### 搜索维度\n搜索引擎从 4 个维度交叉匹配，RRF 融合排序：\n\n1. **📄 文件内容** — 全文关键词匹配（权重最高）\n2. **📁 目录路径** — 文件所在目录匹配（如 agent-tech, advertising）\n3. **🏷️ 标签** — #tag 关键词匹配（如 #前沿, #agent-技术）\n4. **📑 文件名/标题** — Markdown 文件名和 # 标题匹配\n\n### 意图自动识别\n\n搜索引擎会自动识别你的查询意图，选择最优搜索策略：\n\n| 意图 | 触发词 | 权重倾向 |\n|------|--------|---------|\n| query (查询) | 查看/查找/获取 | 文件内容 0.8 |\n| question (提问) | 怎么/如何/为什么 | 文件内容 0.8 |\n| explain (解释) | 原理/机制/解释 | 文件内容 0.9 |\n| compare (对比) | 对比/比较/区别 | 标签 0.8 |\n| debug (排障) | 排障/错误/bug | 文件内容 0.9 |\n\n### 高级选项\n\n```bash\n# 重建索引（当新增/修改文件后）\npython3 query_knowledge.py \"关键词\" --rebuild\n\n# 清除查询缓存\npython3 query_knowledge.py \"关键词\" --clear-cache\n\n# 查看详细信息\npython3 query_knowledge.py \"关键词\" --verbose\n```\n\n### 工作原理\n\n```text\n用户查询\n    │\n    ▼\n意图识别 → 选择各搜索维度的权重\n    │\n    ▼\n多路并行查询（内容 / 文件名 / 标签 / 目录）\n    │\n    ▼\nRRF 融合（按命中排名加权）\n    │\n    ▼\n返回排序后的 Top-K 结果 + 摘要 + 标签\n```\n\n### 与 biz-delivery 的关系\n\n`knowledge-search` 复用了 biz-delivery 框架的核心能力：\n- 意图识别逻辑 → 来自 `biz-delivery/scripts/smart_routing.py`\n- RRF 融合引擎 → 来自 `biz-delivery/scripts/rrf_fusion.py`\n- 查询缓存机制 → 来自 `biz-delivery/scripts/query_cache.py`\n- 配置化 Profile → 类似 biz-delivery 的 profile.json\n\n---\n\n## 八、已知问题与排障\n\n- `blogwatcher` 的大多数主流 AI 博客 (Anthropic, OpenAI, Google AI, Meta AI) RSS feed 已失效，只有 Hugging Face 正常工作。详见 `knowledge/前沿/blogwatcher-setup.md` 和 `references/verified-feeds.md`。\n- 大型二进制 tar 文件在 macOS 上用 `tar xzf` 可能触发系统超时阻断。备选方案：用 Python `tarfile` 模块解压。\n- 确认包内结构：`tar -tzf file.tar.gz` 先看文件名再决定解压路径。\n\n- Blogwatcher 配置见 `references/blogwatcher-setup.md`\n- 验证可用的 RSS feed 见 `references/verified-feeds.md`\n\n## 新增技能\n\n### agentmemory 集成 (2025-06-05)\n- agentmemory 是一个成熟的持久化记忆引擎（21.3k ⭐），可为 AI 编码代理提供自动记忆\n- 与 Hermes 的集成方式见 `references/agentmemory-integration.md`\n- 采用方案 C（混合模式）：保留 Hermes 内置记忆 + agentmemory 作为增强层\n- 依赖：iii-engine (v0.11.2) + @agentmemory/agentmemory (npm)\n\n## 七、GitHub 仓库\n\n本 skill 的内容同步到 GitHub 用于版本管理和协作：\n- 仓库: `https://github.com/Ryan-myp/ryan-personal-knowledge`\n- 每次更新 commit + push 保持本地和远程一致\n\n## 八、个人 Sub-skill 体系\n\n> 从经验蒸馏出的可复用 skill 统一作为本 skill 的 references 子文件\n\n当前 sub-skill（以 references/ 文件形式存在于本 skill 下）：\n- `references/seatalk-bridge-troubleshooting.md` — SeaTalk bridge 排障指南\n- `references/agentmemory-integration.md` — agentmemory 与 Hermes 集成指南\n- `references/macos-tar-workaround.md` — macOS 大文件 tar 解压避坑\n\n创建规则：\n1. 不新建独立 skill 目录（避免碎片化）\n2. 蒸馏结果作为 `references/` 文件加入本 umbrella\n3. SKILL.md 头部维护一个引用列表\n",
+      "word_count": 983,
+      "is_entry_file": true,
+      "created": "",
+      "rrf_score": 0.004810399999999999,
+      "source_scores": [
+        [
+          "file_content",
+          0.00481
+        ]
+      ],
+      "intent": "query",
+      "confidence": 0.048
+    }
+  ],
+  "total_results": 4,
+  "retrieved_from": "fresh",
+  "cached_at": 1780900709.028556
+}

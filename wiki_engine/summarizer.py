@@ -139,7 +139,10 @@ def auto_ingest(wiki_path: str, source_path: str) -> Dict[str, Any]:
     3. 创建/更新 wiki 页面
     """
     import sys
-    sys.path.insert(0, str(Path(__file__).parent))
+    from pathlib import Path
+    _BD_ROOT = str(Path(__file__).parent.parent)
+    if _BD_ROOT not in sys.path:
+        sys.path.insert(0, _BD_ROOT)
     from ingest import (
         WikiContext, WikiPage, read_file, write_file,
         extract_frontmatter, extract_body, extract_tags,
@@ -239,7 +242,10 @@ def synthesize_answer_from_pages(question: str, search_results: List[Dict]) -> O
 def enhanced_query(wiki_path: str, question: str) -> Dict[str, Any]:
     """增强版 wiki 查询 — LLM 综合回答"""
     import sys
-    sys.path.insert(0, str(Path(__file__).parent))
+    from pathlib import Path
+    _BD_ROOT = str(Path(__file__).parent.parent)
+    if _BD_ROOT not in sys.path:
+        sys.path.insert(0, _BD_ROOT)
     from query import wiki_search, extract_body, read_file
     from ingest import WikiContext, read_file as rf, extract_body as eb
     wiki_context = WikiContext(Path(wiki_path))

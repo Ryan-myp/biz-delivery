@@ -16,8 +16,6 @@ try:
         extract_wikilinks, FRONTMATTER_RE, extract_frontmatter
     )
 except ImportError:
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent))
     from ingest import (
         WikiContext, WikiPage, read_file, write_file,
         extract_wikilinks, FRONTMATTER_RE, extract_frontmatter

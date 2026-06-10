@@ -36,37 +36,15 @@ except ImportError:
     )
 
 # ──────────────────────────────────────────────
-# Import biz-delivery core
+# Import biz-delivery core (clean, single sys.path insert)
 # ──────────────────────────────────────────────
 
-_BD_SCRIPTS = Path(__file__).parents[1] / "scripts"
-if str(_BD_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_BD_SCRIPTS.parent))
+_BD_ROOT = str(Path(__file__).parents[1])
+if _BD_ROOT not in sys.path:
+    sys.path.insert(0, _BD_ROOT)
 
-try:
-    from scripts.smart_routing import extract_intent as _bd_extract_intent
-    _HAS_BD = True
-except ImportError:
-    _HAS_BD = False
-
-    # Fallback: inline minimal intent extraction
-    def _bd_extract_intent(query: str) -> Tuple[str, float]:
-        patterns = {
-            "query": ["查询", "查看", "获取", "查找", "检索", "query", "search"],
-            "question": ["什么", "如何", "怎么", "为什么", "what", "how", "why"],
-            "explain": ["解释", "说明", "原理", "explain"],
-            "compare": ["对比", "比较", "区别", "compare", "diff"],
-            "debug": ["排障", "错误", "问题", "bug", "error"],
-        }
-        q = query.lower()
-        scores = {}
-        for intent, pats in patterns.items():
-            s = sum(1 for p in pats if p.lower() in q)
-            if s > 0:
-                scores[intent] = min(s / len(pats), 1.0)
-        if not scores:
-            return ("unknown", 0.0)
-        return max(scores, key=scores.get), scores[max(scores, key=scores.get)]
+from scripts.smart_routing import extract_intent, get_scope_weights, SmartRouter, INTENT_TO_QUERY_TYPE
+from scripts.query_cache import QueryCache
 
 
 # ──────────────────────────────────────────────
