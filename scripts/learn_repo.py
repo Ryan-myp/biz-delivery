@@ -133,6 +133,14 @@ class IRDocument:
     call_graph: List[CallEdge] = field(default_factory=list)  # 调用图
     data_flow: List[DataFlowNode] = field(default_factory=list)  # 数据流
     entry_points: List[Dict] = field(default_factory=list)  # 入口点
+    
+    # 测试覆盖
+    test_files: List[str] = field(default_factory=list)  # 测试文件列表
+    test_functions: List[Dict] = field(default_factory=list)  # {name, file, line, covers, framework}
+    coverage_report: Dict = field(default_factory=dict)  # {total_funcs, tested_funcs, uncovered_funcs}
+    
+    # API 文档
+    api_spec: List[Dict] = field(default_factory=list)  # OpenAPI-like spec: {path, method, handler, request, response, middleware}
 
 
 # ============================================================================
@@ -273,7 +281,7 @@ class GoScanner:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         
-        # 构建调用图和入口点
+        # 构建调用图和入口点（测试扫描和 API 文档提取在 scan_directory 中统一调用）
         self._build_call_graph_from_signatures(ir)
         
         return ir
@@ -562,12 +570,18 @@ class GoScanner:
         # 优先用 ripgrep，不可用时 fallback 到 Python re
         if self.use_ripgrep and self._is_rgrep_available():
             try:
-                return self._scan_with_rgrep(dir_path, max_files)
+                ir = self._scan_with_rgrep(dir_path, max_files)
             except Exception as e:
                 print(f"  WARNING: ripgrep scan failed ({e}), falling back to Python re", file=sys.stderr)
+                ir = self._scan_with_python_re(dir_path, max_files, incremental, changed_files)
+        else:
+            ir = self._scan_with_python_re(dir_path, max_files, incremental, changed_files)
         
-        # Fallback: 逐文件 Python re 扫描
-        return self._scan_with_python_re(dir_path, max_files, incremental, changed_files)
+        # 统一调用测试扫描和 API 文档提取（不依赖 rg 可用性）
+        self._scan_test_files(ir, dir_path, max_files)
+        self._extract_api_spec(ir, dir_path, max_files)
+        
+        return ir
     
     def _scan_with_python_re(self, dir_path: Path, max_files: int,
                               incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
@@ -704,6 +718,228 @@ class GoScanner:
                     "file": f.file,
                     "type": "handler" if f.is_route else "entry",
                 })
+
+
+    def _scan_test_files(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """扫描测试文件 — 提取测试函数、被测函数、覆盖率报告"""
+        # 1. 找测试文件（用 find 命令，rg --files-with-matches 搜的是文件内容不是文件名）
+        try:
+            r = subprocess.run(
+                ["find", str(dir_path), "-name", "*_test.go", "-not", "-path", "*/vendor/*"],
+                capture_output=True, text=True, timeout=30
+            )
+            if r.returncode == 0:
+                test_files = [f.strip() for f in r.stdout.strip().split('\n') if f.strip()]
+                ir.test_files = test_files[:max_files]
+        except:
+            pass
+        
+        # 2. 扫描测试函数 — 直接读测试文件（不依赖 rg，沙箱里 rg 不可用）
+        framework = "unknown"
+        
+        # 先检测测试框架
+        for tf in ir.test_files[:5]:
+            full = dir_path / tf if isinstance(dir_path, Path) else Path(tf)
+            if full.exists():
+                try:
+                    content = full.read_text()
+                    if "goconvey" in content or "convey" in content:
+                        framework = "goconvey"
+                    elif "testify" in content:
+                        framework = "testify"
+                    elif "stretchr" in content:
+                        framework = "stretchr"
+                    break
+                except:
+                    pass
+        
+        # 逐个测试文件扫描测试函数
+        for tf in ir.test_files:
+            if len(ir.test_functions) >= max_files * 5:
+                break
+            full = dir_path / tf if isinstance(dir_path, Path) else Path(tf)
+            if not full.exists():
+                continue
+            try:
+                content = full.read_text()
+                # 相对路径：去掉 dir_path 前缀
+                try:
+                    rel = full.relative_to(dir_path.parent)
+                except ValueError:
+                    rel = full
+                
+                for i, line in enumerate(content.splitlines(), 1):
+                    m = re.search(r'func\s+(Test\w+)\s*\(', line)
+                    if m:
+                        ir.test_functions.append({
+                            "name": m.group(1),
+                            "file": str(rel),
+                            "line": i,
+                            "framework": framework,
+                            "covers": [],
+                        })
+            except:
+                pass
+        
+        # 3. 构建覆盖率报告
+        all_func_names = set(f.name for f in ir.functions)
+        tested_funcs = set()
+        
+        # 从测试文件中的 import 和 mock 推断被测函数
+        for test_func in ir.test_functions:
+            test_file = test_func["file"]
+            full_path = dir_path / test_file if isinstance(dir_path, Path) else Path(test_file)
+            if full_path.exists():
+                try:
+                    content = full_path.read_text()
+                    # 找 TestXxx 中的被测方法调用
+                    # 模式: obj.MethodName( 或 dao.MethodName( 或 req.MethodName(
+                    calls = re.findall(r'(?:\w+\.)?(\w+)\s*\(', content)
+                    for call in calls:
+                        if call.startswith('Get') or call.startswith('Create') or call.startswith('Update') or call.startswith('Delete') or call.startswith('List') or call.startswith('Query') or call.startswith('Parse'):
+                            tested_funcs.add(call)
+                except:
+                    pass
+        
+        # 简单估算：测试文件中的 TestXxx 对应 Xxx 方法的测试
+        for tf in ir.test_functions:
+            # TestCreativeModel_GetCreativeShareName -> GetCreativeShareName
+            test_name = tf["name"]
+            if test_name.startswith("Test"):
+                # 尝试提取被测方法名
+                parts = test_name[4:].split("_")
+                if len(parts) >= 2:
+                    method_name = "_".join(parts[1:])
+                    tested_funcs.add(method_name)
+        
+        total = len(all_func_names)
+        tested = len(tested_funcs.intersection(all_func_names))
+        
+        ir.coverage_report = {
+            "test_files": len(ir.test_files),
+            "test_functions": len(ir.test_functions),
+            "total_functions": total,
+            "tested_functions": tested,
+            "coverage_pct": round(tested / total * 100, 1) if total > 0 else 0,
+            "framework": framework,
+            "uncovered_highlights": list(all_func_names - tested_funcs)[:20],
+        }
+
+
+    def _extract_api_spec(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """从路由注册行提取 API 文档 — OpenAPI-like spec
+        
+        策略：
+        1. 从 route.handler 提取方法名（去掉括号、receiver）
+        2. 在路由文件中搜索该方法的实现
+        3. 从方法签名提取 Request/Response struct
+        4. 从方法体提取 return 语句中的 Response struct
+        5. 从文件顶部提取 middleware 引用
+        """
+        # 先收集所有路由文件中的 handler 方法名 -> 文件映射
+        route_by_file = {}
+        for route in ir.routes:
+            route_by_file.setdefault(route.file, []).append(route)
+        
+        for filepath, routes in route_by_file.items():
+            # 去掉 filepath 中的 repo 名前缀（如 "creative-platform/app/..." -> "app/..."）
+            parts = filepath.split('/')
+            clean_filepath = filepath
+            if parts and parts[0] == dir_path.name:
+                clean_filepath = '/'.join(parts[1:])
+            
+            full_path = dir_path / clean_filepath
+            if not full_path.exists():
+                continue
+            
+            try:
+                content = full_path.read_text()
+                lines = content.splitlines()
+            except:
+                continue
+            
+            for route in routes[:5]:
+                try:
+                    # 清理 handler 名：去掉括号、receiver
+                    handler_raw = route.handler.strip()
+                    # "RequestLog(" -> "RequestLog"
+                    handler_name = re.sub(r'\s*\([^)]*\)\s*', '', handler_raw)
+                    handler_name = re.sub(r'\s*\(.*', '', handler_name)
+                    # 取最后一个点之后的名字
+                    if '.' in handler_name:
+                        handler_name = handler_name.split('.')[-1]
+                    if not handler_name or handler_name in ('(', ''):
+                        continue
+                    
+                    spec_item = {
+                        "path": route.path,
+                        "method": route.method,
+                        "handler": handler_name,
+                        "file": filepath,
+                        "request_struct": None,
+                        "response_struct": None,
+                        "middleware": [],
+                    }
+                    
+                    # 1. 找方法签名 — 搜 func (receiver) MethodName(params)
+                    # 模式: func (m *Module) CreateAdGroup(c *gin.Context, req *CreateAdGroupRequest)
+                    sig_pattern = rf'func\s+\([^)]+\)\s+{re.escape(handler_name)}\s*\((.*)\)'
+                    sig_m = re.search(sig_pattern, content)
+                    if sig_m:
+                        params_str = sig_m.group(1)
+                        # 从参数中提取 Request struct
+                        req_match = re.search(r'req\s+\*?(\w+Request\w*)', params_str)
+                        if req_match:
+                            spec_item["request_struct"] = req_match.group(1)
+                        # 也提取其他参数中的 Request
+                        req_matches = re.findall(r'\*?(\w+Request\w*)', params_str)
+                        if req_matches and not spec_item["request_struct"]:
+                            spec_item["request_struct"] = req_matches[0]
+                    
+                    # 2. 找方法体内的 return 语句，提取 Response struct
+                    # 从方法签名处往后找 return 语句
+                    if sig_m:
+                        method_body_start = sig_m.end()
+                        # 找匹配的右花括号
+                        brace_count = 1
+                        pos = method_body_start
+                        method_body = ""
+                        while pos < len(content) and brace_count > 0:
+                            ch = content[pos]
+                            if ch == '{':
+                                brace_count += 1
+                            elif ch == '}':
+                                brace_count -= 1
+                            if brace_count > 0:
+                                method_body += ch
+                            pos += 1
+                        
+                        # 在方法体内找 return 语句
+                        return_matches = re.findall(r'return\s+(\w+)\.\w+\(\s*(\*?\w+)\s*,', method_body)
+                        if return_matches:
+                            # 第一个非 error 的返回值通常是 response
+                            for ret_var, ret_type in return_matches:
+                                if ret_type and 'error' not in ret_type.lower() and ret_type != 'nil':
+                                    spec_item["response_struct"] = ret_type.lstrip('*')
+                                    break
+                        
+                        # 也搜简单的 return xxxResponse{
+                        simple_resp = re.search(r'return\s+(\w+Response)', method_body)
+                        if simple_resp and not spec_item["response_struct"]:
+                            spec_item["response_struct"] = simple_resp.group(1)
+                    
+                    # 3. 提取 middleware — 从文件中的 middleware 使用
+                    mw_matches = re.findall(r'middleware\.(\w+)', content)
+                    if mw_matches:
+                        spec_item["middleware"] = list(set(mw_matches))[:10]
+                    
+                    ir.api_spec.append(spec_item)
+                    
+                except Exception:
+                    pass
+    
+    def _build_call_graph_from_signatures(self, ir: IRDocument):
+        """从 import + func 签名构建调用图"""
 
 
 # ============================================================================
@@ -1525,6 +1761,37 @@ class LLMKnowledgeGenerator:
             for var_name, kinds in list(var_kinds.items())[:15]:
                 if len(kinds) > 1:  # 既有定义又有使用的变量
                     prompt_parts.append(f"- `{var_name}`: {' → '.join(sorted(kinds))}")
+            prompt_parts.append("")
+        
+        # === 测试覆盖报告 ===
+        if ir.coverage_report:
+            cr = ir.coverage_report
+            prompt_parts.append("## 测试覆盖报告")
+            prompt_parts.append(f"- 测试文件: {cr.get('test_files', 0)}")
+            prompt_parts.append(f"- 测试函数: {cr.get('test_functions', 0)}")
+            prompt_parts.append(f"- 测试框架: {cr.get('framework', 'unknown')}")
+            prompt_parts.append(f"- 总函数数: {cr.get('total_functions', 0)}")
+            prompt_parts.append(f"- 已测试函数: {cr.get('tested_functions', 0)}")
+            pct = cr.get('coverage_pct', 0)
+            prompt_parts.append(f"- 覆盖率: {pct}%")
+            uncovered = cr.get('uncovered_highlights', [])
+            if uncovered:
+                prompt_parts.append("- **未测试函数（样本）**:")
+                for fn in uncovered[:15]:
+                    prompt_parts.append(f"  - `{fn}`")
+            prompt_parts.append("")
+        
+        # === API 文档（OpenAPI-like） ===
+        if ir.api_spec:
+            prompt_parts.append("## API 文档 (OpenAPI-like Spec)")
+            prompt_parts.append(f"共 {len(ir.api_spec)} 个端点")
+            prompt_parts.append("")
+            for api in ir.api_spec[:30]:
+                req = api.get('request_struct', '') or '-'
+                resp = api.get('response_struct', '') or '-'
+                mw = ', '.join(api.get('middleware', [])) or 'none'
+                prompt_parts.append(f"- `{api['method']} {api['path']}` → {api['handler']}")
+                prompt_parts.append(f"  - Request: `{req}` | Response: `{resp}` | Middleware: {mw}")
             prompt_parts.append("")
         
         prompt_parts.append("---")
