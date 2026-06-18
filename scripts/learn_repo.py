@@ -1328,7 +1328,7 @@ class MultiRepoAnalyzer:
 class LLMKnowledgeGenerator:
     """LLM 学习总结 — 将 IR + 依赖图转化为可读知识库"""
     
-    def build_prompt(self, ir: IRDocument, dep_graph: Dict, repos: List[Dict]) -> str:
+    def build_prompt(self, ir: IRDocument, dep_graph: Dict, repos: List[Dict], dir_path_str: str = None) -> str:
         """构建 LLM prompt"""
         prompt_parts = []
         
@@ -1409,6 +1409,86 @@ class LLMKnowledgeGenerator:
             prompt_parts.append("## 服务层")
             for s in services[:15]:
                 prompt_parts.append(f"- **{s.name}** ({len(s.methods)} methods)")
+            prompt_parts.append("")
+        
+        # === 关键源码片段（从路由文件提取核心逻辑） ===
+        if dir_path_str and ir.routes and ir.functions:
+            prompt_parts.append("## 关键源码片段")
+            prompt_parts.append("")
+            prompt_parts.append("以下是从路由文件和入口点提取的核心实现代码，帮助理解业务逻辑：")
+            prompt_parts.append("")
+            
+            # 收集需要提取源码的文件
+            files_to_snippet = set()
+            for route in ir.routes[:15]:
+                files_to_snippet.add(route.file)
+            for ep in ir.entry_points[:5]:
+                files_to_snippet.add(ep['file'])
+            
+            # 提取源码片段
+            for filepath in sorted(files_to_snippet)[:8]:
+                # filepath 可能是 "creative-platform/app/..." 或 "app/..."，统一去掉首层 repo 名
+                parts = filepath.split('/')
+                if parts[0] == os.path.basename(dir_path_str):
+                    filepath_clean = '/'.join(parts[1:])
+                else:
+                    filepath_clean = filepath
+                full_path = Path(dir_path_str) / filepath_clean
+                if full_path.exists():
+                    try:
+                        with open(full_path) as f:
+                            file_content = f.read()
+                            file_lines = file_content.splitlines(True)
+                        
+                        # 从路由注册行提取 handler 方法名: m.MethodName 或 r.MethodName
+                        handler_methods = set()
+                        for route in ir.routes:
+                            if route.file == filepath:
+                                # 从 route.handler 提取方法名（去掉可能的括号、receiver）
+                                h = route.handler.strip()
+                                # 去掉括号和多余字符: "CreateAdGroup" or "RequestLog("
+                                h = re.sub(r'\s*\([^)]*\)\s*', '', h)  # 去掉 (receiver)
+                                h = re.sub(r'\s*\([^)]*\)\s*', '', h)  # 去掉 (params)
+                                h = re.sub(r'[^(]*\.(\w+).*', r'\1', h)  # 提取最后一个点后的名字
+                                if h and h not in ('(', ''):
+                                    handler_methods.add(h)
+                        
+                        # 提取这些方法的实现
+                        for method_name in sorted(handler_methods)[:5]:
+                            # 搜方法定义: func (r *Module) MethodName(
+                            pattern = rf'func\s+\([^)]*\*\w+\)\s+{re.escape(method_name)}\s*\('
+                            m = re.search(pattern, file_content)
+                            if m:
+                                # 找到函数起始位置，提取代码块
+                                start_pos = m.start()
+                                # 往前找 func 关键字所在的行
+                                line_start = file_content.rfind('\n', 0, start_pos) + 1
+                                # 往后找匹配的 }
+                                brace_count = 0
+                                ended = False
+                                for ci in range(start_pos, len(file_content)):
+                                    if file_content[ci] == '{':
+                                        brace_count += 1
+                                    elif file_content[ci] == '}':
+                                        brace_count -= 1
+                                        if brace_count <= 0:
+                                            end_pos = ci + 1
+                                            ended = True
+                                            break
+                                
+                                if not ended:
+                                    end_pos = min(start_pos + 3000, len(file_content))
+                                
+                                code = file_content[line_start:end_pos].rstrip()
+                                if len(code) > 50:
+                                    prompt_parts.append(f"### `{method_name}` ({filepath})")
+                                    prompt_parts.append("```go")
+                                    prompt_parts.append(code[:1500])  # 最多 1500 chars
+                                    prompt_parts.append("```")
+                                    prompt_parts.append("")
+                        break
+                    except Exception:
+                        pass
             prompt_parts.append("")
         
         # 配置
@@ -1764,7 +1844,7 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
     # 4. 构建 LLM prompt
     generator = LLMKnowledgeGenerator()
     combined_ir = all_ir[0]  # 取第一个作为主 IR
-    prompt = generator.build_prompt(combined_ir, dep_graph, repos)
+    prompt = generator.build_prompt(combined_ir, dep_graph, repos, repos[0]['path'] if repos else None)
     
     # 5. 输出 prompt（供 LLM 调用）
     output_path = Path(output_dir)
