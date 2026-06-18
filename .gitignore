@@ -1,3 +1,6 @@
 
 # knowledge-search cache
 knowledge-search/.cache/
+
+# Per-project knowledge outputs (generated, not source)
+knowledge/

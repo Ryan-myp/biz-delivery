@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Biz Delivery Profile Schema",
+  "description": "biz-delivery 业务 Profile 的 JSON Schema 定义",
+  "type": "object",
+  "required": ["business_domain", "repositories"],
+  "properties": {
+    "business_domain": {
+      "type": "string",
+      "description": "业务域名标识，如 creative-platform, ad-platform"
+    },
+    "modes": {
+      "type": "array",
+      "items": { "enum": ["learn", "prdtdd"] },
+      "default": ["learn", "prdtdd"],
+      "description": "启用的模式：learn（代码→知识库）, prdtdd（PRD→TD→测试）"
+    },
+    "repositories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string", "description": "仓库本地路径" },
+          "language": {
+            "type": "string",
+            "enum": ["go", "python", "java"],
+            "default": "go"
+          },
+          "import_prefix": { "type": "string", "description": "Go import prefix，用于跨仓库依赖解析" },
+          "entry_keywords": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "入口点关键词，用于识别 handler/service/controller"
+          },
+          "exclude_patterns": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": ["vendor/*", "node_modules/*", ".git/*"]
+          }
+        }
+      }
+    },
+    "learn_config": {
+      "type": "object",
+      "properties": {
+        "scanner_languages": {
+          "type": "array",
+          "items": { "enum": ["go", "python", "java"] },
+          "default": ["go"]
+        },
+        "llm_prompt_template": {
+          "type": "string",
+          "default": "templates/learn_prompt.md.j2"
+        },
+        "output_format": {
+          "type": "array",
+          "items": { "enum": ["architecture", "flows", "schema", "glossary"] },
+          "default": ["architecture", "flows", "schema", "glossary"]
+        },
+        "max_files_per_lang": {
+          "type": "integer",
+          "default": 500
+        }
+      }
+    },
+    "evidence_sources": {
+      "type": "array",
+      "items": {
+        "enum": ["code", "schema", "api_docs", "wiki"]
+      },
+      "default": ["code", "schema", "wiki"]
+    },
+    "wiki_path": {
+      "type": "string",
+      "description": "wiki_engine 目录路径（learn 模式写入，prdtdd 模式作为证据源）"
+    },
+    "domain_terms": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "review_rules": {
+      "type": "object",
+      "properties": {
+        "must_check": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "quality_gate": {
+          "type": "string",
+          "enum": ["ready", "needs_revision", "blocked", "partial", "degraded", "missing"]
+        }
+      }
+    },
+    "test_dimensions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "scenario_cards": {
+      "type": "string",
+      "description": "场景卡片 JSON 文件路径"
+    }
+  }
+}
