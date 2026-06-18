@@ -140,7 +140,16 @@ class IRDocument:
     coverage_report: Dict = field(default_factory=dict)  # {total_funcs, tested_funcs, uncovered_funcs}
     
     # API 文档
-    api_spec: List[Dict] = field(default_factory=list)  # OpenAPI-like spec: {path, method, handler, request, response, middleware}
+    api_spec: List[Dict] = field(default_factory=list)  # OpenAPI-like spec
+    
+    # SQL/GORM 操作
+    sql_operations: List[Dict] = field(default_factory=list)  # {func, file, line, operation, table, condition}
+    
+    # 错误码定义
+    error_codes: List[Dict] = field(default_factory=list)  # {name, code, message, category}
+    
+    # 权限/鉴权
+    auth_models: List[Dict] = field(default_factory=list)  # {middleware, file, logic, protected_routes}
 
 
 # ============================================================================
@@ -283,6 +292,12 @@ class GoScanner:
         
         # 构建调用图和入口点（测试扫描和 API 文档提取在 scan_directory 中统一调用）
         self._build_call_graph_from_signatures(ir)
+        
+        # 提取 SQL/GORM 操作
+        self._extract_sql_operations(ir, dir_path, max_files)
+        
+        # 提取错误码定义
+        self._extract_error_codes(ir, dir_path, max_files)
         
         return ir
     
@@ -662,6 +677,18 @@ class GoScanner:
         # 构建调用图（从 func 签名推断）
         self._build_call_graph_from_signatures(ir)
         
+        # 提取 API 文档（OpenAPI-like spec）
+        self._extract_api_spec(ir, dir_path, max_files)
+        
+        # 提取权限/鉴权模型
+        self._extract_auth_models(ir, dir_path, max_files)
+        
+        # 提取 SQL/GORM 操作
+        self._extract_sql_operations(ir, dir_path, max_files)
+        
+        # 提取错误码定义
+        self._extract_error_codes(ir, dir_path, max_files)
+        
         return ir
     
     def _build_call_graph_from_signatures(self, ir: IRDocument):
@@ -937,6 +964,317 @@ class GoScanner:
                     
                 except Exception:
                     pass
+    
+    def _extract_sql_operations(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """从 DAO 层提取 SQL/GORM 操作
+        
+        扫描 dao/ 目录，提取：
+        - db.Create() → INSERT
+        - db.Update() → UPDATE
+        - db.Delete() → DELETE
+        - db.Find()/db.Where() → SELECT
+        - db.CreateInBatches() → BATCH INSERT
+        - Transaction → 大事务
+        """
+        dao_dir = dir_path / "dao"
+        if not dao_dir.exists():
+            return
+        
+        try:
+            go_files = list(dao_dir.rglob("*.go"))
+        except:
+            return
+        
+        # GORM 操作模式映射
+        gorm_ops = {
+            "db.Create": "INSERT",
+            "db.Save": "INSERT_OR_UPDATE",
+            "db.Update": "UPDATE",
+            "db.Delete": "DELETE",
+            "db.Find": "SELECT_ONE",
+            "db.First": "SELECT_ONE",
+            "db.Take": "SELECT_ONE",
+            "db.Where": "FILTER",
+            "db.Order": "ORDER_BY",
+            "db.Select": "SELECT_COLUMNS",
+            "db.Group": "GROUP_BY",
+            "db.Having": "HAVING",
+            "db.Limit": "LIMIT",
+            "db.Offset": "OFFSET",
+            "db.Count": "COUNT",
+            "db.Pluck": "PLUCK",
+            "db.Scan": "SCAN_RESULT",
+            "db.Raw": "RAW_SQL",
+            "db.Exec": "EXEC_SQL",
+            "db.CreateInBatches": "BATCH_INSERT",
+            "db.Transaction": "TRANSACTION",
+        }
+        
+        for go_file in go_files:
+            if len(ir.sql_operations) >= max_files * 20:
+                break
+            try:
+                content = go_file.read_text()
+                lines = content.splitlines()
+                
+                try:
+                    rel = go_file.relative_to(dir_path.parent)
+                except ValueError:
+                    rel = go_file
+                
+                for i, line in enumerate(lines, 1):
+                    line = line.strip()
+                    # 跳过空行和注释
+                    if not line or line.startswith("//") or line.startswith("/*"):
+                        continue
+                    
+                    # 匹配 GORM 操作
+                    for gorm_call, sql_op in gorm_ops.items():
+                        if gorm_call in line and not line.strip().startswith("//"):
+                            # 提取表名（从 func CreateXxx(ctx, entity *Entity) 或 entity.TableName()）
+                            table_name = ""
+                            
+                            # 从函数签名获取 entity 类型
+                            if i > 0:
+                                # 往前找函数定义
+                                for j in range(i-1, max(0, i-10), -1):
+                                    func_m = re.search(r'func\s+\w+\([^)]*\*?(\w+Entity\w*)\)', lines[j])
+                                    if func_m:
+                                        # 从 struct 提取 table name
+                                        entity_name = func_m.group(1)
+                                        # 在 file 中找 TableName 方法
+                                        table_pattern = r'func\s+\([^)]*\*' + re.escape(entity_name) + r'\)\s+TableName\s*\(\)\s+string\s*\{\s*return\s*"([^"]+)"'
+                                        table_m = re.search(table_pattern, content)
+                                        if table_m:
+                                            table_name = table_m.group(1)
+                                        break
+                            
+                            ir.sql_operations.append({
+                                "file": str(rel),
+                                "line": i,
+                                "gorm_call": gorm_call,
+                                "sql_operation": sql_op,
+                                "table": table_name,
+                                "context": line[:100],
+                            })
+                            break
+            except:
+                pass
+        
+        # 识别大事务（Transaction 中有多步操作）
+        for go_file in go_files:
+            try:
+                content = go_file.read_text()
+                lines = content.splitlines()
+                
+                in_transaction = False
+                tx_depth = 0
+                tx_funcs = []
+                
+                for i, line in enumerate(lines, 1):
+                    if "Transaction(" in line:
+                        in_transaction = True
+                        tx_depth = 0
+                        # 往前找函数名
+                        for j in range(i-1, max(0, i-5), -1):
+                            func_m = re.search(r'func\s+(\w+)\s*\(', lines[j])
+                            if func_m:
+                                tx_funcs.append({
+                                    "name": func_m.group(1),
+                                    "file": str(rel) if 'rel' in dir() else str(go_file.relative_to(dir_path.parent)),
+                                    "line": i,
+                                })
+                                break
+                    
+                    if in_transaction:
+                        if '{' in line:
+                            tx_depth += line.count('{')
+                        if '}' in line:
+                            tx_depth -= line.count('}')
+                        
+                        if tx_depth <= 0:
+                            in_transaction = False
+                            
+            except:
+                pass
+    
+    def _extract_error_codes(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """从错误码定义文件提取错误码
+        
+        扫描 util/errors/ 目录，提取：
+        - DB_QUERY_FAIL = 103
+        - RDS_LOCK_FAIL = 218
+        - 按类别分组（DB/Redis/HTTP/业务）
+        """
+        errors_dir = dir_path / "util" / "errors"
+        if not errors_dir.exists():
+            # 也搜其他可能的错误码文件
+            errors_dir = None
+        
+        # 通用策略：搜所有错误码定义文件（errors.go, error.go, errcode.go 等）
+        try:
+            r = subprocess.run(
+                ["find", str(dir_path), "-name", "errors*.go", "-o", "-name", "error*.go", "-o", "-name", "errcode*.go", "-not", "-path", "*/vendor/*"],
+                capture_output=True, text=True, timeout=30
+            )
+        except:
+            return
+        
+        error_files = [f.strip() for f in r.stdout.strip().split('\n') if f.strip()]
+        
+        for error_file in error_files[:5]:
+            full = dir_path / error_file if isinstance(dir_path, Path) else Path(error_file)
+            if not full.exists():
+                continue
+            
+            try:
+                content = full.read_text()
+                lines = content.splitlines()
+                
+                try:
+                    rel = full.relative_to(dir_path.parent)
+                except ValueError:
+                    rel = full
+                
+                # 匹配错误码定义模式：
+                # DB_QUERY_FAIL = newError(http.StatusOK, 103, "database query failed")
+                # 或：DB_QUERY_FAIL       = newError(...)
+                # 或：var DB_QUERY_FAIL = ...
+                pattern = r'(\w+)\s*=\s*newError\([^,]+,\s*(\d+),\s*"([^"]+)"\)'
+                matches = re.findall(pattern, content)
+                
+                for name, code, message in matches:
+                    # 按 code 范围分类
+                    code_int = int(code)
+                    if code_int < 10:
+                        category = "general"
+                    elif code_int < 100:
+                        category = "general"
+                    elif code_int < 200:
+                        category = "database"
+                    elif code_int < 300:
+                        category = "redis"
+                    elif code_int < 400:
+                        category = "http"
+                    elif code_int < 500:
+                        category = "login"
+                    elif code_int < 600:
+                        category = "partner"
+                    elif code_int < 700:
+                        category = "creative"
+                    elif code_int < 800:
+                        category = "imagestop"
+                    elif code_int < 900:
+                        category = "adshare"
+                    else:
+                        category = "other"
+                    
+                    ir.error_codes.append({
+                        "name": name,
+                        "code": code_int,
+                        "message": message,
+                        "category": category,
+                        "file": str(rel),
+                    })
+            except:
+                pass
+    
+    def _extract_auth_models(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """提取权限/鉴权模型
+        
+        扫描 middleware/ 目录，提取：
+        - LoginCheck (token cookie → Redis → SSO)
+        - PermissionCheck (权限校验逻辑)
+        - 路由级权限配置
+        
+        结合 api_spec 中的 middleware 信息，构建受保护路由列表
+        """
+        # 1. 扫描 middleware 文件
+        middleware_dir = dir_path / "app" / "adminapi" / "middleware"
+        if not middleware_dir.exists():
+            # 尝试其他可能的 middleware 路径
+            try:
+                r = subprocess.run(
+                    ["find", str(dir_path), "-type", "d", "-name", "middleware"],
+                    capture_output=True, text=True, timeout=30
+                )
+                middleware_dirs = [f.strip() for f in r.stdout.strip().split('\n') if f.strip()]
+                # 排除 vendor
+                middleware_dirs = [d for d in middleware_dirs if '/vendor/' not in d]
+            except:
+                middleware_dirs = []
+        else:
+            middleware_dirs = [str(middleware_dir)]
+        
+        for mw_dir in middleware_dirs[:3]:
+            try:
+                mw_files = list(Path(mw_dir).rglob("*.go"))
+            except:
+                continue
+            
+            for mw_file in mw_files:
+                try:
+                    content = mw_file.read_text()
+                    
+                    # 提取 middleware 函数定义
+                    # func LoginCheck() gin.HandlerFunc
+                    # func PermissionCheck() gin.HandlerFunc
+                    mw_funcs = re.findall(r'func\s+(\w+)\s*\(\)\s+gin\.HandlerFunc\s*\{', content)
+                    if not mw_funcs:
+                        # 也搜 func (r *Router) xxx(c *gin.Context) 模式
+                        mw_funcs = re.findall(r'func\s+(\w+)\s*\(c\s+\*gin\.Context\)', content)
+                    
+                    if mw_funcs:
+                        try:
+                            rel = mw_file.relative_to(dir_path.parent)
+                        except ValueError:
+                            rel = mw_file
+                        
+                        # 提取 middleware 逻辑关键词
+                        logic_keywords = []
+                        if "cookie" in content.lower():
+                            logic_keywords.append("cookie-based")
+                        if "redis" in content.lower():
+                            logic_keywords.append("redis-cache")
+                        if "token" in content.lower():
+                            logic_keywords.append("token-validation")
+                        if "sso" in content.lower():
+                            logic_keywords.append("sso-integration")
+                        if "permission" in content.lower() or "auth" in content.lower():
+                            logic_keywords.append("permission-check")
+                        if "rate" in content.lower():
+                            logic_keywords.append("rate-limiting")
+                        if "jwt" in content.lower():
+                            logic_keywords.append("jwt")
+                        
+                        for mw_func in mw_funcs:
+                            ir.auth_models.append({
+                                "middleware": mw_func,
+                                "file": str(rel),
+                                "logic": "; ".join(logic_keywords) if logic_keywords else "unknown",
+                                "description": "",
+                            })
+                except:
+                    pass
+        
+        # 2. 从 api_spec 构建受保护路由
+        protected_routes = {}
+        for api in ir.api_spec:
+            mws = api.get("middleware", [])
+            if mws and "LoginCheck" in mws:
+                key = f"{api['method']} {api['path']}"
+                protected_routes[key] = {
+                    "middleware": mws,
+                    "handler": api.get("handler", ""),
+                }
+        
+        ir.auth_models.append({
+            "middleware": "__protected_routes__",
+            "file": "api_spec",
+            "logic": f"{len(protected_routes)} routes protected by LoginCheck",
+            "description": "",
+            "protected_routes": protected_routes,
+        })
     
     def _build_call_graph_from_signatures(self, ir: IRDocument):
         """从 import + func 签名构建调用图"""
@@ -1792,6 +2130,58 @@ class LLMKnowledgeGenerator:
                 mw = ', '.join(api.get('middleware', [])) or 'none'
                 prompt_parts.append(f"- `{api['method']} {api['path']}` → {api['handler']}")
                 prompt_parts.append(f"  - Request: `{req}` | Response: `{resp}` | Middleware: {mw}")
+            prompt_parts.append("")
+        
+        # SQL/GORM 操作
+        if ir.sql_operations:
+            prompt_parts.append("## SQL/GORM 操作 (Database Layer)")
+            prompt_parts.append(f"共 {len(ir.sql_operations)} 个数据库操作")
+            prompt_parts.append("")
+            # 按操作类型分组统计
+            op_counts = {}
+            for op in ir.sql_operations:
+                op_type = op.get('sql_operation', 'UNKNOWN')
+                op_counts[op_type] = op_counts.get(op_type, 0) + 1
+            prompt_parts.append("操作类型分布:")
+            for op_type, count in sorted(op_counts.items(), key=lambda x: -x[1]):
+                prompt_parts.append(f"- {op_type}: {count}")
+            prompt_parts.append("")
+            # 列出前 30 个操作
+            for op in ir.sql_operations[:30]:
+                prompt_parts.append(f"- `{op['gorm_call']}` → {op['sql_operation']} ({op['file']}:{op['line']})")
+            prompt_parts.append("")
+        
+        # 错误码定义
+        if ir.error_codes:
+            prompt_parts.append("## 错误码定义 (Error Codes)")
+            prompt_parts.append(f"共 {len(ir.error_codes)} 个错误码")
+            prompt_parts.append("")
+            # 按类别分组
+            cat_errors = {}
+            for ec in ir.error_codes:
+                cat = ec.get('category', 'other')
+                if cat not in cat_errors:
+                    cat_errors[cat] = []
+                cat_errors[cat].append(ec)
+            for cat, errors in cat_errors.items():
+                prompt_parts.append(f"### {cat} ({len(errors)} codes)")
+                for ec in errors[:10]:
+                    prompt_parts.append(f"- `{ec['name']}` = {ec['code']}: {ec['message']}")
+                if len(errors) > 10:
+                    prompt_parts.append(f"  ... 还有 {len(errors) - 10} 个")
+                prompt_parts.append("")
+        
+        # 权限/鉴权模型
+        if ir.auth_models:
+            prompt_parts.append("## 权限/鉴权模型 (Authentication & Authorization)")
+            prompt_parts.append(f"共 {len(ir.auth_models)} 个中间件/鉴权组件")
+            prompt_parts.append("")
+            for am in ir.auth_models:
+                if am['middleware'] == '__protected_routes__':
+                    protected_count = len(am.get('protected_routes', {}))
+                    prompt_parts.append(f"- **受保护路由**: {protected_count} 个路由需要登录认证")
+                else:
+                    prompt_parts.append(f"- **{am['middleware']}** ({am['file']}): {am['logic']}")
             prompt_parts.append("")
         
         prompt_parts.append("---")
