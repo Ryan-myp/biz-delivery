@@ -261,25 +261,40 @@ class GoScanner:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         
+        # 7. 扫描 struct 字段（用 rg -A 获取 struct body 上下文）
+        try:
+            r = subprocess.run(
+                ["rg", "--json", "--type", "go", "-A", "30", "-n",
+                 r'type\s+\w+\s+struct\s*\{'] + exclude_args + [str(dir_path)],
+                capture_output=True, text=True, timeout=180
+            )
+            if r.returncode in (0, 1):
+                self._parse_rg_struct_fields(r.stdout, ir, dir_path, max_files)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+        
         # 构建调用图和入口点
         self._build_call_graph_from_signatures(ir)
         
         return ir
     
     def _parse_rg_json_lines(self, output: str) -> Dict[str, List[Dict]]:
-        """解析 rg --json 输出，按文件分组"""
+        """解析 rg --json 输出，按文件分组
+        同时接受 match 和 context 类型（-A 上下文行）
+        """
         by_file = {}
         for line in output.strip().split('\n'):
             if not line.strip():
                 continue
             # rg --json 输出的 lines.text 可能包含换行符，导致 json.loads 失败
-            # 修复：替换掉字面的 \n 和 \t（rg 在 JSON 中转义为 \\n \\t）
             cleaned = line.replace('\\n', ' ').replace('\\t', ' ')
             try:
                 data = json.loads(cleaned)
             except json.JSONDecodeError:
                 continue
-            if data.get("type") != "match":
+            # 接受 match 和 context 两种类型
+            data_type = data.get("type")
+            if data_type not in ("match", "context"):
                 continue
             raw = data.get("data", {})
             file_path = raw.get("path", {}).get("text", "")
@@ -287,7 +302,7 @@ class GoScanner:
             line_text = raw.get("lines", {}).get("text", "").strip()
             if file_path not in by_file:
                 by_file[file_path] = []
-            by_file[file_path].append({"line": line_num, "text": line_text})
+            by_file[file_path].append({"line": line_num, "text": line_text, "type": data_type})
         return by_file
     
     def _parse_rg_structs(self, output: str, ir: IRDocument, dir_path: Path, max_files: int):
@@ -299,16 +314,78 @@ class GoScanner:
                 break
             rel_path = Path(file_path).relative_to(dir_path.parent)
             count += 1
+            
+            # 收集该文件的所有 struct 信息
+            struct_defs = {}  # name -> {"fields": [], "table_name": None}
             for line_info in lines:
                 text = line_info["text"]
+                
+                # 匹配 type XXX struct
                 m = re.search(r'type\s+(\w+)\s+struct', text)
                 if m:
-                    ir.structs.append(StructDef(
-                        name=m.group(1),
-                        file=str(rel_path),
-                        fields=[],
-                    ))
+                    struct_name = m.group(1)
+                    if struct_name not in struct_defs:
+                        struct_defs[struct_name] = {"fields": [], "table_name": None}
+            
+            # 添加到 IR
+            for name, info in struct_defs.items():
+                ir.structs.append(StructDef(
+                    name=name,
+                    file=str(rel_path),
+                    fields=info["fields"][:30],
+                ))
     
+    def _parse_rg_struct_fields(self, output: str, ir: IRDocument, dir_path: Path, max_files: int):
+        """从 rg -A 30 的输出中提取 struct 字段
+        
+        rg -A 30 输出每行都有 type: match 或 context，
+        其中 match 行是 type XXX struct {，
+        context 行是 struct body 里的字段定义。
+        按行号排序后，用栈追踪当前 struct 名。
+        """
+        by_file = self._parse_rg_json_lines(output)
+        count = 0
+        for file_path, lines in by_file.items():
+            if count >= max_files:
+                break
+            rel_path = Path(file_path).relative_to(dir_path.parent)
+            count += 1
+            
+            # 按行号排序
+            lines_sorted = sorted(lines, key=lambda x: x["line"])
+            
+            # 遍历，用栈追踪当前 struct
+            struct_stack = []  # [(struct_name, fields_list)]
+            for line_info in lines_sorted:
+                text = line_info["text"]
+                
+                # 匹配 type XXX struct
+                m = re.search(r'type\s+(\w+)\s+struct', text)
+                if m:
+                    struct_stack.append((m.group(1), []))
+                    continue
+                
+                # 匹配字段行: FieldName Type `tag`
+                if struct_stack:
+                    field_m = re.search(r'^\s+(\w+)\s+(\S+?)(?:\s+`(.+)`)?\s*$', text)
+                    if field_m and field_m.group(1) not in ('type', 'func', 'var', 'const'):
+                        tag = field_m.group(3) or ""
+                        field = {"name": field_m.group(1), "type": field_m.group(2)}
+                        gorm = re.search(r'gorm:"([^"]*)"', tag)
+                        json = re.search(r'json:"([^"]*)"', tag)
+                        if gorm:
+                            field["gorm_tag"] = gorm.group(1)
+                        if json:
+                            field["json_tag"] = json.group(1)
+                        struct_stack[-1][1].append(field)
+            
+            # 将提取的字段写入 IR
+            for struct_name, fields in struct_stack:
+                for s in ir.structs:
+                    if s.name == struct_name and s.file == str(rel_path):
+                        s.fields = fields[:30]
+                        break
+
     def _parse_rg_table_names(self, output: str, ir: IRDocument):
         """从 rg 输出提取 TableName — 读取上下文行找 return "xxx" """
         by_file = self._parse_rg_json_lines(output)
@@ -1288,16 +1365,20 @@ class LLMKnowledgeGenerator:
         
         if db_structs:
             prompt_parts.append("## 数据库表推断")
-            for s in db_structs[:20]:
-                prompt_parts.append(f"- **{s.name}** → `{s.table_name}` ({len(s.fields)} fields)")
-                for f in s.fields[:8]:
+            for s in db_structs[:15]:
+                prompt_parts.append(f"\n### `{s.table_name}` (Entity: {s.name})")
+                prompt_parts.append(f"文件: {s.file}")
+                for f in s.fields[:15]:
                     gorm = f.get('gorm_tag', '')
+                    json = f.get('json_tag', '')
                     pk = 'PRIMARY_KEY' in gorm if gorm else False
                     pk_str = ' [PK]' if pk else ''
-                    prompt_parts.append(f"  - `{f['name']}`: {f.get('type', '?')}{pk_str}")
+                    extra = f" gorm:{gorm}" if gorm else ""
+                    extra += f" json:{json}" if json else ""
+                    prompt_parts.append(f"- `{f['name']}`: {f['type']}{pk_str}{extra}")
             prompt_parts.append("")
         
-        # 重要业务 struct（按命名模式筛选）
+        # 重要业务 struct（带字段详情）
         important_structs = []
         for s in other_structs:
             name_lower = s.name.lower()
@@ -1306,8 +1387,13 @@ class LLMKnowledgeGenerator:
         
         if important_structs:
             prompt_parts.append("## 关键业务 Struct")
-            for s in important_structs[:30]:
-                prompt_parts.append(f"- **{s.name}** ({len(s.fields)} fields, {len(s.methods)} methods)")
+            for s in important_structs[:20]:
+                prompt_parts.append(f"\n### `{s.name}`")
+                prompt_parts.append(f"文件: {s.file}")
+                if s.fields:
+                    for f in s.fields[:10]:
+                        json = f.get('json_tag', '')
+                        prompt_parts.append(f"- `{f['name']}`: {f['type']}" + (f" json:{json}" if json else ""))
             prompt_parts.append("")
         
         # 路由
