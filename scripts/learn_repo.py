@@ -159,6 +159,12 @@ class IRDocument:
     
     # 配置解析
     configs: List[Dict] = field(default_factory=list)  # {file, type, key, value}
+    
+    # 性能热点
+    perf_hotspots: List[Dict] = field(default_factory=list)
+    
+    # 向后兼容
+    compat_issues: List[Dict] = field(default_factory=list)
 
 
 # ============================================================================
@@ -715,6 +721,13 @@ class GoScanner:
         
         # 提取配置
         self._extract_configs(ir, dir_path, max_files)
+        
+        
+        # 检测性能热点
+        self._detect_perf_hotspots(ir, dir_path, max_files)
+        
+        # 检测向后兼容问题
+        self._detect_compat_issues(ir, dir_path, max_files)
         
         return ir
     
@@ -1465,6 +1478,188 @@ class GoScanner:
                                     })
                 except:
                     pass
+    
+    def _detect_perf_hotspots(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """检测性能热点 — N+1 查询、大事务、缺少 Limit 的查询"""
+        dao_dir = dir_path / "dao"
+        if not dao_dir.exists():
+            return
+        
+        try:
+            go_files = list(dao_dir.rglob("*.go"))
+        except:
+            return
+        
+        for go_file in go_files:
+            if len(ir.perf_hotspots) >= max_files * 5:
+                break
+            try:
+                content_f = go_file.read_text()
+                lines = content_f.splitlines()
+                
+                try:
+                    rel = go_file.relative_to(dir_path.parent)
+                except ValueError:
+                    rel = go_file
+                
+                # 1. N+1 查询：循环内的 db.Find/First/Count
+                in_loop = False
+                loop_indent = 0
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    
+                    if stripped.startswith('for ') or stripped.startswith('for{'):
+                        in_loop = True
+                        loop_indent = len(line) - len(line.lstrip())
+                    
+                    if in_loop:
+                        current_indent = len(line) - len(line.lstrip())
+                        if current_indent <= loop_indent and stripped and not stripped.startswith('}'):
+                            in_loop = False
+                        
+                        for db_call in ['db.Find', 'db.First', 'db.Count', 'db.Take']:
+                            if db_call in stripped and not stripped.startswith('//'):
+                                loop_var = ''
+                                for_m = re.search(r'for\s+(\w+)\s*[:]?=', stripped)
+                                if for_m:
+                                    loop_var = for_m.group(1)
+                                
+                                ir.perf_hotspots.append({
+                                    "type": "N+1_QUERY",
+                                    "severity": "high",
+                                    "file": str(rel),
+                                    "line": i + 1,
+                                    "detail": f"db.{db_call.replace('db.', '')} inside loop (var={loop_var})",
+                                    "call": db_call,
+                                    "loop_var": loop_var,
+                                })
+                                break
+                
+                # 2. 大事务：Transaction 中有大量 db 操作
+                for i, line in enumerate(lines):
+                    if 'Transaction(' in line and 'func' not in line:
+                        for j in range(max(0, i-10), i):
+                            func_m = re.search(r'func\s+(\w+)\s*\(', lines[j])
+                            if func_m:
+                                func_name = func_m.group(1)
+                                db_ops = 0
+                                tx_depth = 0
+                                for k in range(j, min(len(lines), j + 200)):
+                                    l = lines[k]
+                                    if 'tx.' in l or 'db.' in l:
+                                        if any(op in l for op in ['Create', 'Update', 'Delete', 'Find', 'First', 'Count']):
+                                            db_ops += 1
+                                    tx_depth += l.count('{') - l.count('}')
+                                    if tx_depth <= 0:
+                                        break
+                                
+                                if db_ops >= 3:
+                                    ir.perf_hotspots.append({
+                                        "type": "LARGE_TRANSACTION",
+                                        "severity": "medium",
+                                        "file": str(rel),
+                                        "line": j + 1,
+                                        "detail": f"Transaction with {db_ops} db operations",
+                                        "func": func_name,
+                                        "db_ops": db_ops,
+                                    })
+                                break
+                
+                # 3. 不带 Limit 的查询
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    if ('db.Find(' in stripped or 'db.Where(' in stripped) and 'Limit' not in stripped:
+                        has_limit = any('Limit(' in lines[k] for k in range(i, min(i + 10, len(lines))))
+                        if not has_limit:
+                            ir.perf_hotspots.append({
+                                "type": "UNLIMITED_QUERY",
+                                "severity": "medium",
+                                "file": str(rel),
+                                "line": i + 1,
+                                "detail": f"Query without Limit: {stripped[:80]}",
+                            })
+                
+                # 4. SQL 注入风险
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    if ('db.Raw(' in stripped or 'db.Exec(' in stripped):
+                        if '%s' in stripped or '%v' in stripped or '%' in stripped:
+                            ir.perf_hotspots.append({
+                                "type": "SQL_INJECTION_RISK",
+                                "severity": "high",
+                                "file": str(rel),
+                                "line": i + 1,
+                                "detail": f"Raw SQL with format specifier: {stripped[:80]}",
+                            })
+                
+            except:
+                pass
+    
+    def _detect_compat_issues(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """检测向后兼容性问题"""
+        try:
+            go_files = list(dir_path.rglob("*.go"))
+        except:
+            return
+        
+        go_files = [f for f in go_files if '/vendor/' not in str(f)][:max_files * 5]
+        
+        for go_file in go_files:
+            if len(ir.compat_issues) >= max_files * 3:
+                break
+            try:
+                content_f = go_file.read_text()
+                lines = content_f.splitlines()
+                
+                try:
+                    rel = go_file.relative_to(dir_path.parent)
+                except ValueError:
+                    rel = go_file
+                
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    
+                    if '// Deprecated' in stripped:
+                        detail = stripped[:120]
+                        sev = "warning"
+                        if 'will be removed' in detail.lower() or 'use ' in detail.lower():
+                            sev = "critical"
+                        
+                        ir.compat_issues.append({
+                            "type": "DEPRECATED",
+                            "severity": sev,
+                            "file": str(rel),
+                            "line": i + 1,
+                            "detail": detail,
+                        })
+                        
+                        for j in range(max(0, i-3), i):
+                            func_m = re.search(r'func\s+(\w+)\s*\(', lines[j])
+                            if func_m:
+                                ir.compat_issues.append({
+                                    "type": "DEPRECATED_FUNC",
+                                    "severity": "warning",
+                                    "file": str(rel),
+                                    "line": j + 1,
+                                    "detail": f"Deprecated function: {func_m.group(1)}",
+                                    "func": func_m.group(1),
+                                })
+                                break
+                
+                # 硬编码值
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    if re.search(r'=\s*\d{13,}', stripped):
+                        ir.compat_issues.append({
+                            "type": "HARDCODED_VALUE",
+                            "severity": "low",
+                            "file": str(rel),
+                            "line": i + 1,
+                            "detail": f"Potential hardcoded value: {stripped[:80]}",
+                        })
+                
+            except:
+                pass
     
     def _build_call_graph_from_signatures(self, ir: IRDocument):
         """从 import + func 签名构建调用图"""
@@ -2411,6 +2606,36 @@ class LLMKnowledgeGenerator:
                 for item in items[:5]:
                     prompt_parts.append(f"- `{item['key']}`: {item['value']}")
                 prompt_parts.append("")
+        
+        # 性能热点
+        if ir.perf_hotspots:
+            prompt_parts.append("## 性能热点 (Performance Hotspots)")
+            hot_counts = {}
+            for h in ir.perf_hotspots:
+                t = h.get('type', 'UNKNOWN')
+                hot_counts[t] = hot_counts.get(t, 0) + 1
+            prompt_parts.append(f"共 {len(ir.perf_hotspots)} 个性能问题:")
+            for t, c in sorted(hot_counts.items(), key=lambda x: -x[1]):
+                prompt_parts.append(f"- {t}: {c}")
+            prompt_parts.append("")
+            for h in ir.perf_hotspots[:20]:
+                prompt_parts.append(f"- **[H:{h['severity']}]** `{h['type']}` ({h['file']}:{h['line']}): {h['detail']}")
+            prompt_parts.append("")
+        
+        # 向后兼容
+        if ir.compat_issues:
+            prompt_parts.append("## 向后兼容 (Backward Compatibility)")
+            comp_counts = {}
+            for c in ir.compat_issues:
+                t = c.get('type', 'UNKNOWN')
+                comp_counts[t] = comp_counts.get(t, 0) + 1
+            prompt_parts.append(f"共 {len(ir.compat_issues)} 个兼容问题:")
+            for t, c in sorted(comp_counts.items(), key=lambda x: -x[1]):
+                prompt_parts.append(f"- {t}: {c}")
+            prompt_parts.append("")
+            for c in ir.compat_issues[:20]:
+                prompt_parts.append(f"- **[S:{c['severity']}]** `{c['type']}` ({c['file']}:{c['line']}): {c['detail']}")
+            prompt_parts.append("")
         
         prompt_parts.append("---")
         prompt_parts.append("")
