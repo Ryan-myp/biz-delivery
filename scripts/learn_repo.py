@@ -150,6 +150,15 @@ class IRDocument:
     
     # 权限/鉴权
     auth_models: List[Dict] = field(default_factory=list)  # {middleware, file, logic, protected_routes}
+    
+    # Entity/TableName 映射
+    entity_tables: List[Dict] = field(default_factory=list)  # {entity, table, file}
+    
+    # Condition 查询条件
+    conditions: List[Dict] = field(default_factory=list)  # {name, file, fields}
+    
+    # 配置解析
+    configs: List[Dict] = field(default_factory=list)  # {file, type, key, value}
 
 
 # ============================================================================
@@ -298,6 +307,15 @@ class GoScanner:
         
         # 提取错误码定义
         self._extract_error_codes(ir, dir_path, max_files)
+        
+        # 提取 Entity/TableName 映射
+        self._extract_entity_tables(ir, dir_path, max_files)
+        
+        # 提取 Condition 查询条件
+        self._extract_conditions(ir, dir_path, max_files)
+        
+        # 提取配置
+        self._extract_configs(ir, dir_path, max_files)
         
         return ir
     
@@ -688,6 +706,15 @@ class GoScanner:
         
         # 提取错误码定义
         self._extract_error_codes(ir, dir_path, max_files)
+        
+        # 提取 Entity/TableName 映射
+        self._extract_entity_tables(ir, dir_path, max_files)
+        
+        # 提取 Condition 查询条件
+        self._extract_conditions(ir, dir_path, max_files)
+        
+        # 提取配置
+        self._extract_configs(ir, dir_path, max_files)
         
         return ir
     
@@ -1275,6 +1302,169 @@ class GoScanner:
             "description": "",
             "protected_routes": protected_routes,
         })
+    
+    def _extract_entity_tables(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """从 entity 文件提取 TableName 映射
+        
+        扫描 dao/entity/ 目录，提取：
+        - func (e *EntityName) TableName() string { return "table_name" }
+        """
+        entity_dir = dir_path / "dao" / "entity"
+        if not entity_dir.exists():
+            return
+        
+        try:
+            go_files = list(entity_dir.rglob("*.go"))
+        except:
+            return
+        
+        for go_file in go_files:
+            if len(ir.entity_tables) >= max_files:
+                break
+            try:
+                content = go_file.read_text()
+                lines = content.splitlines()
+                
+                try:
+                    rel = go_file.relative_to(dir_path.parent)
+                except ValueError:
+                    rel = go_file
+                
+                # 匹配 TableName 方法（跨行：func 和 return 在不同行）
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    if 'TableName()' in stripped and 'func' in stripped:
+                        # 提取 entity 名
+                        entity_m = re.search(r'func\s+\([^)]*\*\s*(\w+Entity\w*)\)', stripped)
+                        if entity_m:
+                            entity_name = entity_m.group(1)
+                            # 提取表名（可能在同一行或下一行）
+                            table_m = re.search(r'return\s+"([^"]+)"', stripped)
+                            if not table_m and i + 1 < len(lines):
+                                table_m = re.search(r'return\s+"([^"]+)"', lines[i + 1])
+                            if table_m:
+                                table_name = table_m.group(1)
+                                ir.entity_tables.append({
+                                    "entity": entity_name,
+                                    "table": table_name,
+                                    "file": str(rel),
+                                    "line": i + 1,
+                                })
+            except:
+                pass
+    
+    def _extract_conditions(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """从 condition 文件提取查询条件结构
+        
+        扫描 dao/condition/ 目录，提取：
+        - type XxxCondition struct { ... }
+        """
+        cond_dir = dir_path / "dao" / "condition"
+        if not cond_dir.exists():
+            return
+        
+        try:
+            go_files = list(cond_dir.rglob("*.go"))
+        except:
+            return
+        
+        for go_file in go_files:
+            if len(ir.conditions) >= max_files:
+                break
+            try:
+                content = go_file.read_text()
+                
+                try:
+                    rel = go_file.relative_to(dir_path.parent)
+                except ValueError:
+                    rel = go_file
+                
+                # 匹配 struct 定义
+                for sm in re.finditer(r'type\s+(\w+Condition)\s+struct\s*\{(.*?)\n\}', content, re.DOTALL):
+                    cond_name = sm.group(1)
+                    body = sm.group(2)
+                    
+                    # 提取字段
+                    fields = []
+                    for fm in re.finditer(r'\s+(\w+)\s+\*?(\w+)', body):
+                        fname = fm.group(1)
+                        ftype = fm.group(2)
+                        # 跳过 json/gorm tag
+                        if fname in ('json', 'gorm', 'form'):
+                            continue
+                        fields.append({"name": fname, "type": ftype})
+                    
+                    if fields:
+                        ir.conditions.append({
+                            "name": cond_name,
+                            "file": str(rel),
+                            "fields": fields[:20],
+                        })
+            except:
+                pass
+    
+    def _extract_configs(self, ir: IRDocument, dir_path: Path, max_files: int):
+        """提取配置文件内容
+        
+        扫描 etc/, deploy/ 目录，提取 YAML/JSON 配置
+        """
+        config_dirs = [
+            dir_path / "etc",
+            dir_path / "deploy",
+        ]
+        
+        for config_dir in config_dirs:
+            if not config_dir.exists():
+                continue
+            
+            try:
+                config_files = list(config_dir.glob("*.yml")) + list(config_dir.glob("*.yaml")) + list(config_dir.glob("*.json"))
+            except:
+                continue
+            
+            for cf in config_files:
+                if len(ir.configs) >= max_files * 10:
+                    break
+                try:
+                    content = cf.read_text()
+                    ext = cf.suffix.lower()
+                    
+                    try:
+                        rel = cf.relative_to(dir_path.parent)
+                    except ValueError:
+                        rel = cf
+                    
+                    if ext in ('.yml', '.yaml'):
+                        # 简单 YAML 键值提取
+                        for line in content.splitlines():
+                            line = line.strip()
+                            if line and not line.startswith('#') and ':' in line:
+                                key_val = line.split(':', 1)
+                                if len(key_val) == 2:
+                                    key = key_val[0].strip()
+                                    val = key_val[1].strip()
+                                    if val and not val.startswith('"') and not val.startswith("'"):
+                                        ir.configs.append({
+                                            "file": str(rel),
+                                            "type": "yaml",
+                                            "key": key,
+                                            "value": val[:200],
+                                        })
+                    elif ext == '.json':
+                        # 简单 JSON 键值提取
+                        for line in content.splitlines():
+                            line = line.strip()
+                            if line and ':' in line and '"' in line:
+                                kv_m = re.match(r'\s*"([^"]+)"\s*:\s*"([^"]+)"', line)
+                                if kv_m:
+                                    ir.configs.append({
+                                        "file": str(rel),
+                                        "type": "json",
+                                        "key": kv_m.group(1),
+                                        "value": kv_m.group(2)[:200],
+                                    })
+                except:
+                    pass
     
     def _build_call_graph_from_signatures(self, ir: IRDocument):
         """从 import + func 签名构建调用图"""
@@ -2183,6 +2373,44 @@ class LLMKnowledgeGenerator:
                 else:
                     prompt_parts.append(f"- **{am['middleware']}** ({am['file']}): {am['logic']}")
             prompt_parts.append("")
+        
+        # Entity/TableName 映射
+        if ir.entity_tables:
+            prompt_parts.append("## Entity/TableName 映射 (Database Entities)")
+            prompt_parts.append(f"共 {len(ir.entity_tables)} 个实体表")
+            prompt_parts.append("")
+            for et in ir.entity_tables[:30]:
+                prompt_parts.append(f"- `{et['entity']}` → `{et['table']}` ({et['file']}:{et['line']})")
+            prompt_parts.append("")
+        
+        # Condition 查询条件
+        if ir.conditions:
+            prompt_parts.append("## Condition 查询条件 (Query Conditions)")
+            prompt_parts.append(f"共 {len(ir.conditions)} 个查询条件结构")
+            prompt_parts.append("")
+            for cond in ir.conditions[:15]:
+                field_names = ', '.join(f['name'] for f in cond['fields'][:5])
+                prompt_parts.append(f"- `{cond['name']}` ({cond['file']}): [{field_names}]")
+                if len(cond['fields']) > 5:
+                    prompt_parts.append(f"  ... 还有 {len(cond['fields']) - 5} 个字段")
+            prompt_parts.append("")
+        
+        # 配置
+        if ir.configs:
+            prompt_parts.append("## 配置 (Configuration)")
+            yaml_configs = [c for c in ir.configs if c.get('type') == 'yaml']
+            json_configs = [c for c in ir.configs if c.get('type') == 'json']
+            prompt_parts.append(f"YAML: {len(yaml_configs)} 项, JSON: {len(json_configs)} 项")
+            prompt_parts.append("")
+            # 按文件分组，每文件只展示前 5 个关键配置
+            by_file = {}
+            for c in ir.configs:
+                by_file.setdefault(c['file'], []).append(c)
+            for fname, items in list(by_file.items())[:3]:
+                prompt_parts.append(f"### {fname}")
+                for item in items[:5]:
+                    prompt_parts.append(f"- `{item['key']}`: {item['value']}")
+                prompt_parts.append("")
         
         prompt_parts.append("---")
         prompt_parts.append("")
