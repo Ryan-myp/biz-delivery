@@ -2862,6 +2862,17 @@ class WikiIngestor:
 # Main Entry Point — learn 模式
 # ============================================================================
 
+def _clean_handler(handler: str) -> str:
+    """清理 handler 名称：去掉括号、receiver、不闭合的括号"""
+    if not handler:
+        return ""
+    handler = re.sub(r'\s*\([^)]*$', '', handler)
+    handler = re.sub(r'\s*\([^)]*\).*', '', handler)
+    if '.' in handler:
+        handler = handler.split('.')[-1]
+    return handler.strip()
+
+
 def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str] = None, 
                      knowledge_base_dir: Optional[str] = None, incremental: bool = False):
     """
@@ -3013,8 +3024,22 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         "language": all_ir[0].language if all_ir else "",
         "structs": [asdict(s) for s in all_ir[0].structs[:100]] if all_ir else [],
         "functions": [asdict(f) for f in all_ir[0].functions[:100]] if all_ir else [],
-        "routes": [asdict(r) for r in all_ir[0].routes[:100]] if all_ir else [],
+        "routes": [{
+            "path": r.path,
+            "method": r.method,
+            "handler": _clean_handler(r.handler) if hasattr(r, 'handler') else r.get('handler', ''),
+            "module": r.module if hasattr(r, 'module') else r.get('module', ''),
+        } for r in all_ir[0].routes[:100]] if all_ir else [],
         "tables": [asdict(t) for t in all_ir[0].tables[:50]] if all_ir else [],
+        "entity_tables": all_ir[0].entity_tables[:50] if all_ir else [],
+        "sql_operations": all_ir[0].sql_operations[:100] if all_ir else [],
+        "error_codes": all_ir[0].error_codes[:100] if all_ir else [],
+        "auth_models": all_ir[0].auth_models[:20] if all_ir else [],
+        "test_coverage": {
+            "test_files": len(all_ir[0].test_files) if all_ir else 0,
+            "test_functions": len(all_ir[0].test_functions) if all_ir else 0,
+            "coverage_pct": all_ir[0].coverage_report.get('coverage_pct', 0) if all_ir else 0,
+        },
     }
     ir_cache_file = Path(knowledge_base_dir) / "ir_cache.json"
     ir_cache_file.write_text(json.dumps(ir_cache, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -3086,7 +3111,7 @@ def main():
     # 如果没有 LLM 响应，提示用户
     print(f"\n✅ Learn complete!")
     print(f"   Prompt: {prompt_file}")
-    print(f"   IR Cache: {ir_cache_file}")
+    print(f"   IR Cache: {result.get('ir_cache_file', 'N/A')}")
     print(f"   Knowledge base: {kb_dir}")
     print(f"\n📋 Next step: Send prompt to LLM, then run again with --llm-response")
     print(f"   Example:")

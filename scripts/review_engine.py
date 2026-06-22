@@ -115,6 +115,15 @@ class ReviewEngine:
         ir.repo_name = repo["name"]
         ir.repo_path = str(repo_path)
         
+        # 清理 route handler（去掉括号等脏数据）
+        for route in ir.routes:
+            if hasattr(route, 'handler'):
+                route.handler = re.sub(r'\s*\([^)]*$', '', route.handler)
+                route.handler = re.sub(r'\s*\([^)]*\).*', '', route.handler)
+                if '.' in route.handler:
+                    route.handler = route.handler.split('.')[-1]
+                route.handler = route.handler.strip()
+        
         print(f"  Found: {len(ir.structs)} structs, {len(ir.functions)} functions, {len(ir.routes)} routes")
         
         return ir
