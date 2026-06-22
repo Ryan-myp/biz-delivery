@@ -53,21 +53,114 @@ def extract_intent(query: str) -> Tuple[str, float]:
 # 2. 多路证据查询引擎
 # ──────────────────────────────────────────────
 
-def search_code(query: str, repo_path: str, top_k: int = 10) -> List[Dict]:
-    """搜索代码（复用 knowledge_extractor.py）"""
-    # TODO: 集成 AST 提取
+def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
+    """搜索代码 — 从 IR 缓存中匹配函数/路由/struct
+    
+    复用 learn_repo.py 扫描后的 IR 缓存
+    """
+    if cache_dir:
+        cache_file = Path(cache_dir) / "ir_cache.json"
+        if cache_file.exists():
+            import json
+            with open(cache_file) as f:
+                ir_data = json.load(f)
+            
+            # 搜索函数
+            results = []
+            query_lower = query.lower()
+            for func in ir_data.get('functions', []):
+                if query_lower in func.get('name', '').lower():
+                    results.append({
+                        'type': 'function',
+                        'title': func['name'],
+                        'path': func.get('file', ''),
+                        'line': func.get('line', 0),
+                        'content': func.get('signature', ''),
+                        'score': 1.0,
+                    })
+            
+            # 搜索路由
+            for route in ir_data.get('routes', []):
+                route_str = f"{route.get('method', '')} {route.get('path', '')} {route.get('handler', '')}".lower()
+                if query_lower in route_str:
+                    results.append({
+                        'type': 'route',
+                        'title': f"{route.get('method', '').upper()} {route.get('path', '')}",
+                        'path': route.get('file', ''),
+                        'line': route.get('line', 0),
+                        'content': route.get('handler', ''),
+                        'score': 1.0,
+                    })
+            
+            # 搜索 struct
+            for struct in ir_data.get('structs', []):
+                if query_lower in struct.get('name', '').lower():
+                    results.append({
+                        'type': 'struct',
+                        'title': struct['name'],
+                        'path': struct.get('file', ''),
+                        'line': struct.get('line', 0),
+                        'content': '\n'.join([f.get('name', str(f)) for f in struct.get('fields', [])[:5]]),
+                        'score': 1.0,
+                    })
+            
+            return results[:10]
+    
     return []
 
 
-def search_schema(query: str, repo_path: str, top_k: int = 10) -> List[Dict]:
-    """搜索 schema 定义"""
-    # TODO: 搜索数据库 schema
+def search_schema(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
+    """搜索 schema — 从 IR 缓存中匹配表结构/字段"""
+    if cache_dir:
+        cache_file = Path(cache_dir) / "ir_cache.json"
+        if cache_file.exists():
+            import json
+            with open(cache_file) as f:
+                ir_data = json.load(f)
+            
+            results = []
+            query_lower = query.lower()
+            for table in ir_data.get('tables', []):
+                if query_lower in table.get('name', '').lower():
+                    results.append({
+                        'type': 'table',
+                        'title': table['name'],
+                        'path': table.get('file', ''),
+                        'line': table.get('line', 0),
+                        'content': ', '.join(table.get('columns', [])[:10]),
+                        'score': 1.0,
+                    })
+            
+            return results[:10]
+    
     return []
 
 
-def search_api_docs(query: str, repo_path: str, top_k: int = 10) -> List[Dict]:
-    """搜索 API 文档"""
-    # TODO: 搜索 API 文档
+def search_api_docs(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
+    """搜索 API 文档 — 从 IR 缓存中匹配路由/Request/Response"""
+    if cache_dir:
+        cache_file = Path(cache_dir) / "ir_cache.json"
+        if cache_file.exists():
+            import json
+            with open(cache_file) as f:
+                ir_data = json.load(f)
+            
+            results = []
+            query_lower = query.lower()
+            for route in ir_data.get('routes', []):
+                route_str = f"{route.get('method', '')} {route.get('path', '')} {route.get('handler', '')} {route.get('request', '')} {route.get('response', '')}".lower()
+                if query_lower in route_str:
+                    results.append({
+                        'type': 'api',
+                        'title': f"{route.get('method', '').upper()} {route.get('path', '')}",
+                        'path': route.get('file', ''),
+                        'line': route.get('line', 0),
+                        'content': f"Handler: {route.get('handler', '')}\nRequest: {route.get('request', '')}\nResponse: {route.get('response', '')}",
+                        'score': 1.0,
+                    })
+            
+            return results[:10]
+    
     return []
 
 
@@ -115,7 +208,7 @@ def rrf_fuse(candidates: List[List[Dict]], k: int = 60) -> List[Dict]:
             ranked[path]['items'].append(item)
 
     sorted_items = sorted(ranked.values(), key=lambda x: x['score'], reverse=True)
-    return [item for item_list in [x['items'] for x in sorted_items] for item in item_list][:top_k]
+    return [item for item_list in [x['items'] for x in sorted_items] for item in item_list][:10]
 
 
 # ──────────────────────────────────────────────
@@ -123,7 +216,7 @@ def rrf_fuse(candidates: List[List[Dict]], k: int = 60) -> List[Dict]:
 # ──────────────────────────────────────────────
 
 def run_evidence_query(query: str, profile_path: str = None, wiki_path: str = None,
-                       top_k: int = 10, sources: List[str] = None) -> Dict[str, Any]:
+                       top_k: int = 10, sources: List[str] = None, cache_dir: str = None) -> Dict[str, Any]:
     """
     执行多路证据查询：
     1. 意图识别
@@ -142,17 +235,17 @@ def run_evidence_query(query: str, profile_path: str = None, wiki_path: str = No
     path_results = {}
 
     if "code" in sources:
-        results = search_code(query, "", top_k)
+        results = search_code(query, "", top_k, cache_dir=cache_dir)
         candidates.append(results)
         path_results['code'] = results
 
     if "schema" in sources:
-        results = search_schema(query, "", top_k)
+        results = search_schema(query, "", top_k, cache_dir=cache_dir)
         candidates.append(results)
         path_results['schema'] = results
 
     if "api_docs" in sources:
-        results = search_api_docs(query, "", top_k)
+        results = search_api_docs(query, "", top_k, cache_dir=cache_dir)
         candidates.append(results)
         path_results['api_docs'] = results
 
@@ -175,7 +268,7 @@ def run_evidence_query(query: str, profile_path: str = None, wiki_path: str = No
         'confidence': confidence,
         'sources': sources,
         'total_results': len(fused),
-        'evidence': fused[:top_k],
+        'evidence': fused[:10],
         'status': 'ready' if fused else 'partial',
     }
 
@@ -193,6 +286,7 @@ if __name__ == '__main__':
     parser.add_argument('--wiki', default='none', help='Wiki 目录路径（设为 none 禁用）')
     parser.add_argument('--sources', default='code,schema,api_docs', help='搜索源逗号分隔')
     parser.add_argument('--top-k', type=int, default=10)
+    parser.add_argument('--cache-dir', default=None, help='IR 缓存目录（learn_repo.py 输出目录）')
 
     args = parser.parse_args()
 
@@ -203,6 +297,7 @@ if __name__ == '__main__':
         wiki_path=args.wiki,
         top_k=args.top_k,
         sources=sources,
+        cache_dir=args.cache_dir,
     )
 
     print(f"🔍 查询: {result['query']}")

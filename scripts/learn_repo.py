@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import json
+from dataclasses import asdict
 import os
 import re
 import subprocess
@@ -3005,6 +3006,20 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         # 这里需要 LLM 响应，暂时跳过
         print(f"\nNote: Wiki ingestion requires LLM response. Save prompt output first.")
     
+    # 保存 IR 缓存（供 query_evidence 复用）
+    ir_cache = {
+        "repo_name": all_ir[0].repo_name if all_ir else "",
+        "repo_path": all_ir[0].repo_path if all_ir else "",
+        "language": all_ir[0].language if all_ir else "",
+        "structs": [asdict(s) for s in all_ir[0].structs[:100]] if all_ir else [],
+        "functions": [asdict(f) for f in all_ir[0].functions[:100]] if all_ir else [],
+        "routes": [asdict(r) for r in all_ir[0].routes[:100]] if all_ir else [],
+        "tables": [asdict(t) for t in all_ir[0].tables[:50]] if all_ir else [],
+    }
+    ir_cache_file = Path(knowledge_base_dir) / "ir_cache.json"
+    ir_cache_file.write_text(json.dumps(ir_cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  💾 IR cache saved to: {ir_cache_file}")
+    
     return {
         "status": "ok",
         "repos_scanned": len(all_ir),
@@ -3012,6 +3027,7 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         "kb_prompt_file": str(kb_prompt_file),
         "knowledge_base_dir": knowledge_base_dir,
         "output_dir": str(output_path),
+        "ir_cache_file": str(ir_cache_file),
     }
 
 
@@ -3070,6 +3086,7 @@ def main():
     # 如果没有 LLM 响应，提示用户
     print(f"\n✅ Learn complete!")
     print(f"   Prompt: {prompt_file}")
+    print(f"   IR Cache: {ir_cache_file}")
     print(f"   Knowledge base: {kb_dir}")
     print(f"\n📋 Next step: Send prompt to LLM, then run again with --llm-response")
     print(f"   Example:")

@@ -48,11 +48,16 @@ def run_learn_mode(profile: dict, output_dir: str, wiki_path: str = None) -> dic
     return result
 
 
-def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list = None) -> dict:
+def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list = None, wiki_path: str = None) -> dict:
     """执行 prdtdd 模式"""
-    from scripts.review_engine import ReviewEngine
-    from scripts.td_engine import TDEngine
-    from scripts.test_engine import TestEngine
+    import os
+    os.makedirs(output_dir, exist_ok=True)
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from review_engine import ReviewEngine
+    from td_engine import TDEngine
+    from test_engine import TestEngine
     
     stages = stages or ["review", "td", "test"]
     results = {}
@@ -60,7 +65,7 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     # Stage 1: PRD 审查
     if "review" in stages:
         print("\n📋 Stage 1: PRD Review")
-        review_engine = ReviewEngine(profile, output_dir, args.wiki_path)
+        review_engine = ReviewEngine(profile, output_dir, wiki_path)
         review_result = review_engine.review(prd_text)
         results["review"] = review_result
         print(f"  Status: {review_result['status']}")
@@ -70,7 +75,7 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     # Stage 2: 技术方案生成
     if "td" in stages:
         print("\n📋 Stage 2: Technical Design")
-        td_engine = TDEngine(profile, output_dir, args.wiki_path)
+        td_engine = TDEngine(profile, output_dir, wiki_path)
         td_result = td_engine.generate_td(prd_text)
         results["td"] = td_result
         print(f"  Status: {td_result['status']}")
@@ -80,7 +85,7 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     # Stage 3: 测试用例生成
     if "test" in stages:
         print("\n📋 Stage 3: Test Cases")
-        test_engine = TestEngine(profile, output_dir, args.wiki_path)
+        test_engine = TestEngine(profile, output_dir, wiki_path)
         test_result = test_engine.generate_tests(prd_text)
         results["test"] = test_result
         print(f"  Status: {test_result['status']}")

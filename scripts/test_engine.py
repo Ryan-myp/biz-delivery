@@ -24,6 +24,38 @@ from learn_repo import GoScanner, IRDocument
 class TestEngine:
     """测试用例生成引擎"""
     
+    def _scan_codebase(self) -> IRDocument:
+        """扫描代码库获取 IR"""
+        if not self.repos:
+            print("⚠️  No repositories configured, skipping scan")
+            return IRDocument(
+                repo_name="none",
+                repo_path="",
+                language="unknown",
+            )
+        
+        repo = self.repos[0]
+        repo_path = Path(repo["path"])
+        language = repo.get("language", "go")
+        
+        if language == "go":
+            scanner = GoScanner()
+        else:
+            print(f"⚠️  Unsupported language: {language}")
+            return IRDocument(
+                repo_name=repo["name"],
+                repo_path=str(repo_path),
+                language=language,
+            )
+        
+        ir = scanner.scan_directory(repo_path)
+        ir.repo_name = repo["name"]
+        ir.repo_path = str(repo_path)
+        
+        print(f"  Found: {len(ir.structs)} structs, {len(ir.functions)} functions, {len(ir.routes)} routes")
+        
+        return ir
+    
     def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None):
         self.profile = profile
         self.output_dir = Path(output_dir)
@@ -31,6 +63,36 @@ class TestEngine:
         self.business_domain = profile.get("business_domain", "unknown")
         self.repos = profile.get("repositories", [])
         
+    def _query_evidence_for_prd(self, ir, prd_text: str, cache_dir: str = None) -> dict:
+        """从 PRD 提取关键词，调用 query_evidence 查询代码库证据"""
+        import re
+        keywords = re.findall(r'[一-龥]{2,8}', prd_text) + re.findall(r'[a-zA-Z]{3,}', prd_text)
+        keywords = list(set(keywords))[:10]
+        
+        all_evidence = []
+        for kw in keywords:
+            try:
+                result = run_evidence_query(query=kw, wiki_path=self.wiki_path, top_k=5, sources=["code", "schema", "api_docs"])
+                if result.get('evidence'):
+                    all_evidence.extend(result['evidence'])
+            except:
+                pass
+        
+        # 去重
+        seen = set()
+        unique = []
+        for item in all_evidence:
+            path = item.get('path', item.get('file_path', ''))
+            if path and path not in seen:
+                seen.add(path)
+                unique.append(item)
+        
+        return {
+            'keywords': keywords,
+            'evidence': unique,
+            'total': len(unique),
+        }
+
     def generate_tests(self, prd_text: str, td_text: Optional[str] = None) -> dict:
         """生成测试用例
         
@@ -41,14 +103,19 @@ class TestEngine:
         Returns:
             测试用例生成结果 dict
         """
+        # Step 0: 扫描代码库获取 IR
+        print("📡 Step 0: Scanning codebase...")
+        ir = self._scan_codebase()
+        
         # Step 1: 查询代码库证据
         print("🔍 Step 1: Querying evidence from codebase...")
-        evidence = self._query_evidence(prd_text)
-        print(f"  Found {len(evidence)} evidence items")
+        cache_dir = str(self.output_dir)
+        filtered = self._query_evidence_for_prd(ir, prd_text, cache_dir)
+        print(f"  Found {filtered.get('total', 0)} evidence items")
         
         # Step 2: 构建测试用例 prompt
         print("📝 Step 2: Building test case prompt...")
-        prompt = self._build_test_prompt(evidence, prd_text, td_text)
+        prompt = self._build_test_prompt(filtered, ir, prd_text, td_text)
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "test_prompt.md"
@@ -62,6 +129,36 @@ class TestEngine:
             "prd_length": len(prd_text),
         }
     
+    def _query_evidence_for_prd(self, ir, prd_text: str, cache_dir: str = None) -> dict:
+        """从 PRD 提取关键词，调用 query_evidence 查询代码库证据"""
+        import re
+        keywords = re.findall(r'[一-龥]{2,8}', prd_text) + re.findall(r'[a-zA-Z]{3,}', prd_text)
+        keywords = list(set(keywords))[:10]
+        
+        all_evidence = []
+        for kw in keywords:
+            try:
+                result = run_evidence_query(query=kw, wiki_path=self.wiki_path, top_k=5, sources=["code", "schema", "api_docs"])
+                if result.get('evidence'):
+                    all_evidence.extend(result['evidence'])
+            except:
+                pass
+        
+        # 去重
+        seen = set()
+        unique = []
+        for item in all_evidence:
+            path = item.get('path', item.get('file_path', ''))
+            if path and path not in seen:
+                seen.add(path)
+                unique.append(item)
+        
+        return {
+            'keywords': keywords,
+            'evidence': unique,
+            'total': len(unique),
+        }
+
     def generate_with_response(self, llm_response: str) -> dict:
         """LLM 生成测试用例后，保存报告
         
@@ -103,9 +200,13 @@ class TestEngine:
             if path and path not in seen:
                 seen.add(path)
                 unique.append(item)
-        return unique
+        return {
+            'keywords': keywords,
+            'evidence': unique,
+            'total': len(unique),
+        }
     
-    def _build_test_prompt(self, evidence: list, prd_text: str, td_text: Optional[str] = None) -> str:
+    def _build_test_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, td_text: Optional[str] = None) -> str:
         """构建测试用例生成 prompt
         
         核心思路：
@@ -130,12 +231,28 @@ class TestEngine:
         prompt_parts.append(f"- **Structs**: {len(ir.structs)}")
         prompt_parts.append(f"- **Functions**: {len(ir.functions)}")
         prompt_parts.append(f"- **Routes**: {len(ir.routes)}")
+        prompt_parts.append(f"- **Tables**: {len(ir.tables)}")
         prompt_parts.append("")
         
-        # 路由摘要
+        # 关键路由
         if ir.routes:
+            prompt_parts.append("## 关键路由（前20条）")
+            for route in ir.routes[:20]:
+                prompt_parts.append(f"- `{route.method.upper()}` {route.path} → `{route.handler}`")
+            prompt_parts.append("")
+        
+        # 关键表结构
+        if ir.tables:
+            prompt_parts.append("## 关键表结构（前10张）")
+            for table in ir.tables[:10]:
+                cols = ', '.join(getattr(table, 'columns', []))[:5] if hasattr(table, 'columns') else ''
+                prompt_parts.append(f"- `{table.name}`: {cols}")
+            prompt_parts.append("")
+        
+        # 路由摘要
+        if filtered.get('evidence'):
             prompt_parts.append("## 现有路由")
-            for route in ir.routes[:30]:
+            for route in filtered.get('evidence', [])[:30]:
                 prompt_parts.append(f"- `{route.method.upper()}` {route.path} → `{route.handler}`")
             prompt_parts.append("")
         

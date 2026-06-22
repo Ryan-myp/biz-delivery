@@ -16,10 +16,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
-# 导入证据查询和 learn_repo
+# 导入 learn_repo 的扫描器和 IR
 sys.path.insert(0, str(Path(__file__).parent))
-from query_evidence import run_evidence_query
 from learn_repo import GoScanner, IRDocument
+from query_evidence import run_evidence_query
 
 
 class ReviewEngine:
@@ -41,14 +41,19 @@ class ReviewEngine:
         Returns:
             审查结果 dict
         """
-        # Step 1: 从 PRD 提取关键词，查询代码库证据
-        print("🔍 Step 1: Querying evidence from codebase...")
-        evidence = self._query_evidence(prd_text)
-        print(f"  Found {len(evidence)} evidence items")
+        # Step 1: 扫描代码获取 IR
+        print("📡 Step 1: Scanning codebase...")
+        ir = self._scan_codebase()
         
-        # Step 2: 构建审查 prompt（含证据）
-        print("📝 Step 2: Building review prompt...")
-        prompt = self._build_review_prompt(evidence, prd_text)
+        # Step 2: 从 PRD 提取关键词，查询代码库证据
+        print("🔍 Step 2: Querying evidence from codebase...")
+        # 假设 IR 缓存保存在 output_dir 下
+        cache_dir = str(self.output_dir)
+        filtered = self._query_evidence_for_prd(ir, prd_text, cache_dir)
+        
+        # Step 3: 构建审查 prompt（含证据）
+        print("📝 Step 3: Building review prompt...")
+        prompt = self._build_review_prompt(filtered, ir, prd_text)
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "review_prompt.md"
@@ -82,28 +87,70 @@ class ReviewEngine:
             "sections": ["合理性检查", "场景遗漏", "前后一致性", "风险评估"],
         }
     
-    def _query_evidence(self, prd_text: str) -> list:
-        """从 PRD 提取关键词，查询代码库证据
+    def _scan_codebase(self) -> IRDocument:
+        """扫描代码库获取 IR"""
+        if not self.repos:
+            print("⚠️  No repositories configured, skipping scan")
+            return IRDocument(
+                repo_name="none",
+                repo_path="",
+                language="unknown",
+            )
+        
+        repo = self.repos[0]
+        repo_path = Path(repo["path"])
+        language = repo.get("language", "go")
+        
+        if language == "go":
+            scanner = GoScanner()
+        else:
+            print(f"⚠️  Unsupported language: {language}")
+            return IRDocument(
+                repo_name=repo["name"],
+                repo_path=str(repo_path),
+                language=language,
+            )
+        
+        ir = scanner.scan_directory(repo_path)
+        ir.repo_name = repo["name"]
+        ir.repo_path = str(repo_path)
+        
+        print(f"  Found: {len(ir.structs)} structs, {len(ir.functions)} functions, {len(ir.routes)} routes")
+        
+        return ir
+    
+    def _query_evidence_for_prd(self, ir: IRDocument, prd_text: str, cache_dir: str) -> dict:
+        """从 PRD 提取关键词，调用 query_evidence 查询代码库证据
         
         策略：
-        1. 从 PRD 中提取功能关键词（动词+名词组合）
-        2. 针对每个关键词查询代码库
-        3. 返回相关路由、函数、表结构
+        1. 从 PRD 提取关键词
+        2. 针对每个关键词调用 query_evidence 搜索
+        3. 返回相关证据
+        
+        返回: {
+            'keywords': [...],
+            'evidence': [...],
+            'total': int,
+        }
         """
-        # 简单提取：按中文分词 + 英文单词
-        keywords = self._extract_keywords(prd_text)
-        print(f"  Extracted {len(keywords)} keywords from PRD: {keywords[:5]}")
+        import re
+        # 提取关键词
+        cn_phrases = re.findall(r'[一-龥]{2,8}', prd_text)
+        en_words = re.findall(r'[a-zA-Z]{3,}', prd_text)
+        keywords = list(set(cn_phrases + en_words))[:10]
         
-        evidence_sources = ["code", "schema", "api_docs"]
+        print(f"  Extracted {len(keywords)} keywords: {keywords[:5]}")
+        
+        # 调用 query_evidence 查询
         all_evidence = []
-        
-        for keyword in keywords[:10]:  # 最多查 10 个关键词
+        for keyword in keywords:
             try:
                 result = run_evidence_query(
                     query=keyword,
                     wiki_path=self.wiki_path,
                     top_k=5,
-                    sources=evidence_sources,
+                    sources=["code", "schema", "api_docs"],
+                    cache_dir=cache_dir,  # 传入 IR 缓存目录
                 )
                 if result.get('evidence'):
                     all_evidence.extend(result['evidence'])
@@ -119,18 +166,15 @@ class ReviewEngine:
                 seen.add(path)
                 unique_evidence.append(item)
         
-        return unique_evidence
+        print(f"  Found {len(unique_evidence)} evidence items")
+        
+        return {
+            'keywords': keywords,
+            'evidence': unique_evidence,
+            'total': len(unique_evidence),
+        }
     
-    def _extract_keywords(self, text: str) -> list:
-        """从 PRD 文本提取关键词"""
-        import re
-        # 提取中文名词短语（2-8字）
-        cn_phrases = re.findall(r'[一-龥]{2,8}', text)
-        # 提取英文单词
-        en_words = re.findall(r'[a-zA-Z]{3,}', text)
-        return list(set(cn_phrases + en_words))
-    
-    def _build_review_prompt(self, evidence: list, prd_text: str) -> str:
+    def _build_review_prompt(self, filtered: dict, ir: IRDocument, prd_text: str) -> str:
         """构建 PRD 审查 prompt
         
         核心思路：
@@ -153,9 +197,9 @@ class ReviewEngine:
         prompt_parts.append("")
         
         # 证据查询结果（从 PRD 关键词查到的相关代码）
-        if evidence:
+        if filtered.get('evidence'):
             prompt_parts.append("## 代码库证据（基于 PRD 关键词查询）")
-            for i, item in enumerate(evidence[:20], 1):
+            for i, item in enumerate(filtered.get('evidence', [])[:20], 1):
                 title = item.get('title', item.get('path', 'unknown'))
                 score = item.get('score', 0)
                 content_text = item.get('content', item.get('text', ''))
@@ -169,7 +213,27 @@ class ReviewEngine:
         prompt_parts.append("## 代码库全量摘要")
         prompt_parts.append(f"- **业务域**: {self.business_domain}")
         prompt_parts.append(f"- **仓库**: {', '.join(r['name'] for r in self.repos)}")
+        prompt_parts.append(f"- **语言**: {ir.language}")
+        prompt_parts.append(f"- **Structs**: {len(ir.structs)}")
+        prompt_parts.append(f"- **Functions**: {len(ir.functions)}")
+        prompt_parts.append(f"- **Routes**: {len(ir.routes)}")
+        prompt_parts.append(f"- **Tables**: {len(ir.tables)}")
         prompt_parts.append("")
+        
+        # 关键路由（前20条）
+        if ir.routes:
+            prompt_parts.append("## 关键路由（前20条）")
+            for route in ir.routes[:20]:
+                prompt_parts.append(f"- `{route.method.upper()}` {route.path} → `{route.handler}`")
+            prompt_parts.append("")
+        
+        # 关键表结构（前10张）
+        if ir.tables:
+            prompt_parts.append("## 关键表结构（前10张）")
+            for table in ir.tables[:10]:
+                cols = ', '.join(getattr(table, 'columns', []))[:5] if hasattr(table, 'columns') else ''
+                prompt_parts.append(f"- `{table.name}`: {cols}")
+            prompt_parts.append("")
         
         # PRD 内容
         prompt_parts.append("## PRD 内容")
