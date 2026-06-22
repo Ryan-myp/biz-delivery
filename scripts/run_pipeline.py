@@ -41,7 +41,7 @@ def run_learn_mode(profile: dict, output_dir: str, wiki_path: str = None) -> dic
     from scripts.learn_repo import learn_from_repos
     
     result = learn_from_repos(
-        profile_path=args.profile,
+        profile_path=profile.get("profiles", [{}])[0].get("path", ""),
         output_dir=output_dir,
         wiki_path=wiki_path,
     )

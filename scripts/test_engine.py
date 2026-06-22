@@ -76,8 +76,17 @@ class TestEngine:
     def _query_evidence_for_prd(self, ir, prd_text: str, cache_dir: str = None) -> dict:
         """从 PRD 提取关键词，调用 query_evidence 查询代码库证据"""
         import re
-        keywords = re.findall(r'[一-龥]{2,8}', prd_text) + re.findall(r'[a-zA-Z]{3,}', prd_text)
-        keywords = list(set(keywords))[:10]
+        # 智能关键词提取：先按标点/空格分句，再提取有意义的短语
+        sentences = re.split(r'[，。、；：\s\n]]+', prd_text)
+        keywords = []
+        for s in sentences:
+            s = s.strip()
+            if 2 <= len(s) <= 12:  # 合理长度的中文短语
+                keywords.append(s)
+            elif len(s) >= 3:  # 英文单词
+                keywords.append(s)
+        # 去重，保留前 10 个
+        keywords = list(dict.fromkeys(keywords))[:10]
         
         all_evidence = []
         for kw in keywords:
@@ -142,8 +151,17 @@ class TestEngine:
     def _query_evidence_for_prd(self, ir, prd_text: str, cache_dir: str = None) -> dict:
         """从 PRD 提取关键词，调用 query_evidence 查询代码库证据"""
         import re
-        keywords = re.findall(r'[一-龥]{2,8}', prd_text) + re.findall(r'[a-zA-Z]{3,}', prd_text)
-        keywords = list(set(keywords))[:10]
+        # 智能关键词提取：先按标点/空格分句，再提取有意义的短语
+        sentences = re.split(r'[，。、；：\s\n]]+', prd_text)
+        keywords = []
+        for s in sentences:
+            s = s.strip()
+            if 2 <= len(s) <= 12:  # 合理长度的中文短语
+                keywords.append(s)
+            elif len(s) >= 3:  # 英文单词
+                keywords.append(s)
+        # 去重，保留前 10 个
+        keywords = list(dict.fromkeys(keywords))[:10]
         
         all_evidence = []
         for kw in keywords:
@@ -190,8 +208,17 @@ class TestEngine:
     def _query_evidence(self, prd_text: str) -> list:
         """从 PRD 提取关键词，查询代码库证据"""
         import re
-        keywords = re.findall(r'[一-龥]{2,8}', prd_text) + re.findall(r'[a-zA-Z]{3,}', prd_text)
-        keywords = list(set(keywords))[:10]
+        # 智能关键词提取：先按标点/空格分句，再提取有意义的短语
+        sentences = re.split(r'[，。、；：\s\n]]+', prd_text)
+        keywords = []
+        for s in sentences:
+            s = s.strip()
+            if 2 <= len(s) <= 12:  # 合理长度的中文短语
+                keywords.append(s)
+            elif len(s) >= 3:  # 英文单词
+                keywords.append(s)
+        # 去重，保留前 10 个
+        keywords = list(dict.fromkeys(keywords))[:10]
         
         all_evidence = []
         for kw in keywords:
