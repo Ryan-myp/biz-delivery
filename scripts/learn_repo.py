@@ -2308,6 +2308,12 @@ class LLMKnowledgeGenerator:
             prompt_parts.append("## 仓库依赖")
             for edge in dep_graph["edges"]:
                 prompt_parts.append(f"- {edge['from']} → {edge['to']}")
+            for ref in dep_graph.get("cross_refs", [])[:20]:
+                prompt_parts.append(f"  - `{ref['import']}` ({ref['from_repo']} → {ref['to_repo']})")
+            prompt_parts.append("")
+        elif len(repos) > 1:
+            prompt_parts.append("## 仓库依赖")
+            prompt_parts.append("未发现跨仓库依赖边")
             prompt_parts.append("")
         
         # IR 摘要
