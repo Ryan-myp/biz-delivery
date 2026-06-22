@@ -161,9 +161,8 @@ class ReviewEngine:
                 content_text = item.get('content', item.get('text', ''))
                 prompt_parts.append(f"- **证据{i}** (score={score:.3f}): {title}")
                 if content_text:
-                    prompt_parts.append(f"  ```
-  {content_text[:200]}
-  ```")
+                    ct = content_text[:200].replace('\n', '\\n')
+                    prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
             prompt_parts.append("")
         
         # 全量 IR 摘要（作为上下文）
