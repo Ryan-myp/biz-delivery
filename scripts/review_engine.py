@@ -16,9 +16,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
-# 导入 learn_repo.py 的扫描器和 IR
+# 导入证据查询和 learn_repo
 sys.path.insert(0, str(Path(__file__).parent))
-from learn_repo import GoScanner, IRDocument, MultiRepoAnalyzer, LLMKnowledgeGenerator
+from query_evidence import run_evidence_query
+from learn_repo import GoScanner, IRDocument
 
 
 class ReviewEngine:
@@ -40,13 +41,14 @@ class ReviewEngine:
         Returns:
             审查结果 dict
         """
-        # Step 1: 扫描代码获取 IR
-        print("📡 Step 1: Scanning codebase...")
-        ir = self._scan_codebase()
+        # Step 1: 从 PRD 提取关键词，查询代码库证据
+        print("🔍 Step 1: Querying evidence from codebase...")
+        evidence = self._query_evidence(prd_text)
+        print(f"  Found {len(evidence)} evidence items")
         
-        # Step 2: 构建审查 prompt
+        # Step 2: 构建审查 prompt（含证据）
         print("📝 Step 2: Building review prompt...")
-        prompt = self._build_review_prompt(ir, prd_text)
+        prompt = self._build_review_prompt(evidence, prd_text)
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "review_prompt.md"
@@ -80,39 +82,55 @@ class ReviewEngine:
             "sections": ["合理性检查", "场景遗漏", "前后一致性", "风险评估"],
         }
     
-    def _scan_codebase(self) -> IRDocument:
-        """扫描代码库获取 IR"""
-        if not self.repos:
-            print("⚠️  No repositories configured, skipping scan")
-            return IRDocument(
-                repo_name="none",
-                repo_path="",
-                language="unknown",
-            )
+    def _query_evidence(self, prd_text: str) -> list:
+        """从 PRD 提取关键词，查询代码库证据
         
-        repo = self.repos[0]
-        repo_path = Path(repo["path"])
-        language = repo.get("language", "go")
+        策略：
+        1. 从 PRD 中提取功能关键词（动词+名词组合）
+        2. 针对每个关键词查询代码库
+        3. 返回相关路由、函数、表结构
+        """
+        # 简单提取：按中文分词 + 英文单词
+        keywords = self._extract_keywords(prd_text)
+        print(f"  Extracted {len(keywords)} keywords from PRD: {keywords[:5]}")
         
-        if language == "go":
-            scanner = GoScanner()
-        else:
-            print(f"⚠️  Unsupported language: {language}")
-            return IRDocument(
-                repo_name=repo["name"],
-                repo_path=str(repo_path),
-                language=language,
-            )
+        evidence_sources = ["code", "schema", "api_docs"]
+        all_evidence = []
         
-        ir = scanner.scan_directory(repo_path)
-        ir.repo_name = repo["name"]
-        ir.repo_path = str(repo_path)
+        for keyword in keywords[:10]:  # 最多查 10 个关键词
+            try:
+                result = run_evidence_query(
+                    query=keyword,
+                    wiki_path=self.wiki_path,
+                    top_k=5,
+                    sources=evidence_sources,
+                )
+                if result.get('evidence'):
+                    all_evidence.extend(result['evidence'])
+            except Exception as e:
+                print(f"  ⚠️  Query failed for '{keyword}': {e}")
         
-        print(f"  Found: {len(ir.structs)} structs, {len(ir.functions)} functions, {len(ir.routes)} routes")
+        # 去重
+        seen = set()
+        unique_evidence = []
+        for item in all_evidence:
+            path = item.get('path', item.get('file_path', ''))
+            if path and path not in seen:
+                seen.add(path)
+                unique_evidence.append(item)
         
-        return ir
+        return unique_evidence
     
-    def _build_review_prompt(self, ir: IRDocument, prd_text: str) -> str:
+    def _extract_keywords(self, text: str) -> list:
+        """从 PRD 文本提取关键词"""
+        import re
+        # 提取中文名词短语（2-8字）
+        cn_phrases = re.findall(r'[一-龥]{2,8}', text)
+        # 提取英文单词
+        en_words = re.findall(r'[a-zA-Z]{3,}', text)
+        return list(set(cn_phrases + en_words))
+    
+    def _build_review_prompt(self, evidence: list, prd_text: str) -> str:
         """构建 PRD 审查 prompt
         
         核心思路：
@@ -134,36 +152,25 @@ class ReviewEngine:
         prompt_parts.append("4. **风险评估** — 实现难度、依赖风险、兼容性风险")
         prompt_parts.append("")
         
-        # 代码库摘要
-        prompt_parts.append("## 代码库摘要")
+        # 证据查询结果（从 PRD 关键词查到的相关代码）
+        if evidence:
+            prompt_parts.append("## 代码库证据（基于 PRD 关键词查询）")
+            for i, item in enumerate(evidence[:20], 1):
+                title = item.get('title', item.get('path', 'unknown'))
+                score = item.get('score', 0)
+                content_text = item.get('content', item.get('text', ''))
+                prompt_parts.append(f"- **证据{i}** (score={score:.3f}): {title}")
+                if content_text:
+                    prompt_parts.append(f"  ```
+  {content_text[:200]}
+  ```")
+            prompt_parts.append("")
+        
+        # 全量 IR 摘要（作为上下文）
+        prompt_parts.append("## 代码库全量摘要")
         prompt_parts.append(f"- **业务域**: {self.business_domain}")
         prompt_parts.append(f"- **仓库**: {', '.join(r['name'] for r in self.repos)}")
-        prompt_parts.append(f"- **语言**: {ir.language}")
-        prompt_parts.append(f"- **Structs**: {len(ir.structs)}")
-        prompt_parts.append(f"- **Functions**: {len(ir.functions)}")
-        prompt_parts.append(f"- **Routes**: {len(ir.routes)}")
         prompt_parts.append("")
-        
-        # 路由摘要（关键入口）
-        if ir.routes:
-            prompt_parts.append("## 关键路由入口")
-            for route in ir.routes[:30]:
-                prompt_parts.append(f"- `{route.method.upper()}` {route.path} → `{route.handler}`")
-            prompt_parts.append("")
-        
-        # 表结构摘要
-        if ir.tables:
-            prompt_parts.append("## 数据库表结构")
-            for table in ir.tables[:20]:
-                prompt_parts.append(f"- `{table.name}`: {', '.join(table.columns[:10])}")
-            prompt_parts.append("")
-        
-        # 服务层摘要
-        if ir.services:
-            prompt_parts.append("## 服务层架构")
-            for svc in ir.services[:15]:
-                prompt_parts.append(f"- `{svc.name}`: {', '.join(svc.methods[:5])}")
-            prompt_parts.append("")
         
         # PRD 内容
         prompt_parts.append("## PRD 内容")

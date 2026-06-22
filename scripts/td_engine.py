@@ -16,9 +16,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
-# 导入 learn_repo.py 的扫描器和 IR
+# 导入证据查询和 learn_repo
 sys.path.insert(0, str(Path(__file__).parent))
-from learn_repo import GoScanner, IRDocument, MultiRepoAnalyzer
+from query_evidence import run_evidence_query
+from learn_repo import GoScanner, IRDocument
 
 
 class TDEngine:
@@ -41,13 +42,14 @@ class TDEngine:
         Returns:
             TD 生成结果 dict
         """
-        # Step 1: 扫描代码获取 IR
-        print("📡 Step 1: Scanning codebase...")
-        ir = self._scan_codebase()
+        # Step 1: 查询代码库证据
+        print("🔍 Step 1: Querying evidence from codebase...")
+        evidence = self._query_evidence(prd_text)
+        print(f"  Found {len(evidence)} evidence items")
         
         # Step 2: 构建 TD prompt
         print("📝 Step 2: Building TD prompt...")
-        prompt = self._build_td_prompt(ir, prd_text, review_report)
+        prompt = self._build_td_prompt(evidence, prd_text, review_report)
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "td_prompt.md"
@@ -79,39 +81,32 @@ class TDEngine:
             "sections": ["架构设计", "接口设计", "数据库设计", "数据迁移", "流程图"],
         }
     
-    def _scan_codebase(self) -> IRDocument:
-        """扫描代码库获取 IR"""
-        if not self.repos:
-            print("⚠️  No repositories configured, skipping scan")
-            return IRDocument(
-                repo_name="none",
-                repo_path="",
-                language="unknown",
-            )
+    def _query_evidence(self, prd_text: str) -> list:
+        """从 PRD 提取关键词，查询代码库证据"""
+        import re
+        keywords = re.findall(r'[一-龥]{2,8}', prd_text) + re.findall(r'[a-zA-Z]{3,}', prd_text)
+        keywords = list(set(keywords))[:10]
         
-        repo = self.repos[0]
-        repo_path = Path(repo["path"])
-        language = repo.get("language", "go")
+        all_evidence = []
+        for kw in keywords:
+            try:
+                result = run_evidence_query(query=kw, wiki_path=self.wiki_path, top_k=5, sources=["code", "schema", "api_docs"])
+                if result.get('evidence'):
+                    all_evidence.extend(result['evidence'])
+            except:
+                pass
         
-        if language == "go":
-            scanner = GoScanner()
-        else:
-            print(f"⚠️  Unsupported language: {language}")
-            return IRDocument(
-                repo_name=repo["name"],
-                repo_path=str(repo_path),
-                language=language,
-            )
-        
-        ir = scanner.scan_directory(repo_path)
-        ir.repo_name = repo["name"]
-        ir.repo_path = str(repo_path)
-        
-        print(f"  Found: {len(ir.structs)} structs, {len(ir.functions)} functions, {len(ir.routes)} routes")
-        
-        return ir
+        # 去重
+        seen = set()
+        unique = []
+        for item in all_evidence:
+            path = item.get('path', item.get('file_path', ''))
+            if path and path not in seen:
+                seen.add(path)
+                unique.append(item)
+        return unique
     
-    def _build_td_prompt(self, ir: IRDocument, prd_text: str, review_report: Optional[str] = None) -> str:
+    def _build_td_prompt(self, evidence: list, prd_text: str, review_report: Optional[str] = None) -> str:
         """构建 TD 生成 prompt
         
         核心思路：
