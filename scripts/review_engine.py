@@ -144,10 +144,16 @@ class ReviewEngine:
         }
         """
         import re
-        # 提取关键词
-        cn_phrases = re.findall(r'[一-龥]{2,8}', prd_text)
-        en_words = re.findall(r'[a-zA-Z]{3,}', prd_text)
-        keywords = list(set(cn_phrases + en_words))[:10]
+        # 提取关键词：按标点/空格分句，取有意义的短语
+        parts = re.split(r'[，。、；：\s\n]+', prd_text)
+        keywords = []
+        for p in parts:
+            p = p.strip()
+            if 2 <= len(p) <= 15:
+                keywords.append(p)
+            elif len(p) >= 3:  # 长英文单词
+                keywords.append(p)
+        keywords = list(dict.fromkeys(keywords))[:10]  # 去重保序
         
         print(f"  Extracted {len(keywords)} keywords: {keywords[:5]}")
         
