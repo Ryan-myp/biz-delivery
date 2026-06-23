@@ -335,7 +335,7 @@ class GoScanner:
             if not line.strip():
                 continue
             # rg --json 输出的 lines.text 可能包含换行符，导致 json.loads 失败
-            cleaned = line.replace('\\n', ' ').replace('\\t', ' ')
+            cleaned = line.replace('\\n', '\\n').replace('\\t', '\\t')
             try:
                 data = json.loads(cleaned)
             except json.JSONDecodeError:
@@ -347,7 +347,7 @@ class GoScanner:
             raw = data.get("data", {})
             file_path = raw.get("path", {}).get("text", "")
             line_num = raw.get("line_number", 0)
-            line_text = raw.get("lines", {}).get("text", "").strip()
+            line_text = raw.get("lines", {}).get("text", "")
             if file_path not in by_file:
                 by_file[file_path] = []
             by_file[file_path].append({"line": line_num, "text": line_text, "type": data_type})
@@ -415,7 +415,7 @@ class GoScanner:
                 
                 # 匹配字段行: FieldName Type `tag`
                 if struct_stack:
-                    field_m = re.search(r'^\s+(\w+)\s+(\S+?)(?:\s+`(.+)`)?\s*$', text)
+                    field_m = re.search(r'^\s+(\w+)\s+(\S+?)(?:\s+`(.+)`)?\s*$', text.lstrip('\t'))
                     if field_m and field_m.group(1) not in ('type', 'func', 'var', 'const'):
                         tag = field_m.group(3) or ""
                         field = {"name": field_m.group(1), "type": field_m.group(2)}

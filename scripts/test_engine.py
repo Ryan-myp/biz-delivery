@@ -268,22 +268,83 @@ class TestEngine:
         prompt_parts.append(f"- **Structs**: {len(ir.structs)}")
         prompt_parts.append(f"- **Functions**: {len(ir.functions)}")
         prompt_parts.append(f"- **Routes**: {len(ir.routes)}")
-        prompt_parts.append(f"- **Tables**: {len(ir.tables)}")
+        prompt_parts.append(f"- **Entity Tables**: {len(ir.entity_tables)}")
+        prompt_parts.append(f"- **SQL Operations**: {len(ir.sql_operations)}")
+        prompt_parts.append(f"- **Error Codes**: {len(ir.error_codes)}")
+        prompt_parts.append(f"- **Auth Models**: {len(ir.auth_models)}")
+        prompt_parts.append(f"- **Test Coverage**: {ir.coverage_report.get('coverage_pct', 0)}%")
         prompt_parts.append("")
         
-        # 关键路由
+        # 关键路由（前30条）
         if ir.routes:
-            prompt_parts.append("## 关键路由（前20条）")
-            for route in ir.routes[:20]:
-                prompt_parts.append(f"- `{route.method.upper()}` {route.path} → `{route.handler}`")
+            prompt_parts.append("## 关键路由（前30条）")
+            for route in ir.routes[:30]:
+                method = getattr(route, 'method', 'GET').upper()
+                path = getattr(route, 'path', '?')
+                handler = getattr(route, 'handler', '?')
+                prompt_parts.append(f"- `{method}` {path} → `{handler}`")
             prompt_parts.append("")
         
-        # 关键表结构
-        if ir.tables:
-            prompt_parts.append("## 关键表结构（前10张）")
-            for table in ir.tables[:10]:
-                cols = ', '.join(getattr(table, 'columns', []))[:5] if hasattr(table, 'columns') else ''
-                prompt_parts.append(f"- `{table.name}`: {cols}")
+        # Entity-Table 映射
+        if ir.entity_tables:
+            prompt_parts.append("## Entity-Table 映射（前15张）")
+            for et in ir.entity_tables[:15]:
+                entity = et.get('entity', '?')
+                table = et.get('table', '?')
+                prompt_parts.append(f"- `{entity}` → `{table}`")
+            prompt_parts.append("")
+        
+        # 错误码
+        if ir.error_codes:
+            prompt_parts.append("## 错误码（前15个）")
+            for ec in ir.error_codes[:15]:
+                name = ec.get('name', '?')
+                code = ec.get('code', '?')
+                msg = ec.get('message', '')
+                prompt_parts.append(f"- `{name}`: {code} — {msg}")
+            prompt_parts.append("")
+        
+        # 鉴权模型
+        if ir.auth_models:
+            prompt_parts.append("## 鉴权模型")
+            for am in ir.auth_models:
+                mw = am.get('middleware', '?')
+                logic = am.get('logic', '')
+                prompt_parts.append(f"- **{mw}**: {logic}")
+            prompt_parts.append("")
+        
+        # SQL 操作
+        if ir.sql_operations:
+            prompt_parts.append("## SQL 操作示例（前10个）")
+            for sq in ir.sql_operations[:10]:
+                op = sq.get('sql_operation', '?')
+                table = sq.get('table', '?')
+                file = sq.get('file', '?')
+                prompt_parts.append(f"- `{op}` on `{table}` in `{file}`")
+            prompt_parts.append("")
+        
+        # 测试覆盖
+        if ir.test_functions:
+            prompt_parts.append("## 测试覆盖情况")
+            prompt_parts.append(f"- **测试文件**: {len(ir.test_files)}")
+            prompt_parts.append(f"- **测试函数**: {len(ir.test_functions)}")
+            prompt_parts.append(f"- **框架**: {ir.coverage_report.get('framework', 'unknown')}")
+            if ir.coverage_report.get('uncovered_highlights'):
+                uncovered = ir.coverage_report['uncovered_highlights'][:10]
+                prompt_parts.append(f"- **未覆盖函数**: {', '.join(uncovered)}")
+            prompt_parts.append("")
+        
+        # 证据查询结果
+        if filtered.get('evidence'):
+            prompt_parts.append("## 代码库证据（基于 PRD 关键词查询）")
+            for i, item in enumerate(filtered.get('evidence', [])[:20], 1):
+                title = item.get('title', item.get('path', 'unknown'))
+                score = item.get('score', 0)
+                content_text = item.get('content', item.get('text', ''))
+                prompt_parts.append(f"- **证据{i}** (score={score:.3f}): {title}")
+                if content_text:
+                    ct = content_text[:200].replace('\n', '\\n')
+                    prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
             prompt_parts.append("")
         
         # 路由摘要
