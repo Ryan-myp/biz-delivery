@@ -16,6 +16,7 @@ Usage:
 import argparse
 import json
 from dataclasses import asdict
+from collections import defaultdict
 import os
 import re
 import subprocess
@@ -3239,6 +3240,61 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         # 这里需要 LLM 响应，暂时跳过
         print(f"\nNote: Wiki ingestion requires LLM response. Save prompt output first.")
     
+    # 集成 code_graph_builder 图谱数据
+    try:
+        from code_graph_builder import CodeGraphBuilder
+        print(f"  🔗 Building code graph from {all_ir[0].repo_path}...")
+        builder = CodeGraphBuilder(all_ir[0].repo_name, all_ir[0].repo_path)
+        graph = builder.build(lang=all_ir[0].language, max_files=500)
+        
+        # 提取图谱关键数据
+        route_handler_map = []
+        for edge in graph.edges:
+            if edge.type == 'HANDLES':
+                src = graph.find_by_id(edge.source_id)
+                tgt = graph.find_by_id(edge.target_id)
+                if src and tgt:
+                    route_handler_map.append({
+                        'route': f"{src.properties.get('http_method', '')} {src.properties.get('path', '')}",
+                        'handler': tgt.name,
+                        'file': tgt.file_path,
+                    })
+        
+        call_pairs = defaultdict(int)
+        for edge in graph.edges:
+            if edge.type == 'CALLS':
+                src = graph.find_by_id(edge.source_id)
+                tgt = graph.find_by_id(edge.target_id)
+                if src and tgt:
+                    call_pairs[f"{src.name} → {tgt.name}"] += 1
+        
+        ir_cache_extra = {
+            'route_handler_mappings': route_handler_map,
+            'call_pairs_sample': dict(list(call_pairs.items())[:50]),
+            'graph_stats': {
+                'node_count': len(graph.nodes),
+                'edge_count': len(graph.edges),
+                'node_labels': dict(defaultdict(int, {n.label: 0 for n in graph.nodes}).__class__.__bases__[0] if False else {}),
+            },
+        }
+        # 统计节点标签
+        label_counts = defaultdict(int)
+        for n in graph.nodes:
+            label_counts[n.label] += 1
+        ir_cache_extra['graph_stats']['node_labels'] = dict(label_counts)
+        
+        # 统计边类型
+        edge_type_counts = defaultdict(int)
+        for e in graph.edges:
+            edge_type_counts[e.type] += 1
+        ir_cache_extra['graph_stats']['edge_types'] = dict(edge_type_counts)
+        
+        print(f"  Graph: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+        print(f"  Route→Handler mappings: {len(route_handler_map)}")
+    except ImportError:
+        print(f"  ⚠️  code_graph_builder not available, skipping graph integration")
+        ir_cache_extra = {}
+
     # 保存 IR 缓存（供 query_evidence 复用）
     ir_cache = {
         "repo_name": all_ir[0].repo_name if all_ir else "",
@@ -3264,6 +3320,9 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         },
         "business_logic": all_ir[0].business_logic[:20] if all_ir else [],
     }
+    # 合并图谱数据到 IR 缓存
+    ir_cache.update(ir_cache_extra)
+    
     ir_cache_file = Path(knowledge_base_dir) / "ir_cache.json"
     ir_cache_file.write_text(json.dumps(ir_cache, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"  💾 IR cache saved to: {ir_cache_file}")
