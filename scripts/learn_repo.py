@@ -3320,6 +3320,44 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
             "coverage_pct": all_ir[0].coverage_report.get('coverage_pct', 0) if all_ir else 0,
         },
         "business_logic": all_ir[0].business_logic[:20] if all_ir else [],
+        # 业务术语表（人工维护的中文业务词 → 代码映射）
+        "business_terminology": {
+            "PN 处理": {
+                "synonyms": ["PNS", "Partner Network Service", "创意需求", "creative requirement", "requirement"],
+                "related_handlers": ["SaveRequirement", "DeleteRequirement", "GetCreativeRequirementDetail", "ListCreativeRequirement", "ListPartnerRequirement"],
+                "related_routes": ["/requirement/PNS/creative/requirement/save", "/PNS/creative/requirement/:geo/:media_type/delete", "/PNS/creative/requirement/list"],
+                "description": "PNS(Partner Network Service) 创意需求管理，包括创建、删除、详情查询、列表查询",
+                "key_files": ["creative-platform/app/adminapi/cpconfig/cpconfig_module.go"],
+            },
+            "素材分享": {
+                "synonyms": ["share", "partner share", "adgroup share", "广告组分享", "share new", "share add", "share resend"],
+                "related_handlers": ["ShareNew", "ShareAddOn", "ShareResend", "ShareEmergencyPause", "ListAdGroupSharePartners"],
+                "related_routes": ["/share/new", "/share/add", "/share/resend", "/share/emergencypause", "/:group_id/partners"],
+                "description": "素材（广告组）分享给合作伙伴：支持新建分享(ShareNew)、添加分享(ShareAddOn)、重新发送(ShareResend)、紧急暂停(ShareEmergencyPause)、查看分享伙伴(ListAdGroupSharePartners)",
+                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
+            },
+            "合作伙伴": {
+                "synonyms": ["partner", "share partner", "partner list", "partner detail", "partner relation"],
+                "related_handlers": ["ListAdGroupSharePartners", "ListPartnerRequirement", "GetPartnerDetail", "SavePartner", "DeletePartner"],
+                "related_routes": ["/:group_id/partners", "/partner/list", "/partner/:partner_id/detail", "/partner/save", "/partner/:partner_id/delete"],
+                "description": "合作伙伴管理：列表查询、详情、保存、删除、Partner Requirement",
+                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
+            },
+            "广告组创建": {
+                "synonyms": ["adgroup", "ad group", "create adgroup", "新建广告组"],
+                "related_handlers": ["CreateAdGroup", "EditAdGroup", "DeleteAdGroup", "GetAdGroupDetail", "ListAdGroups"],
+                "related_routes": ["/create", "/:group_id/edit", "/:group_id/delete", "/:group_id/detail", "/list"],
+                "description": "广告组管理，包括创建、编辑、删除、详情、列表",
+                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
+            },
+            "广告组分享": {
+                "synonyms": ["share", "adgroup share", "partner share", "分享"],
+                "related_handlers": ["ShareResend", "ShareNew", "ShareAddOn", "ShareEmergencyPause"],
+                "related_routes": ["/share/resend", "/share/new", "/share/add", "/share/emergencypause"],
+                "description": "广告组分享功能，包括重新发送、新建分享、添加分享、紧急暂停",
+                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
+            },
+        },
     }
     # 合并图谱数据到 IR 缓存
     ir_cache.update(ir_cache_extra)

@@ -157,16 +157,35 @@ class ReviewEngine:
         
         print(f"  Extracted {len(keywords)} keywords: {keywords[:5]}")
         
-        # 调用 query_evidence 查询
-        all_evidence = []
+        # 先搜 terminology（中文业务词 → 代码映射），提取相关 handler 名
+        expanded_keywords = list(keywords)
         for keyword in keywords:
             try:
                 result = run_evidence_query(
                     query=keyword,
                     wiki_path=self.wiki_path,
                     top_k=5,
+                    sources=["code"],
+                    cache_dir=cache_dir,
+                )
+                for ev in result.get('evidence', []):
+                    if ev.get('type') == 'terminology':
+                        for handler in ev.get('related_handlers', []):
+                            if handler not in expanded_keywords:
+                                expanded_keywords.append(handler)
+            except:
+                pass
+        
+        # 调用 query_evidence 查询代码
+        all_evidence = []
+        for keyword in expanded_keywords:
+            try:
+                result = run_evidence_query(
+                    query=keyword,
+                    wiki_path=self.wiki_path,
+                    top_k=5,
                     sources=["code", "schema", "api_docs"],
-                    cache_dir=cache_dir,  # 传入 IR 缓存目录
+                    cache_dir=cache_dir,
                 )
                 if result.get('evidence'):
                     all_evidence.extend(result['evidence'])
@@ -229,6 +248,25 @@ class ReviewEngine:
                 handler = getattr(route, 'handler', '?')
                 prompt_parts.append(f"- `{method}` {path} → `{handler}`")
             prompt_parts.append("")
+        
+        # 业务逻辑（从入口点追踪的调用链）
+        if ir.business_logic:
+            prompt_parts.append("## 业务逻辑（入口点调用链）")
+            for bl in ir.business_logic[:10]:
+                route = bl.get('route', '?')
+                method = bl.get('method', 'GET')
+                handler = bl.get('handler', '?')
+                desc = bl.get('description', '')
+                prompt_parts.append(f"- `{method}` {route} → `{handler}`")
+                prompt_parts.append(f"  逻辑: {desc}")
+                calls = bl.get('calls', [])
+                if calls:
+                    prompt_parts.append(f"  调用: {', '.join(calls[:8])}")
+                second = bl.get('second_layer', [])
+                if second:
+                    for sl in second[:5]:
+                        prompt_parts.append(f"    - {sl.get('name', '?')}() @ {sl.get('file', '?')}")
+                prompt_parts.append("")
         
         # Entity Table 映射
         if ir.entity_tables:

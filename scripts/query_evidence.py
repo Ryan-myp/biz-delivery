@@ -178,9 +178,42 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
                         'score': 1.0,
                     })
 
-            return results[:10]
-    
-    return []
+            # 搜索业务术语映射
+            for term_key, term_val in ir_data.get('terminology_map', {}).items():
+                searchable = f"{term_key} {term_val.get('route', '')} {term_val.get('description', '')} {term_val.get('handler', '')}"
+                if query.lower() in searchable.lower():
+                    results.append({
+                        'type': 'terminology',
+                        'title': f"{term_val.get('handler', '')} ({term_val.get('route', '')})",
+                        'path': term_val.get('file', ''),
+                        'content': term_val.get('description', ''),
+                        'calls': term_val.get('calls', [])[:10],
+                        'score': 1.0,
+                    })
+
+            # 搜索业务术语表（人工维护的中文业务词 → 代码映射）
+            for term_name, term_info in ir_data.get('business_terminology', {}).items():
+                searchable = f"{term_name} {term_info.get('description', '')} {','.join(term_info.get('synonyms', []))}"
+                # 宽松匹配：query 中的每个词都能在 searchable 中找到
+                query_lower = query.lower()
+                # 中文按字符拆分，英文按单词拆分
+                query_words = re.findall(r'\w+', query_lower)
+                if not query_words:
+                    # 中文：按字符拆分（取前3个字符作为关键词）
+                    query_words = list(query_lower)[:max(3, len(query)//2)]
+                if query_words and all(qw in searchable.lower() for qw in query_words):
+                    results.append({
+                        'type': 'business_terminology',
+                        'title': f"业务术语: {term_name}",
+                        'path': '',
+                        'content': term_info.get('description', ''),
+                        'related_handlers': term_info.get('related_handlers', [])[:5],
+                        'related_routes': term_info.get('related_routes', [])[:5],
+                        'key_files': term_info.get('key_files', [])[:5],
+                        'score': 1.0,
+                    })
+
+    return results[:10]
 
 
 def search_schema(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
