@@ -924,6 +924,7 @@ class GoScanner:
                     "method": http_method,
                     "handler": handler_name,
                     "file": rel_path,
+                    "calls": [c['name'] for c in call_chain] if call_chain else [],
                     "call_chain": call_chain,
                     "control_points": control_points[:8],
                     "data_points": data_points[:8],
