@@ -3462,6 +3462,15 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
     ir_cache_file.write_text(json.dumps(ir_cache, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"  💾 IR cache saved to: {ir_cache_file}")
     
+    # 生成 business_cards.json
+    try:
+        from llm_analyzer import LLMAnalyzer
+        analyzer = LLMAnalyzer(ir_cache.get('repo_path', ''), str(ir_cache_file))
+        cards = analyzer.generate_business_cards(str(Path(knowledge_base_dir) / 'business_cards.json'))
+        print(f"  📋 Business cards: {len(cards['scenario_cards'])} scenarios, {len(cards['entity_relationships'])} entities, {len(cards['error_categories'])} error categories")
+    except Exception as e:
+        print(f"  ⚠️  Failed to generate business cards: {e}")
+    
     return {
         "status": "ok",
         "repos_scanned": len(all_ir),

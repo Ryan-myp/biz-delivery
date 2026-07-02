@@ -216,6 +216,62 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
     return results[:10]
 
 
+
+
+def search_business(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
+    """搜索业务卡片 — 从 business_cards.json 中匹配场景/实体/错误码"""
+    if cache_dir:
+        bc_file = Path(cache_dir) / "business_cards.json"
+        if bc_file.exists():
+            import json
+            with open(bc_file) as f:
+                bc_data = json.load(f)
+            
+            results = []
+            query_lower = query.lower()
+            
+            # 搜索场景卡
+            for sc in bc_data.get('scenario_cards', []):
+                searchable = f"{sc.get('scenario', '')} {sc.get('description', '')} {sc.get('entry_point', '')}"
+                if query_lower in searchable.lower():
+                    results.append({
+                        'type': 'scenario_card',
+                        'title': f"场景: {sc['scenario']}",
+                        'path': sc.get('file', ''),
+                        'content': sc.get('description', ''),
+                        'call_chain': sc.get('call_chain', [])[:10],
+                        'data_points': sc.get('data_points', [])[:5],
+                        'score': 1.0,
+                    })
+            
+            # 搜索实体关系
+            for er in bc_data.get('entity_relationships', []):
+                searchable = f"{er.get('entity', '')} {er.get('table', '')}"
+                if query_lower in searchable.lower():
+                    results.append({
+                        'type': 'entity',
+                        'title': f"{er['entity']} → {er['table']}",
+                        'path': er.get('file', ''),
+                        'content': f"Entity: {er['entity']}, Table: {er['table']}",
+                        'score': 1.0,
+                    })
+            
+            # 搜索错误分类
+            for cat, errors in bc_data.get('error_categories', {}).items():
+                searchable = f"{cat} {' '.join(e.get('name', '') for e in errors[:5])}"
+                if query_lower in searchable.lower():
+                    results.append({
+                        'type': 'error_category',
+                        'title': f"错误分类: {cat} ({len(errors)} errors)",
+                        'path': '',
+                        'content': f"Category: {cat}, Errors: {', '.join(e.get('name', '') for e in errors[:5])}",
+                        'score': 1.0,
+                    })
+            
+            return results[:top_k]
+    
+    return []
+
 def search_schema(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
     """搜索 schema — 从 IR 缓存中匹配表结构/字段"""
     if cache_dir:
@@ -355,6 +411,12 @@ def run_evidence_query(query: str, profile_path: str = None, wiki_path: str = No
         results = search_api_docs(query, "", top_k, cache_dir=cache_dir)
         candidates.append(results)
         path_results['api_docs'] = results
+    
+    if "business" in sources:
+        results = search_business(query, "", top_k, cache_dir=cache_dir)
+        if results:
+            candidates.append(results)
+            path_results['business'] = results
 
     # Wiki 增强
     if wiki_path and wiki_path != 'none':
