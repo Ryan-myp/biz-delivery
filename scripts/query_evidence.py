@@ -212,8 +212,9 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
                         'key_files': term_info.get('key_files', [])[:5],
                         'score': 1.0,
                     })
+            return results[:10]
 
-    return results[:10]
+    return []
 
 
 

@@ -26,12 +26,17 @@ from query_evidence import run_evidence_query
 class ReviewEngine:
     """PRD 审查引擎"""
     
-    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None):
+    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None, kb_dir: Optional[str] = None):
         self.profile = profile
         self.output_dir = Path(output_dir)
         self.wiki_path = wiki_path
         self.business_domain = profile.get("business_domain", "unknown")
         self.repos = profile.get("repositories", [])
+        self.kb_dir = kb_dir
+        if not self.kb_dir:
+            # 从 profile 推断
+            skill_dir = Path(__file__).parent.parent
+            self.kb_dir = str(skill_dir / "knowledge" / self.business_domain)
         
     def review(self, prd_text: str) -> dict:
         """执行 PRD 审查
@@ -54,7 +59,7 @@ class ReviewEngine:
         
         # Step 3: 构建审查 prompt（含证据）
         print("📝 Step 3: Building review prompt...")
-        prompt = self._build_review_prompt(filtered, ir, prd_text)
+        prompt = self._build_review_prompt(filtered, ir, prd_text, cache_dir)
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "review_prompt.md"
@@ -209,7 +214,7 @@ class ReviewEngine:
             'total': len(unique_evidence),
         }
     
-    def _build_review_prompt(self, filtered: dict, ir: IRDocument, prd_text: str) -> str:
+    def _build_review_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, cache_dir: str = None) -> str:
         """构建 PRD 审查 prompt — 注入完整 IR 数据"""
         prompt_parts = []
         
@@ -330,6 +335,67 @@ class ReviewEngine:
                     prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
             prompt_parts.append("")
         
+        # 业务卡片（从 business_cards.json 加载）
+        # 从 kb_dir 找 business_cards.json
+        bc_file = None
+        if self.kb_dir:
+            candidate = Path(self.kb_dir) / "business_cards.json"
+            if candidate.exists():
+                bc_file = candidate
+        if not bc_file and cache_dir:
+            candidate = Path(cache_dir) / "business_cards.json"
+            if candidate.exists():
+                bc_file = candidate
+        if bc_file and bc_file.exists():
+            try:
+                with open(bc_file) as f:
+                    bc_data = json.load(f)
+                
+                prompt_parts.append("## 业务知识卡片（从代码自动提取）")
+                prompt_parts.append("")
+                
+                # 场景卡
+                scenarios = bc_data.get('scenario_cards', [])
+                if scenarios:
+                    prompt_parts.append(f"### 业务场景（共{len(scenarios)}个）")
+                    for sc in scenarios[:10]:
+                        prompt_parts.append(f"- **{sc['scenario']}**: {sc['entry_point']}")
+                        prompt_parts.append(f"  - 描述: {sc.get('description', '')[:200]}")
+                        if sc.get('call_chain'):
+                            prompt_parts.append(f"  - 调用链: {', '.join(sc['call_chain'][:5])}")
+                        if sc.get('data_points'):
+                            prompt_parts.append(f"  - 数据流: {', '.join(sc['data_points'][:3])}")
+                    prompt_parts.append("")
+                
+                # 实体关系
+                entities = bc_data.get('entity_relationships', [])
+                if entities:
+                    prompt_parts.append(f"### 实体关系（共{len(entities)}个）")
+                    for er in entities[:10]:
+                        prompt_parts.append(f"- `{er['entity']}` → `{er['table']}`")
+                    prompt_parts.append("")
+                
+                # 错误分类
+                errors = bc_data.get('error_categories', {})
+                if errors:
+                    prompt_parts.append("### 错误码分类")
+                    for cat, errs in errors.items():
+                        prompt_parts.append(f"- **{cat}**: {len(errs)} 个错误码")
+                        for e in errs[:3]:
+                            prompt_parts.append(f"  - `{e.get('name', '')}`: {e.get('message', '')}")
+                    prompt_parts.append("")
+                
+                # 鉴权模型
+                auths = bc_data.get('auth_models', [])
+                if auths:
+                    prompt_parts.append("### 鉴权模型")
+                    for am in auths:
+                        prompt_parts.append(f"- **{am.get('middleware', '')}**: {am.get('logic', '')}")
+                    prompt_parts.append("")
+            except Exception as e:
+                prompt_parts.append(f"⚠️  Failed to load business_cards.json: {e}")
+                prompt_parts.append("")
+
         # PRD 内容
         prompt_parts.append("## PRD 内容")
         prompt_parts.append(prd_text)

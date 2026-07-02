@@ -244,7 +244,7 @@ class TDEngine:
             'total': len(unique),
         }
     
-    def _build_td_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, review_report: Optional[str] = None) -> str:
+    def _build_td_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, review_report: Optional[str] = None, cache_dir: str = None) -> str:
         """构建 TD 生成 prompt
         
         核心思路：
@@ -286,6 +286,25 @@ class TDEngine:
                 handler = getattr(route, 'handler', '?')
                 prompt_parts.append(f"- `{method}` {path} → `{handler}`")
             prompt_parts.append("")
+        
+        # 业务逻辑（从入口点追踪的调用链）
+        if ir.business_logic:
+            prompt_parts.append("## 业务逻辑（入口点调用链）")
+            for bl in ir.business_logic[:10]:
+                route = bl.get('route', '?')
+                method = bl.get('method', 'GET')
+                handler = bl.get('handler', '?')
+                desc = bl.get('description', '')
+                prompt_parts.append(f"- `{method}` {route} → `{handler}`")
+                prompt_parts.append(f"  逻辑: {desc}")
+                calls = bl.get('calls', [])
+                if calls:
+                    prompt_parts.append(f"  调用: {', '.join(calls[:8])}")
+                second = bl.get('second_layer', [])
+                if second:
+                    for sl in second[:5]:
+                        prompt_parts.append(f"    - {sl.get('name', '?')}() @ {sl.get('file', '?')}")
+                prompt_parts.append("")
         
         # Entity-Table 映射
         if ir.entity_tables:
@@ -348,6 +367,36 @@ class TDEngine:
                     ct = content_text[:200].replace('\n', '\\n')
                     prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
             prompt_parts.append("")
+
+        # 业务卡片注入
+        bc_file = Path(cache_dir) / "business_cards.json" if cache_dir else None
+        if bc_file and bc_file.exists():
+            try:
+                with open(bc_file) as _bc_f:
+                    import json as _bc_json
+                    _bc_data = _bc_json.load(_bc_f)
+                prompt_parts.append("## 业务知识卡片")
+                _scenarios = _bc_data.get('scenario_cards', [])
+                if _scenarios:
+                    prompt_parts.append("### 场景卡（共{}个）".format(len(_scenarios)))
+                    for _sc in _scenarios[:10]:
+                        prompt_parts.append("- **{}**: {}".format(_sc['scenario'], _sc.get('description', '')[:200]))
+                        if _sc.get('call_chain'):
+                            prompt_parts.append("  调用: {}".format(', '.join(_sc['call_chain'][:5])))
+                _entities = _bc_data.get('entity_relationships', [])
+                if _entities:
+                    prompt_parts.append("### 实体关系（共{}个）".format(len(_entities)))
+                    for _er in _entities[:10]:
+                        prompt_parts.append("- `{}` → `{}`".format(_er['entity'], _er['table']))
+                _errors = _bc_data.get('error_categories', {})
+                if _errors:
+                    prompt_parts.append("### 错误分类")
+                    for _cat, _errs in _errors.items():
+                        prompt_parts.append("- **{}**: {} errors".format(_cat, len(_errs)))
+            except Exception as _bc_err:
+                prompt_parts.append("⚠️  business_cards.json 加载失败: {}".format(_bc_err))
+                prompt_parts.append("")
+
 
         # PRD 内容
         prompt_parts.append("## PRD 内容")
