@@ -104,6 +104,80 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
                         'score': 1.0,
                     })
             
+            # 搜索 entity-table 映射
+            for et in ir_data.get('entity_tables', []):
+                entity = et.get('entity', '')
+                table = et.get('table', '')
+                searchable = f"{entity} {table}".lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'entity_table',
+                        'title': f"{entity} → {table}",
+                        'path': et.get('file', ''),
+                        'content': f"Entity: {entity}, Table: {table}",
+                        'score': 1.0,
+                    })
+            
+            # 搜索错误码
+            for ec in ir_data.get('error_codes', []):
+                name = ec.get('name', '')
+                msg = ec.get('message', '')
+                searchable = f"{name} {msg}".lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'error_code',
+                        'title': f"{name}: {ec.get('code', '?')}",
+                        'path': ec.get('file', ''),
+                        'content': f"{name}: {msg}",
+                        'score': 1.0,
+                    })
+            
+            # 搜索鉴权模型
+            for am in ir_data.get('auth_models', []):
+                mw = am.get('middleware', '')
+                logic = am.get('logic', '')
+                searchable = f"{mw} {logic}".lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'auth_model',
+                        'title': f"Middleware: {mw}",
+                        'path': am.get('file', ''),
+                        'content': f"{mw}: {logic}",
+                        'score': 1.0,
+                    })
+            
+            # 搜索 SQL 操作
+            for sq in ir_data.get('sql_operations', []):
+                op = sq.get('sql_operation', '')
+                searchable = op.lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'sql_operation',
+                        'title': f"{sq.get('gorm_call', '')} → {op}",
+                        'path': sq.get('file', ''),
+                        'content': f"{op} on {sq.get('table', '?')} in {sq.get('file', '?')}",
+                        'score': 1.0,
+                    })
+            
+
+            # 搜索业务逻辑
+            for bl in ir_data.get('business_logic', []):
+                route = bl.get('route', '')
+                handler = bl.get('handler', '')
+                desc = bl.get('description', '')
+                searchable = f"{route} {handler} {desc}".lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'business_logic',
+                        'title': f"{bl.get('method', 'GET')} {route} → {handler}",
+                        'path': bl.get('file', ''),
+                        'content': desc,
+                        'calls': bl.get('calls', [])[:10],
+                        'control_points': bl.get('control_points', [])[:5],
+                        'data_points': bl.get('data_points', [])[:5],
+                        'score': 1.0,
+                    })
+
             return results[:10]
     
     return []

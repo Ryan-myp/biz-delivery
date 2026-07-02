@@ -164,6 +164,9 @@ class IRDocument:
     # 性能热点
     perf_hotspots: List[Dict] = field(default_factory=list)
     
+    # 业务逻辑（从入口点追踪调用链）
+    business_logic: List[Dict] = field(default_factory=list)  # {route, handler, call_chain, description}
+    
     # 向后兼容
     compat_issues: List[Dict] = field(default_factory=list)
 
@@ -307,6 +310,7 @@ class GoScanner:
             pass
         
         # 构建调用图和入口点（测试扫描和 API 文档提取在 scan_directory 中统一调用）
+        self._extract_business_logic(ir, dir_path, max_entries=50)
         self._build_call_graph_from_signatures(ir)
         
         # 提取 SQL/GORM 操作
@@ -620,6 +624,7 @@ class GoScanner:
         # 统一调用测试扫描和 API 文档提取（不依赖 rg 可用性）
         self._scan_test_files(ir, dir_path, max_files)
         self._extract_api_spec(ir, dir_path, max_files)
+        self._extract_business_logic(ir, dir_path, max_entries=50)
         
         return ir
     
@@ -700,6 +705,7 @@ class GoScanner:
                 ir.imports.append(ImportDef(module=imp_path, is_local="git." in imp_path and "github.com" not in imp_path))
         
         # 构建调用图（从 func 签名推断）
+        self._extract_business_logic(ir, dir_path, max_entries=50)
         self._build_call_graph_from_signatures(ir)
         
         # 提取 API 文档（OpenAPI-like spec）
@@ -732,60 +738,276 @@ class GoScanner:
         
         return ir
     
-    def _build_call_graph_from_signatures(self, ir: IRDocument):
-        """从函数签名和 import 构建调用图（简化版）
+    def _extract_business_logic(self, ir: IRDocument, dir_path: Path, max_entries: int = 50):
+        """从入口点（路由 handler）递归追踪调用链，生成业务逻辑描述
         
-        策略：
-        1. 从 func 签名中识别 Handler 方法
-        2. 从 import 中识别跨包调用
-        3. 从 func 名中识别常见调用模式（如 service.xxx, dao.xxx）
+        借鉴 ad-knowledge-doc 的方法：
+        1. 从 *_module.go 提取路由注册和 handler 方法
+        2. 递归追踪调用链到 service/dao 层
+        3. 提取 SQL/DB Schema
+        4. 生成场景卡（含完整调用链图谱）
         """
-        # 构建函数名 → 文件映射
+        import re as re_mod
+        
+        # 第一步：构建全局函数名 → 文件映射
+        all_go_files = list(dir_path.rglob("*.go"))
         func_to_file = {}
-        for f in ir.functions:
-            key = f.name
-            if key not in func_to_file:
-                func_to_file[key] = []
-            func_to_file[key].append(f.file)
+        func_bodies = {}  # (file, func_name) → body_text
         
-        # 从 import 推断跨包调用
-        for imp in ir.imports:
-            if imp.is_local:
-                # 本地包导入 → 可能调用该包中的函数
-                pkg_name = imp.module.split('/')[-1]  # 取最后一层包名
-                for func_name in func_to_file:
-                    # 如果函数名以包名开头，说明是包级调用
-                    if func_name.startswith(pkg_name + '.') or func_name.startswith(pkg_name + '_'):
-                        ir.call_graph.append(CallEdge(
-                            caller="unknown",
-                            caller_pkg="",
-                            callee=func_name,
-                            callee_pkg=imp.module,
-                            pos="",
-                        ))
+        for go_file in all_go_files[:max_entries * 20]:  # 限制扫描文件数
+            try:
+                text = go_file.read_text(encoding='utf-8', errors='ignore')
+            except:
+                continue
+            
+            rel_path = str(go_file.relative_to(dir_path.parent))
+            
+            # 提取所有 func 定义
+            # 提取所有 func 定义（支持嵌套括号）
+            func_re = re_mod.compile(r'func\s+\(?[^)]*\)\s+(\w+)\s*\(')
+            # 对于有嵌套括号的参数，用更宽松的正则
+            func_re2 = re_mod.compile(r'^func\s+(\w+)\s*\(', re_mod.MULTILINE)
+            for fm in func_re.finditer(text):
+                func_name = fm.group(1)
+                if func_name not in func_to_file:
+                    func_to_file[func_name] = rel_path
+            
+            # 提取方法体（用于递归追踪）
+            # 1. 提取 receiver 方法：func (m *Xxx) MethodName(...)
+            method_re = re_mod.compile(r'func\s+\(m\s+\*(\w+)\)\s+(\w+)\s*\(([^)]*)\)')
+            for mm in method_re.finditer(text):
+                receiver = mm.group(1)
+                method_name = mm.group(2)
+                start_pos = mm.end()
+                
+                # 找到方法体结束位置
+                brace_count = 0
+                method_body_start = None
+                method_body_end = None
+                
+                for i, ch in enumerate(text[start_pos:]):
+                    if ch == '{':
+                        brace_count += 1
+                        if method_body_start is None:
+                            method_body_start = i + start_pos
+                    elif ch == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and method_body_start is not None:
+                            method_body_end = i + start_pos + 1
+                            break
+                
+                if method_body_start is not None and method_body_end is not None:
+                    func_bodies[(rel_path, method_name)] = text[method_body_start:method_body_end]
+            
+            # 2. 提取包级别函数：func FunctionName(...)
+            pkg_func_re = re_mod.compile(r'^func\s+(\w+)\s*\(([^)]*)\)\s*(.*)\{', re_mod.MULTILINE)
+            for pf in pkg_func_re.finditer(text):
+                func_name = pf.group(1)
+                start_pos = pf.end() - 1  # 指向 {
+                
+                # 找到函数体结束位置
+                brace_count = 1  # 已经有一个 {
+                method_body_start = start_pos + 1
+                method_body_end = None
+                
+                for i, ch in enumerate(text[start_pos+1:]):
+                    if ch == '{':
+                        brace_count += 1
+                    elif ch == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            method_body_end = start_pos + 1 + i
+                            break
+                
+                if method_body_end is not None:
+                    func_bodies[(rel_path, func_name)] = text[method_body_start:method_body_end]
         
-        # 从函数名模式推断调用关系
-        call_patterns = [
-            (r'service\.', 'service'),
-            (r'dao\.', 'dao'),
-            (r'model\.', 'model'),
-            (r'util\.', 'util'),
-            (r'handler\.', 'handler'),
-        ]
-        for pattern, category in call_patterns:
-            for f in ir.functions:
-                if re.search(pattern, f.name):
-                    # 这类函数通常是 service/dao 层调用
-                    pass  # 已在函数名中体现
+        # 第二步：扫描所有 *_module.go 文件，提取路由注册和 handler
+        module_files = []
+        for path in sorted(dir_path.rglob("*_module.go")):
+            try:
+                text = path.read_text(encoding='utf-8', errors='ignore')
+                module_files.append((path, text))
+            except:
+                continue
         
-        # 识别入口点（Handler 方法和 main 函数）
-        for f in ir.functions:
-            if f.is_route or f.name in ('main', 'Run', 'Start', 'Serve'):
-                ir.entry_points.append({
-                    "name": f.name,
-                    "file": f.file,
-                    "type": "handler" if f.is_route else "entry",
+        # 第三步：从每个 module 文件提取路由和 handler，递归追踪调用链
+        extracted = 0
+        for module_path, module_text in module_files:
+            if extracted >= max_entries:
+                break
+            
+            rel_path = str(module_path.relative_to(dir_path.parent))
+            
+            # 提取路由注册
+            route_pattern = re_mod.compile(r'(?:group|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*m\.(\w+)')
+            route_matches = list(route_pattern.finditer(module_text))
+            
+            if not route_matches:
+                continue
+            
+            # 提取模块结构体名
+            struct_pattern = re_mod.compile(r'type\s+(\w+Module)\s+struct')
+            struct_match = struct_pattern.search(module_text)
+            struct_name = struct_match.group(1) if struct_match else 'Module'
+            
+            for route_match in route_matches:
+                if extracted >= max_entries:
+                    break
+                
+                http_method = route_match.group(1)
+                route_path = route_match.group(2)
+                handler_name = route_match.group(3)
+                
+                # 提取 handler 方法体
+                sig_pattern = re_mod.compile(
+                    rf'func\s+\(m\s+\*{re_mod.escape(struct_name)}\)\s+{re_mod.escape(handler_name)}\s*\('
+                )
+                sig_match = sig_pattern.search(module_text)
+                
+                if not sig_match:
+                    continue
+                
+                start_pos = sig_match.end()
+                brace_count = 0
+                method_body_start = None
+                method_body_end = None
+                
+                for i, ch in enumerate(module_text[start_pos:]):
+                    if ch == '{':
+                        brace_count += 1
+                        if method_body_start is None:
+                            method_body_start = i + start_pos
+                    elif ch == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and method_body_start is not None:
+                            method_body_end = i + start_pos + 1
+                            break
+                
+                if method_body_start is None or method_body_end is None:
+                    continue
+                
+                handler_body = module_text[method_body_start:method_body_end]
+                
+                # 递归追踪调用链
+                call_chain = self._trace_call_chain(
+                    handler_body, func_to_file, func_bodies, dir_path.parent,
+                    max_depth=3, visited=set()
+                )
+                
+                # 提取控制流和数据流
+                handler_lines = handler_body.splitlines()[:100]
+                control_points = []
+                for line in handler_lines:
+                    stripped = line.strip()
+                    if any(stripped.startswith(kw) for kw in ['if ', 'else if', 'switch ', 'case ', 'for ', 'range ', 'return ']):
+                        control_points.append(stripped[:150])
+                
+                data_flow_keywords = ('bind', 'valid', 'request', 'req', 'dto', 'model', 
+                                     'entity', 'dao', 'insert', 'save', 'update', 'delete', 
+                                     'query', 'get', 'rpc', 'client', 'proxy', 'task', 
+                                     'publish', 'callback')
+                data_points = []
+                for line in handler_lines:
+                    lower = line.lower()
+                    if any(kw in lower for kw in data_flow_keywords):
+                        if ':=' in line or '=' in line or '.(' in line:
+                            data_points.append(line.strip()[:150])
+                
+                # 生成描述
+                first_layer_calls = [c['name'] for c in call_chain[:10]]
+                description = f"{handler_name} → [{', '.join(first_layer_calls[:5])}]"
+                
+                ir.business_logic.append({
+                    "route": route_path,
+                    "method": http_method,
+                    "handler": handler_name,
+                    "file": rel_path,
+                    "call_chain": call_chain,
+                    "control_points": control_points[:8],
+                    "data_points": data_points[:8],
+                    "description": description,
                 })
+                extracted += 1
+        
+        print(f"  Business logic extracted: {len(ir.business_logic)} entries from {extracted} routes")
+    
+    def _trace_call_chain(self, body: str, func_to_file: dict, func_bodies: dict, 
+                          base_dir: Path, max_depth: int = 3, visited: set = None) -> list:
+        """递归追踪调用链
+        
+        Args:
+            body: 函数体文本
+            func_to_file: 函数名 → 文件映射
+            func_bodies: (文件, 函数名) → 方法体映射
+            base_dir: 项目根目录的父目录
+            max_depth: 最大递归深度
+            visited: 已访问的函数名集合（避免循环）
+        
+        Returns:
+            调用链列表: [{"name": "Foo", "file": "...", "calls": [...], "depth": 1}]
+        """
+        if visited is None:
+            visited = set()
+        
+        import re as re_mod
+        
+        excluded = {'if', 'for', 'switch', 'return', 'defer', 'go', 'select', 'make', 'new',
+                   'append', 'len', 'cap', 'close', 'copy', 'delete', 'panic', 'recover',
+                   'fmt', 'log', 'err', 'nil', 'string', 'int', 'bool', 'ctx', 'c', 'w', 'r',
+                   'req', 'rsp', 'res', 'err', 'ok', 'done', 'cancel', 'Error', 'WithSuccess',
+                   'WithError', 'NewContext', 'Reflect', 'User', 'Now', 'Unix', 'Int64', 'Int64s',
+                   'AsInt64', 'LogE', 'LogI', 'ConstructResp', 'lockAdGroup', 'UnLockAdGroup',
+                   'LockAdGroup'}
+        
+        # 提取当前层的调用
+        calls = []
+        for m in re_mod.finditer(r'(?:m\.|ctx\.|util\.|dao\.|service\.|model\.|entity\.)(\w+)\s*\(', body):
+            called = m.group(1)
+            if called not in excluded and len(called) > 2 and called not in visited:
+                calls.append(called)
+        
+        # 也提取不带前缀的调用
+        for m in re_mod.finditer(r'(?:(?:m|ctx|util|dao|service|model|entity)\.)?(\w+)\s*\(', body):
+            called = m.group(1)
+            if called not in excluded and len(called) > 2 and called not in calls:
+                calls.append(called)
+        
+        result = []
+        for call_name in sorted(set(calls))[:10]:  # 限制每层最多 10 个调用
+            visited.add(call_name)
+            
+            # 找调用文件
+            call_file = func_to_file.get(call_name)
+            if not call_file:
+                # 尝试在 func_bodies 里找
+                call_file = None
+                for (f, fn) in func_bodies.items():
+                    if fn == call_name:
+                        call_file = f
+                        break
+            
+            call_entry = {
+                "name": call_name,
+                "file": call_file or "",
+                "calls": [],
+                "depth": 1,
+            }
+            
+            # 递归追踪下一层
+            if max_depth > 1 and call_file:
+                body_text = func_bodies.get((call_file, call_name), "")
+                if body_text:
+                    sub_calls = self._trace_call_chain(
+                        body_text, func_to_file, func_bodies, base_dir,
+                        max_depth=max_depth-1, visited=visited.copy()
+                    )
+                    call_entry["calls"] = [c["name"] for c in sub_calls[:8]]
+                    call_entry["depth"] = 2
+            
+            result.append(call_entry)
+        
+        return result
 
 
     def _scan_test_files(self, ir: IRDocument, dir_path: Path, max_files: int):
@@ -3040,6 +3262,7 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
             "test_functions": len(all_ir[0].test_functions) if all_ir else 0,
             "coverage_pct": all_ir[0].coverage_report.get('coverage_pct', 0) if all_ir else 0,
         },
+        "business_logic": all_ir[0].business_logic[:20] if all_ir else [],
     }
     ir_cache_file = Path(knowledge_base_dir) / "ir_cache.json"
     ir_cache_file.write_text(json.dumps(ir_cache, ensure_ascii=False, indent=2), encoding="utf-8")
