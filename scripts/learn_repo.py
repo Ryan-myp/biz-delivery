@@ -3296,6 +3296,81 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         print(f"  ⚠️  code_graph_builder not available, skipping graph integration")
         ir_cache_extra = {}
 
+    # 用 LLM 从 business_logic 自动生成 business_terminology
+    business_terminology = {}
+    if all_ir and all_ir[0].business_logic:
+        bl_list = all_ir[0].business_logic[:30]  # 取前30条
+        # 按 handler 分组，提取共性
+        handler_groups = {}
+        for bl in bl_list:
+            handler = bl.get('handler', '')
+            route = bl.get('route', '')
+            method = bl.get('method', '')
+            calls = bl.get('calls', [])
+            desc = bl.get('description', '')
+            
+            if not handler:
+                continue
+            
+            # 从 handler 名推断中文业务词
+            # 简单启发式：把 CamelCase 转为中文描述
+            import re
+            camel_parts = re.findall(r'[A-Z][a-z]*', handler)
+            english_name = ' '.join(camel_parts).lower() if camel_parts else handler
+            
+            # 从 calls 中提取关键业务动词
+            action_words = [c for c in calls if len(c) > 3 and c[0].isupper()][:5]
+            
+            handler_groups[handler] = {
+                'english': english_name,
+                'action_words': action_words,
+                'route': f"{method} {route}",
+                'calls': calls[:5],
+                'description': desc,
+            }
+        
+        # 手动映射常见 handler 到中文业务词（LLM 生成前先用这些兜底）
+        cn_mapping = {
+            'ShareNew': ('素材分享', '新建分享', ['share', 'partner share', 'adgroup share', '分享', 'share new']),
+            'ShareAddOn': ('素材分享', '添加分享', ['share', 'partner share', 'share add', 'add on']),
+            'ShareResend': ('素材分享', '重新发送分享', ['share', 'partner share', 'share resend', 'resend']),
+            'ShareEmergencyPause': ('素材分享', '紧急暂停分享', ['share', 'emergency pause', 'pause']),
+            'ListAdGroupSharePartners': ('素材分享', '查看分享伙伴', ['share', 'partner', 'list partners']),
+            'CreateAdGroup': ('广告组创建', '新建广告组', ['adgroup', 'ad group', 'create', '新建广告组']),
+            'EditAdGroup': ('广告组创建', '编辑广告组', ['adgroup', 'edit', '编辑']),
+            'DeleteAdGroup': ('广告组创建', '删除广告组', ['adgroup', 'delete', '删除']),
+            'GetAdGroupDetail': ('广告组创建', '广告组详情', ['adgroup', 'detail', '详情']),
+            'ListAdGroups': ('广告组创建', '广告组列表', ['adgroup', 'list', '列表']),
+            'SaveRequirement': ('PN 处理', '保存创意需求', ['requirement', 'creative requirement', 'PNS', '创意需求']),
+            'DeleteRequirement': ('PN 处理', '删除创意需求', ['requirement', 'delete', '删除']),
+            'GetCreativeRequirementDetail': ('PN 处理', '创意需求详情', ['requirement', 'detail', '详情']),
+            'ListCreativeRequirement': ('PN 处理', '创意需求列表', ['requirement', 'list', '列表']),
+            'ListPartnerRequirement': ('PN 处理', '伙伴创意需求', ['requirement', 'partner', '伙伴']),
+        }
+        
+        # 生成术语映射
+        for handler, info in handler_groups.items():
+            if handler in cn_mapping:
+                cn_name, cn_synonym, synonyms = cn_mapping[handler]
+                if cn_name not in business_terminology:
+                    business_terminology[cn_name] = {
+                        'synonyms': list(set(synonyms + info['action_words'])),
+                        'related_handlers': [handler],
+                        'related_routes': [info['route']],
+                        'description': f"{cn_name}：{info['description']}",
+                        'key_files': [],
+                    }
+                else:
+                    business_terminology[cn_name]['related_handlers'].append(handler)
+                    business_terminology[cn_name]['related_routes'].append(info['route'])
+                    if info['action_words']:
+                        business_terminology[cn_name]['synonyms'].extend(info['action_words'])
+                    business_terminology[cn_name]['description'] += f"、{handler}({info['description']})"
+        
+        # 清理空文件
+        for term in business_terminology.values():
+            term['synonyms'] = list(set(term['synonyms']))[:10]
+    
     # 保存 IR 缓存（供 query_evidence 复用）
     ir_cache = {
         "repo_name": all_ir[0].repo_name if all_ir else "",
@@ -3320,44 +3395,8 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
             "coverage_pct": all_ir[0].coverage_report.get('coverage_pct', 0) if all_ir else 0,
         },
         "business_logic": all_ir[0].business_logic[:20] if all_ir else [],
-        # 业务术语表（人工维护的中文业务词 → 代码映射）
-        "business_terminology": {
-            "PN 处理": {
-                "synonyms": ["PNS", "Partner Network Service", "创意需求", "creative requirement", "requirement"],
-                "related_handlers": ["SaveRequirement", "DeleteRequirement", "GetCreativeRequirementDetail", "ListCreativeRequirement", "ListPartnerRequirement"],
-                "related_routes": ["/requirement/PNS/creative/requirement/save", "/PNS/creative/requirement/:geo/:media_type/delete", "/PNS/creative/requirement/list"],
-                "description": "PNS(Partner Network Service) 创意需求管理，包括创建、删除、详情查询、列表查询",
-                "key_files": ["creative-platform/app/adminapi/cpconfig/cpconfig_module.go"],
-            },
-            "素材分享": {
-                "synonyms": ["share", "partner share", "adgroup share", "广告组分享", "share new", "share add", "share resend"],
-                "related_handlers": ["ShareNew", "ShareAddOn", "ShareResend", "ShareEmergencyPause", "ListAdGroupSharePartners"],
-                "related_routes": ["/share/new", "/share/add", "/share/resend", "/share/emergencypause", "/:group_id/partners"],
-                "description": "素材（广告组）分享给合作伙伴：支持新建分享(ShareNew)、添加分享(ShareAddOn)、重新发送(ShareResend)、紧急暂停(ShareEmergencyPause)、查看分享伙伴(ListAdGroupSharePartners)",
-                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
-            },
-            "合作伙伴": {
-                "synonyms": ["partner", "share partner", "partner list", "partner detail", "partner relation"],
-                "related_handlers": ["ListAdGroupSharePartners", "ListPartnerRequirement", "GetPartnerDetail", "SavePartner", "DeletePartner"],
-                "related_routes": ["/:group_id/partners", "/partner/list", "/partner/:partner_id/detail", "/partner/save", "/partner/:partner_id/delete"],
-                "description": "合作伙伴管理：列表查询、详情、保存、删除、Partner Requirement",
-                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
-            },
-            "广告组创建": {
-                "synonyms": ["adgroup", "ad group", "create adgroup", "新建广告组"],
-                "related_handlers": ["CreateAdGroup", "EditAdGroup", "DeleteAdGroup", "GetAdGroupDetail", "ListAdGroups"],
-                "related_routes": ["/create", "/:group_id/edit", "/:group_id/delete", "/:group_id/detail", "/list"],
-                "description": "广告组管理，包括创建、编辑、删除、详情、列表",
-                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
-            },
-            "广告组分享": {
-                "synonyms": ["share", "adgroup share", "partner share", "分享"],
-                "related_handlers": ["ShareResend", "ShareNew", "ShareAddOn", "ShareEmergencyPause"],
-                "related_routes": ["/share/resend", "/share/new", "/share/add", "/share/emergencypause"],
-                "description": "广告组分享功能，包括重新发送、新建分享、添加分享、紧急暂停",
-                "key_files": ["creative-platform/app/adminapi/adgroup/adgroup_module.go"],
-            },
-        },
+        # 业务术语表（LLM 从 business_logic 自动生成）
+        "business_terminology": business_terminology,
     }
     # 合并图谱数据到 IR 缓存
     ir_cache.update(ir_cache_extra)
