@@ -3296,80 +3296,137 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         print(f"  ⚠️  code_graph_builder not available, skipping graph integration")
         ir_cache_extra = {}
 
-    # 用 LLM 从 business_logic 自动生成 business_terminology
-    business_terminology = {}
-    if all_ir and all_ir[0].business_logic:
-        bl_list = all_ir[0].business_logic[:30]  # 取前30条
-        # 按 handler 分组，提取共性
+    # 启发式兜底函数
+    def _generate_business_terminology_heuristic(bl_list):
+        """当 LLM 不可用时，用启发式规则生成术语映射"""
+        bt = {}
         handler_groups = {}
         for bl in bl_list:
             handler = bl.get('handler', '')
-            route = bl.get('route', '')
-            method = bl.get('method', '')
-            calls = bl.get('calls', [])
-            desc = bl.get('description', '')
-            
             if not handler:
                 continue
-            
-            # 从 handler 名推断中文业务词
-            # 简单启发式：把 CamelCase 转为中文描述
-            import re
-            camel_parts = re.findall(r'[A-Z][a-z]*', handler)
-            english_name = ' '.join(camel_parts).lower() if camel_parts else handler
-            
-            # 从 calls 中提取关键业务动词
-            action_words = [c for c in calls if len(c) > 3 and c[0].isupper()][:5]
-            
             handler_groups[handler] = {
-                'english': english_name,
-                'action_words': action_words,
-                'route': f"{method} {route}",
-                'calls': calls[:5],
-                'description': desc,
+                'route': f"{bl.get('method', '')} {bl.get('route', '')}",
+                'calls': bl.get('calls', [])[:5],
+                'description': bl.get('description', ''),
             }
         
-        # 手动映射常见 handler 到中文业务词（LLM 生成前先用这些兜底）
-        cn_mapping = {
-            'ShareNew': ('素材分享', '新建分享', ['share', 'partner share', 'adgroup share', '分享', 'share new']),
-            'ShareAddOn': ('素材分享', '添加分享', ['share', 'partner share', 'share add', 'add on']),
-            'ShareResend': ('素材分享', '重新发送分享', ['share', 'partner share', 'share resend', 'resend']),
-            'ShareEmergencyPause': ('素材分享', '紧急暂停分享', ['share', 'emergency pause', 'pause']),
-            'ListAdGroupSharePartners': ('素材分享', '查看分享伙伴', ['share', 'partner', 'list partners']),
-            'CreateAdGroup': ('广告组创建', '新建广告组', ['adgroup', 'ad group', 'create', '新建广告组']),
-            'EditAdGroup': ('广告组创建', '编辑广告组', ['adgroup', 'edit', '编辑']),
-            'DeleteAdGroup': ('广告组创建', '删除广告组', ['adgroup', 'delete', '删除']),
-            'GetAdGroupDetail': ('广告组创建', '广告组详情', ['adgroup', 'detail', '详情']),
-            'ListAdGroups': ('广告组创建', '广告组列表', ['adgroup', 'list', '列表']),
-            'SaveRequirement': ('PN 处理', '保存创意需求', ['requirement', 'creative requirement', 'PNS', '创意需求']),
-            'DeleteRequirement': ('PN 处理', '删除创意需求', ['requirement', 'delete', '删除']),
-            'GetCreativeRequirementDetail': ('PN 处理', '创意需求详情', ['requirement', 'detail', '详情']),
-            'ListCreativeRequirement': ('PN 处理', '创意需求列表', ['requirement', 'list', '列表']),
-            'ListPartnerRequirement': ('PN 处理', '伙伴创意需求', ['requirement', 'partner', '伙伴']),
-        }
+        # 基于 handler 名和调用链的启发式分组
+        share_handlers = [h for h in handler_groups if 'Share' in h or 'share' in h.lower()]
+        adgroup_handlers = [h for h in handler_groups if 'AdGroup' in h or 'adgroup' in h.lower()]
+        requirement_handlers = [h for h in handler_groups if 'Requirement' in h or 'requirement' in h.lower()]
         
-        # 生成术语映射
-        for handler, info in handler_groups.items():
-            if handler in cn_mapping:
-                cn_name, cn_synonym, synonyms = cn_mapping[handler]
-                if cn_name not in business_terminology:
-                    business_terminology[cn_name] = {
-                        'synonyms': list(set(synonyms + info['action_words'])),
-                        'related_handlers': [handler],
-                        'related_routes': [info['route']],
-                        'description': f"{cn_name}：{info['description']}",
-                        'key_files': [],
-                    }
-                else:
-                    business_terminology[cn_name]['related_handlers'].append(handler)
-                    business_terminology[cn_name]['related_routes'].append(info['route'])
-                    if info['action_words']:
-                        business_terminology[cn_name]['synonyms'].extend(info['action_words'])
-                    business_terminology[cn_name]['description'] += f"、{handler}({info['description']})"
+        if share_handlers:
+            bt['素材分享'] = {
+                'synonyms': ['share', 'partner share', 'adgroup share', '分享', 'share new', 'share add'] + [h.lower().replace('share', '') for h in share_handlers[:3]],
+                'related_handlers': share_handlers,
+                'related_routes': [handler_groups[h]['route'] for h in share_handlers],
+                'description': '素材（广告组）分享给合作伙伴：支持新建分享、添加分享、重新发送、紧急暂停',
+                'key_files': [],
+            }
+        if adgroup_handlers:
+            bt['广告组创建'] = {
+                'synonyms': ['adgroup', 'ad group', 'create adgroup', '新建广告组'] + [h.lower() for h in adgroup_handlers[:3]],
+                'related_handlers': adgroup_handlers,
+                'related_routes': [handler_groups[h]['route'] for h in adgroup_handlers],
+                'description': '广告组管理，包括创建、编辑、删除、详情、列表',
+                'key_files': [],
+            }
+        if requirement_handlers:
+            bt['PN 处理'] = {
+                'synonyms': ['requirement', 'creative requirement', 'PNS', '创意需求', 'partner requirement'] + [h.lower() for h in requirement_handlers[:3]],
+                'related_handlers': requirement_handlers,
+                'related_routes': [handler_groups[h]['route'] for h in requirement_handlers],
+                'description': 'PNS(Partner Network Service) 创意需求管理，包括创建、删除、详情查询、列表查询',
+                'key_files': [],
+            }
         
-        # 清理空文件
-        for term in business_terminology.values():
+        # 清理 synonyms
+        for term in bt.values():
             term['synonyms'] = list(set(term['synonyms']))[:10]
+        
+        return bt
+
+    # 用 LLM 从 business_logic 自动生成 business_terminology
+    # 把 business_logic 喂给 LLM，让它按业务场景分组，生成中文术语映射
+    business_terminology = {}
+    if all_ir and all_ir[0].business_logic:
+        bl_list = all_ir[0].business_logic[:30]
+        
+        # 构建 LLM prompt
+        prompt = """你是一个代码分析专家。请根据以下 handler 的业务逻辑，按业务场景分组，生成中文业务术语映射表。
+
+要求：
+1. 把相关的 handler 归为一组，给每组起一个中文业务名（如"素材分享"、"广告组创建"）
+2. 每组包含：中文业务名、相关 handler 列表、路由路径、业务描述、同义词（中英文）
+3. 同义词要覆盖用户可能用的各种问法（中文业务词、英文 handler 名、路由关键词）
+4. 输出格式为 JSON，key 是中文业务名，value 是术语对象
+
+输入数据：
+"""
+        for bl in bl_list:
+            prompt += f"- {bl.get('handler', '?')}: route={bl.get('method', '')} {bl.get('route', '')}, calls={bl.get('calls', [])[:5]}, desc={bl.get('description', '')}"
+        
+        prompt += """
+请只输出 JSON，不要输出其他内容。格式如下：
+{
+  "中文业务名": {
+    "synonyms": ["同义词1", "同义词2", ...],
+    "related_handlers": ["Handler1", "Handler2", ...],
+    "related_routes": ["POST /path1", "GET /path2", ...],
+    "description": "业务描述",
+    "key_files": ["file1.go", "file2.go"]
+  }
+}"""
+        
+        # 调用 LLM 生成（通过 Hermes agent context）
+        try:
+            # 尝试从环境变量获取 LLM API key
+            llm_api_key = os.environ.get('HERMES_LLM_API_KEY', '')
+            if llm_api_key:
+                # 调用 LLM API
+                import urllib.request
+                import urllib.parse
+                
+                payload = json.dumps({
+                    "model": "agnes-2.0-flash",
+                    "messages": [
+                        {"role": "system", "content": "你是一个代码分析专家。请根据 handler 列表按业务场景分组，生成中文业务术语映射表。只输出 JSON，不要输出其他内容。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.3,
+                }).encode('utf-8')
+                
+                req = urllib.request.Request(
+                    'https://apihub.agnes-ai.com/v1/chat/completions',
+                    data=payload,
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Authorization': f'Bearer {llm_api_key}',
+                    }
+                )
+                
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    llm_response = json.loads(resp.read().decode('utf-8'))
+                    llm_text = llm_response['choices'][0]['message']['content']
+                    
+                    # 提取 JSON
+                    import re
+                    json_match = re.search(r'\{.*\}', llm_text, re.DOTALL)
+                    if json_match:
+                        business_terminology = json.loads(json_match.group(0))
+                        print(f"  LLM generated {len(business_terminology)} business terminology entries")
+                    else:
+                        print(f"  LLM response didn't contain valid JSON")
+            else:
+                # 没有 LLM API key，用启发式规则兜底
+                print(f"  No LLM API key, using heuristic fallback")
+                business_terminology = _generate_business_terminology_heuristic(bl_list)
+        except Exception as e:
+            print(f"  LLM generation failed ({e}), using heuristic fallback")
+            business_terminology = _generate_business_terminology_heuristic(bl_list)
+    
+
     
     # 保存 IR 缓存（供 query_evidence 复用）
     ir_cache = {
