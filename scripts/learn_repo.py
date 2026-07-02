@@ -3467,7 +3467,12 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         from llm_analyzer import LLMAnalyzer
         analyzer = LLMAnalyzer(ir_cache.get('repo_path', ''), str(ir_cache_file))
         cards = analyzer.generate_business_cards(str(Path(knowledge_base_dir) / 'business_cards.json'))
-        print(f"  📋 Business cards: {len(cards['scenario_cards'])} scenarios, {len(cards['entity_relationships'])} entities, {len(cards['error_categories'])} error categories")
+        llm_count = len(cards.get("llm_analyses", []))
+        sc = len(cards.get("scenario_cards", []))
+        la = len(cards.get("llm_analyses", []))
+        er = len(cards.get("entity_relationships", []))
+        ec = len(cards.get("error_categories", {}))
+        print(f"  Business cards: {sc} scenarios, {la} LLM analyses, {er} entities, {ec} error categories")
     except Exception as e:
         print(f"  ⚠️  Failed to generate business cards: {e}")
     
