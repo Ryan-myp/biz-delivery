@@ -10,5 +10,95 @@
   ],
   "learn_config": {
     "max_files_per_lang": 500
+  },
+  "modules": [
+    {
+      "name": "Creative Platform / 创意平台",
+      "keywords": [
+        "creative",
+        "template",
+        "render",
+        "media",
+        "adgroup",
+        "ad_group",
+        "creative_platform"
+      ],
+      "goal": "维护创意素材、广告组、模板渲染等创意平台核心能力。"
+    },
+    {
+      "name": "Share / 分享",
+      "keywords": [
+        "share",
+        "partner",
+        "resend",
+        "add_on",
+        "creative_requirement"
+      ],
+      "goal": "素材分享给合作伙伴、创意需求管理。"
+    },
+    {
+      "name": "PNS / 合作伙伴网络服务",
+      "keywords": [
+        "requirement",
+        "partner",
+        "pns",
+        "creative_requirement"
+      ],
+      "goal": "合作伙伴创意需求管理。"
+    },
+    {
+      "name": "Auth / 权限",
+      "keywords": [
+        "auth",
+        "permission",
+        "role",
+        "middleware"
+      ],
+      "goal": "平台权限控制。"
+    },
+    {
+      "name": "Config / 配置",
+      "keywords": [
+        "config",
+        "apollo",
+        "gas"
+      ],
+      "goal": "平台配置管理。"
+    }
+  ],
+  "query_aliases": {
+    "素材分享": [
+      "share",
+      "share_new",
+      "share_addon",
+      "share_resend"
+    ],
+    "广告组创建": [
+      "create_adgroup",
+      "edit_adgroup",
+      "get_adgroup_detail",
+      "delete_adgroup"
+    ],
+    "PN 处理": [
+      "requirement",
+      "save_requirement",
+      "delete_requirement",
+      "get_adgroup_requirement"
+    ],
+    "合作伙伴": [
+      "partner",
+      "list_partners",
+      "save_partner"
+    ],
+    "鉴权": [
+      "auth",
+      "permission",
+      "middleware"
+    ],
+    "配置": [
+      "config",
+      "apollo",
+      "gas"
+    ]
   }
 }

@@ -42,65 +42,66 @@ def extract_intent(query: str) -> Tuple[str, float]:
         if hits > 0:
             scores[intent] = hits / len(patterns)
 
-    if not scores:
-        return ("query", 0.0)
-
-    best_intent = max(scores, key=scores.get)
-    return best_intent, scores[best_intent]
-
-
-# ──────────────────────────────────────────────
-# 2. 多路证据查询引擎
-# ──────────────────────────────────────────────
-
-def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
-    """搜索代码 — 从 IR 缓存中匹配函数/路由/struct
-    
-    复用 learn_repo.py 扫描后的 IR 缓存
-    """
     # 加载 profile 获取 query_aliases
+    if not scores:
     import json
+        return ("query", 0.0)
     profile_path = str(Path(__file__).parent.parent / "profiles" / "default.json")
+
     profile = {}
+    best_intent = max(scores, key=scores.get)
     try:
+    return best_intent, scores[best_intent]
         with open(profile_path) as f:
+
             profile = json.load(f)
+
     except:
+# ──────────────────────────────────────────────
         pass
-    
+# 2. 多路证据查询引擎
+
+# ──────────────────────────────────────────────
     # 扩展 query_aliases
+
     aliases = profile.get("query_aliases", {})
+def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
     expanded_queries = [query]
+    """搜索代码 — 从 IR 缓存中匹配函数/路由/struct
     for alias, terms in aliases.items():
-        if alias.lower() in query.lower():
-            expanded_queries.extend(terms)
-    expanded_queries = list(dict.fromkeys(expanded_queries))  # 去重
     
+        if alias.lower() in query.lower():
+    复用 learn_repo.py 扫描后的 IR 缓存
+            expanded_queries.extend(terms)
+    """
+    expanded_queries = list(dict.fromkeys(expanded_queries))  # 去重
     if cache_dir:
+
         cache_file = Path(cache_dir) / "ir_cache.json"
         if cache_file.exists():
+            import json
             with open(cache_file) as f:
                 ir_data = json.load(f)
-
-            # 搜索函数（用扩展后的查询词）
+            
+            # 搜索函数
             results = []
             for expanded_query in expanded_queries:
                 query_lower = expanded_query.lower()
-                for func in ir_data.get('functions', []):
-                    if query_lower in func.get('name', '').lower():
-                        results.append({
-                            'type': 'function',
-                            'title': func['name'],
-                            'path': func.get('file', ''),
-                            'line': func.get('line', 0),
-                            'content': func.get('signature', ''),
-                            'score': 1.0,
-                        })
-
+            for func in ir_data.get('functions', []):
+                if query_lower in func.get('name', '').lower():
+                    results.append({
+                        'type': 'function',
+                        'title': func['name'],
+                        'path': func.get('file', ''),
+                        'line': func.get('line', 0),
+                        'content': func.get('signature', ''),
+                        'score': 1.0,
+                    })
+            
             # 搜索路由
             for route in ir_data.get('routes', []):
                 route_str = f"{route.get('method', '')} {route.get('path', '')} {route.get('handler', '')}".lower()
-                if any(eq.lower() in route_str for eq in expanded_queries):
+                if query_lower in route_str:
                     results.append({
                         'type': 'route',
                         'title': f"{route.get('method', '').upper()} {route.get('path', '')}",
@@ -109,10 +110,10 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
                         'content': route.get('handler', ''),
                         'score': 1.0,
                     })
-
+            
             # 搜索 struct
             for struct in ir_data.get('structs', []):
-                if any(eq.lower() in struct.get('name', '').lower() for eq in expanded_queries):
+                if query_lower in struct.get('name', '').lower():
                     results.append({
                         'type': 'struct',
                         'title': struct['name'],
@@ -121,55 +122,175 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
                         'content': '\n'.join([f.get('name', str(f)) for f in struct.get('fields', [])[:5]]),
                         'score': 1.0,
                     })
-
+            
             # 搜索 entity-table 映射
             for et in ir_data.get('entity_tables', []):
                 entity = et.get('entity', '')
                 table = et.get('table', '')
                 searchable = f"{entity} {table}".lower()
-                if any(eq.lower() in searchable for eq in expanded_queries):
+                if query_lower in searchable:
                     results.append({
                         'type': 'entity_table',
-                        'title': f"{entity} -> {table}",
+                        'title': f"{entity} → {table}",
                         'path': et.get('file', ''),
-                        'line': 0,
-                        'content': searchable,
+                        'content': f"Entity: {entity}, Table: {table}",
                         'score': 1.0,
                     })
+            
+            # 搜索错误码
+            for ec in ir_data.get('error_codes', []):
+                name = ec.get('name', '')
+                msg = ec.get('message', '')
+                searchable = f"{name} {msg}".lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'error_code',
+                        'title': f"{name}: {ec.get('code', '?')}",
+                        'path': ec.get('file', ''),
+                        'content': f"{name}: {msg}",
+                        'score': 1.0,
+                    })
+            
+            # 搜索鉴权模型
+            for am in ir_data.get('auth_models', []):
+                mw = am.get('middleware', '')
+                logic = am.get('logic', '')
+                searchable = f"{mw} {logic}".lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'auth_model',
+                        'title': f"Middleware: {mw}",
+                        'path': am.get('file', ''),
+                        'content': f"{mw}: {logic}",
+                        'score': 1.0,
+                    })
+            
+            # 搜索 SQL 操作
+            for sq in ir_data.get('sql_operations', []):
+                op = sq.get('sql_operation', '')
+                searchable = op.lower()
+                if query_lower in searchable:
+                    results.append({
+                        'type': 'sql_operation',
+                        'title': f"{sq.get('gorm_call', '')} → {op}",
+                        'path': sq.get('file', ''),
+                        'content': f"{op} on {sq.get('table', '?')} in {sq.get('file', '?')}",
+                        'score': 1.0,
+                    })
+            
 
-            # 搜索 business_logic
+            # 搜索业务逻辑
             for bl in ir_data.get('business_logic', []):
-                handler = bl.get('handler', '')
                 route = bl.get('route', '')
-                searchable = f"{handler} {route}".lower()
-                if any(eq.lower() in searchable for eq in expanded_queries):
+                handler = bl.get('handler', '')
+                desc = bl.get('description', '')
+                searchable = f"{route} {handler} {desc}".lower()
+                if query_lower in searchable:
                     results.append({
                         'type': 'business_logic',
-                        'title': f"业务逻辑: {handler}",
+                        'title': f"{bl.get('method', 'GET')} {route} → {handler}",
                         'path': bl.get('file', ''),
-                        'line': 0,
-                        'content': searchable[:200],
+                        'content': desc,
+                        'calls': bl.get('calls', [])[:10],
+                        'control_points': bl.get('control_points', [])[:5],
+                        'data_points': bl.get('data_points', [])[:5],
                         'score': 1.0,
                     })
 
-            # 搜索 business_terminology
-            for term, info in ir_data.get('business_terminology', {}).items():
-                searchable = term.lower()
-                if any(eq.lower() in searchable for eq in expanded_queries):
+            # 搜索业务术语映射
+            for term_key, term_val in ir_data.get('terminology_map', {}).items():
+                searchable = f"{term_key} {term_val.get('route', '')} {term_val.get('description', '')} {term_val.get('handler', '')}"
+                if query.lower() in searchable.lower():
+                    results.append({
+                        'type': 'terminology',
+                        'title': f"{term_val.get('handler', '')} ({term_val.get('route', '')})",
+                        'path': term_val.get('file', ''),
+                        'content': term_val.get('description', ''),
+                        'calls': term_val.get('calls', [])[:10],
+                        'score': 1.0,
+                    })
+
+            # 搜索业务术语表（人工维护的中文业务词 → 代码映射）
+            for term_name, term_info in ir_data.get('business_terminology', {}).items():
+                searchable = f"{term_name} {term_info.get('description', '')} {','.join(term_info.get('synonyms', []))}"
+                # 宽松匹配：query 中的每个词都能在 searchable 中找到
+                query_lower = query.lower()
+                # 中文按字符拆分，英文按单词拆分
+                query_words = re.findall(r'\w+', query_lower)
+                if not query_words:
+                    # 中文：按字符拆分（取前3个字符作为关键词）
+                    query_words = list(query_lower)[:max(3, len(query)//2)]
+                if query_words and all(qw in searchable.lower() for qw in query_words):
                     results.append({
                         'type': 'business_terminology',
-                        'title': f"业务术语: {term}",
+                        'title': f"业务术语: {term_name}",
                         'path': '',
-                        'line': 0,
-                        'content': searchable,
+                        'content': term_info.get('description', ''),
+                        'related_handlers': term_info.get('related_handlers', [])[:5],
+                        'related_routes': term_info.get('related_routes', [])[:5],
+                        'key_files': term_info.get('key_files', [])[:5],
                         'score': 1.0,
                     })
-
             return results[:10]
-    
+
     return []
 
 
+
+
+def search_business(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
+    """搜索业务卡片 — 从 business_cards.json 中匹配场景/实体/错误码"""
+    if cache_dir:
+        bc_file = Path(cache_dir) / "business_cards.json"
+        if bc_file.exists():
+            import json
+            with open(bc_file) as f:
+                bc_data = json.load(f)
+            
+            results = []
+            query_lower = query.lower()
+            
+            # 搜索场景卡
+            for sc in bc_data.get('scenario_cards', []):
+                searchable = f"{sc.get('scenario', '')} {sc.get('description', '')} {sc.get('entry_point', '')}"
+                if query_lower in searchable.lower():
+                    results.append({
+                        'type': 'scenario_card',
+                        'title': f"场景: {sc['scenario']}",
+                        'path': sc.get('file', ''),
+                        'content': sc.get('description', ''),
+                        'call_chain': sc.get('call_chain', [])[:10],
+                        'data_points': sc.get('data_points', [])[:5],
+                        'score': 1.0,
+                    })
+            
+            # 搜索实体关系
+            for er in bc_data.get('entity_relationships', []):
+                searchable = f"{er.get('entity', '')} {er.get('table', '')}"
+                if query_lower in searchable.lower():
+                    results.append({
+                        'type': 'entity',
+                        'title': f"{er['entity']} → {er['table']}",
+                        'path': er.get('file', ''),
+                        'content': f"Entity: {er['entity']}, Table: {er['table']}",
+                        'score': 1.0,
+                    })
+            
+            # 搜索错误分类
+            for cat, errors in bc_data.get('error_categories', {}).items():
+                searchable = f"{cat} {' '.join(e.get('name', '') for e in errors[:5])}"
+                if query_lower in searchable.lower():
+                    results.append({
+                        'type': 'error_category',
+                        'title': f"错误分类: {cat} ({len(errors)} errors)",
+                        'path': '',
+                        'content': f"Category: {cat}, Errors: {', '.join(e.get('name', '') for e in errors[:5])}",
+                        'score': 1.0,
+                    })
+            
+            return results[:top_k]
+    
+    return []
 
 def search_schema(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
     """搜索 schema — 从 IR 缓存中匹配表结构/字段"""
