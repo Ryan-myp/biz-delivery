@@ -752,7 +752,7 @@ class GoScanner:
         
         # 第一步：构建全局函数名 → 文件映射 + 方法体缓存
         all_go_files = list(dir_path.rglob("*.go"))
-        func_to_file = {}
+        func_to_files = {}
         func_bodies = {}  # (file, func_name) → body_text
         
         # DEBUG: 打印 func_to_file 的大小
@@ -771,14 +771,15 @@ class GoScanner:
             func_re = re_mod.compile(r'func\s+(?:\((?:[^()]*|\([^()]*\))*\)\s+)?(\w+)\s*\(')
             for fm in func_re.finditer(text):
                 func_name = fm.group(1)
-                if func_name not in func_to_file:
-                    func_to_file[func_name] = rel_path
+                if func_name not in func_to_files:
+                    func_to_files.setdefault(func_name, []).append(rel_path)
             
             # 提取方法体（用于递归追踪）
-            method_re = re_mod.compile(r'func\s+\(m\s+\*(\w+)\)\s+(\w+)\s*\(([^)]*)\)')
+            method_re = re_mod.compile(r'func\s+\(\s*(\w+)\s+\*?(\w+)\s*\)\s+(\w+)\s*\(')
             for mm in method_re.finditer(text):
-                receiver_type = mm.group(1)
-                method_name = mm.group(2)
+                receiver_var = mm.group(1)
+                receiver_type = mm.group(2)
+                method_name = mm.group(3)
                 start_pos = mm.end()
                 
                 # 找到方法体结束位置
@@ -890,7 +891,7 @@ class GoScanner:
                 
                 # 递归追踪调用链
                 call_tree = self._trace_call_chain(
-                    handler_body, func_to_file, func_bodies,
+                    handler_body, func_to_files, func_bodies,
                     max_depth=3, visited=set(), depth=0
                 )
                 
@@ -932,13 +933,13 @@ class GoScanner:
         
         print(f"  Business logic extracted: {len(ir.business_logic)} entries from {extracted} routes")
     
-    def _trace_call_chain(self, body: str, func_to_file: dict, func_bodies: dict,
+    def _trace_call_chain(self, body: str, func_to_files: dict, func_bodies: dict,
                           max_depth: int = 3, visited: set = None, depth: int = 0) -> list:
         """递归追踪调用链
         
         Args:
             body: 函数体文本
-            func_to_file: 函数名 → 文件映射
+            func_to_files: 函数名 → [文件] 映射
             func_bodies: (文件, 函数名) → 方法体映射
             max_depth: 最大递归深度
             visited: 已访问的函数名集合（避免循环）
@@ -978,27 +979,32 @@ class GoScanner:
             visited.add(call_name)
             
             # 找调用文件
-            call_file = func_to_file.get(call_name)
-            if not call_file:
+            call_files = func_to_files.get(call_name, [])
+            if not call_files:
                 # 尝试在 func_bodies 里找
                 for (f_name, fn), _body in func_bodies.items():
                     if fn == call_name:
-                        call_file = f_name
+                        call_files.append(f_name)
                         break
             
             call_entry = {
                 "name": call_name,
-                "file": call_file or "",
+                "file": call_files[0] if call_files else "",
                 "calls": [],
                 "depth": depth + 1,
             }
             
             # 递归追踪下一层
-            if depth + 1 < max_depth and call_file:
-                body_text = func_bodies.get((call_file, call_name), "")
+            if depth + 1 < max_depth and call_files:
+                body_text = ""
+                for cf in call_files:
+                    bt = func_bodies.get((cf, call_name), "")
+                    if bt:
+                        body_text = bt
+                        break
                 if body_text:
                     sub_calls = self._trace_call_chain(
-                        body_text, func_to_file, func_bodies,
+                        body_text, func_to_files, func_bodies,
                         max_depth=max_depth, visited=visited.copy(), depth=depth + 1
                     )
                     call_entry["calls"] = [c["name"] for c in sub_calls[:8]]
