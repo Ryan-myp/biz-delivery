@@ -66,12 +66,13 @@ class TestEngine:
         
         return ir
     
-    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None):
+    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None, kb_dir: str = None):
         self.profile = profile
         self.output_dir = Path(output_dir)
         self.wiki_path = wiki_path
         self.business_domain = profile.get("business_domain", "unknown")
         self.repos = profile.get("repositories", [])
+        self.kb_dir = kb_dir
         
     def _query_evidence_for_prd(self, ir, prd_text: str, cache_dir: str = None) -> dict:
         """从 PRD 提取关键词，调用 query_evidence 查询代码库证据"""
