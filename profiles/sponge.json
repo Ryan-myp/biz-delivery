@@ -1,0 +1,60 @@
+{
+  "business_domain": "sponge",
+  "repositories": [
+    {
+      "path": "/Users/yanping.ma/GolandProjects/sponge",
+      "language": "go",
+      "name": "sponge",
+      "include_globs": [
+        "**/*.go"
+      ],
+      "exclude_globs": [
+        "**/*_test.go",
+        "**/vendor/**"
+      ],
+      "exclude_dirs": [
+        "test",
+        "examples"
+      ],
+      "entrypoint_patterns": [
+        "**/router.go",
+        "**/handler.go",
+        "**/server.go",
+        "**/*_module.go"
+      ]
+    }
+  ],
+  "evidence_sources": {
+    "code": true,
+    "graph": true
+  },
+  "query_aliases": {
+    "路由": [
+      "router",
+      "route",
+      "handler",
+      "api"
+    ],
+    "服务": [
+      "service",
+      "server",
+      "handler"
+    ],
+    "数据库": [
+      "db",
+      "mysql",
+      "postgres",
+      "sql"
+    ],
+    "缓存": [
+      "redis",
+      "cache"
+    ],
+    "认证": [
+      "auth",
+      "login",
+      "token",
+      "jwt"
+    ]
+  }
+}

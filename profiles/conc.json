@@ -1,0 +1,14 @@
+{
+  "business_domain": "conc",
+  "repositories": [
+    {
+      "path": "/Users/yanping.ma/GolandProjects/conc",
+      "language": "go",
+      "name": "conc"
+    }
+  ],
+  "evidence_sources": {
+    "code": true,
+    "graph": true
+  }
+}

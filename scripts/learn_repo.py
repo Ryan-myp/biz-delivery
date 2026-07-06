@@ -52,7 +52,7 @@ class CodeKnowledgeExtractor:
         """提取 Go 代码知识"""
         packages = {}
         
-        for go_file in self.repo_path.rglob("**/*.go"):
+        for go_file in list(self.repo_path.rglob("**/*.go"))[:500]:
             if "test" in go_file.name.lower() or "mock" in go_file.name.lower():
                 continue
             
@@ -938,7 +938,7 @@ class GoScanner:
         import re as re_mod
         
         # 第一步：构建全局函数名 → 文件映射 + 方法体缓存
-        all_go_files = list(dir_path.rglob("**/*.go")) + list(dir_path.rglob("**/*.py")) + list(dir_path.rglob("**/*.java"))
+        all_go_files = list(dir_path.rglob("**/*.go"))[:1000] + list(dir_path.rglob("**/*.py"))[:500] + list(dir_path.rglob("**/*.java"))[:500]
         func_to_files = {}
         func_bodies = {}  # (file, func_name) → body_text
         
