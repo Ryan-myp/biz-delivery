@@ -27,6 +27,183 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+
+
+class CodeKnowledgeExtractor:
+    """通用代码知识提取器 — 支持 Go/Python/Java"""
+    
+    def __init__(self, repo_path: str, language: str = "go"):
+        self.repo_path = Path(repo_path)
+        self.language = language
+        self.packages = {}
+    
+    def extract(self) -> Dict[str, Any]:
+        """提取代码知识"""
+        if self.language == "go":
+            return self._extract_go()
+        elif self.language == "python":
+            return self._extract_python()
+        elif self.language == "java":
+            return self._extract_java()
+        else:
+            return {"error": f"Unsupported language: {self.language}"}
+    
+    def _extract_go(self) -> Dict[str, Any]:
+        """提取 Go 代码知识"""
+        packages = {}
+        
+        for go_file in self.repo_path.rglob("**/*.go"):
+            if "test" in go_file.name.lower() or "mock" in go_file.name.lower():
+                continue
+            
+            try:
+                text = go_file.read_text(encoding="utf-8", errors="ignore")
+            except:
+                continue
+            
+            # 找 package 声明（跳过注释）
+            lines = text.split("\n")
+            pkg_name = None
+            for line in lines:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("//") and not stripped.startswith("/*") and not stripped.startswith("*"):
+                    pkg_match = re.match(r"package\s+(\w+)", stripped)
+                    if pkg_match:
+                        pkg_name = pkg_match.group(1)
+                    break
+            
+            if not pkg_name:
+                continue
+            
+            if pkg_name not in packages:
+                packages[pkg_name] = {"files": [], "imports": set(), "interfaces": {}, "structs": {}, "functions": []}
+            
+            rel_path = str(go_file.relative_to(self.repo_path.parent))
+            packages[pkg_name]["files"].append(rel_path)
+            
+            # 提取 import
+            imports = re.findall(r'"([^"]+)"', text)
+            packages[pkg_name]["imports"].update(imports)
+            
+            # 提取 interface 定义
+            interfaces = re.findall(r"type\s+(\w+)\s+interface\s*{(.*?)^\}", text, re.MULTILINE | re.DOTALL)
+            for name, body in interfaces:
+                methods = re.findall(r"\s+(\w+)\s*\(|\s+(\w+)\s+\w+\s+\(", body)
+                method_list = [m[0] or m[1] for m in methods if m[0] or m[1]]
+                packages[pkg_name]["interfaces"][name] = {"file": rel_path, "methods": method_list[:10]}
+            
+            # 提取 struct 定义
+            structs = re.findall(r"type\s+(\w+)\s+struct\s*{(.*?)^\}", text, re.MULTILINE | re.DOTALL)
+            for name, body in structs:
+                fields = re.findall(r"\s+(\w+)\s+\w+", body)
+                packages[pkg_name]["structs"][name] = {"file": rel_path, "fields": fields[:10]}
+            
+            # 提取导出函数
+            funcs = re.findall(r"func\s+(\w+)\s*\(", text)
+            for name in funcs:
+                if name[0].isupper():
+                    packages[pkg_name]["functions"].append(name)
+        
+        return self._build_summary(packages)
+    
+    def _extract_python(self) -> Dict[str, Any]:
+        """提取 Python 代码知识"""
+        packages = {}
+        
+        for py_file in self.repo_path.rglob("**/*.py"):
+            if "__pycache__" in str(py_file) or "test" in py_file.name.lower():
+                continue
+            
+            try:
+                text = py_file.read_text(encoding="utf-8", errors="ignore")
+            except:
+                continue
+            
+            rel_path = str(py_file.relative_to(self.repo_path.parent))
+            parts = rel_path.split("/")
+            pkg_name = parts[0] if len(parts) > 1 else "root"
+            
+            if pkg_name not in packages:
+                packages[pkg_name] = {"files": [], "imports": set(), "classes": {}, "functions": []}
+            
+            packages[pkg_name]["files"].append(rel_path)
+            
+            # 提取 import
+            imports = re.findall(r"from\s+(\S+)\s+import|\s+import\s+(\S+)", text)
+            for m in imports:
+                for imp in m:
+                    if imp:
+                        packages[pkg_name]["imports"].add(imp)
+            
+            # 提取 class 定义
+            classes = re.findall(r"class\s+(\w+)(?:\(([^)]+)\))?:\s*\n((?:\s+.*)*)", text, re.DOTALL)
+            for name, bases, body in classes:
+                methods = re.findall(r"def\s+(\w+)\s*\(", body)
+                packages[pkg_name]["classes"][name] = {"file": rel_path, "bases": bases.split(",") if bases else [], "methods": methods[:10]}
+            
+            # 提取 top-level 函数
+            funcs = re.findall(r"^def\s+(\w+)\s*\(", text, re.MULTILINE)
+            for name in funcs:
+                if not name.startswith("_"):
+                    packages[pkg_name]["functions"].append(name)
+        
+        return self._build_summary(packages)
+    
+    def _extract_java(self) -> Dict[str, Any]:
+        """提取 Java 代码知识"""
+        packages = {}
+        
+        for java_file in self.repo_path.rglob("**/*.java"):
+            try:
+                text = java_file.read_text(encoding="utf-8", errors="ignore")
+            except:
+                continue
+            
+            # 找 package 声明
+            pkg_match = re.search(r"package\s+([\w.]+);", text)
+            if not pkg_match:
+                continue
+            pkg_name = pkg_match.group(1)
+            
+            if pkg_name not in packages:
+                packages[pkg_name] = {"files": [], "imports": set(), "classes": {}, "interfaces": {}}
+            
+            rel_path = str(java_file.relative_to(self.repo_path.parent))
+            packages[pkg_name]["files"].append(rel_path)
+            
+            # 提取 import
+            imports = re.findall(r"import\s+([\w.]+);", text)
+            packages[pkg_name]["imports"].update(imports)
+            
+            # 提取 class/interface 定义
+            types = re.findall(r"(?:public|private|protected)?\s*(?:class|interface|enum)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?\s*\{", text)
+            for type_name, extends, implements in types:
+                is_interface = "interface" in text[text.find(type_name)-50:text.find(type_name)].lower() if type_name in text else False
+                
+                if is_interface:
+                    packages[pkg_name]["interfaces"][type_name] = {"file": rel_path, "extends": extends.split(",") if extends else [], "methods": []}
+                else:
+                    packages[pkg_name]["classes"][type_name] = {"file": rel_path, "extends": extends.split(",") if extends else [], "implements": implements.split(",") if implements else [], "fields": [], "methods": []}
+        
+        return self._build_summary(packages)
+    
+    def _build_summary(self, packages: Dict) -> Dict[str, Any]:
+        """构建知识摘要"""
+        serializable_packages = {}
+        for pkg, data in packages.items():
+            serializable_packages[pkg] = {
+                "files": data.get("files", [])[:20],
+                "imports": sorted(list(data.get("imports", set())))[:20],
+                "interfaces": data.get("interfaces", {}),
+                "structs": data.get("structs", {}),
+                "classes": data.get("classes", {}),
+                "functions": sorted(list(set(data.get("functions", []))))[:50],
+            }
+        
+        return {"language": self.language, "packages": serializable_packages, "package_count": len(serializable_packages)}
+
+
+
 # ============================================================================
 # IR (Intermediate Representation) — 多语言统一中间表示
 # ============================================================================
@@ -135,6 +312,7 @@ class IRDocument:
     call_graph: List[CallEdge] = field(default_factory=list)  # 调用图
     data_flow: List[DataFlowNode] = field(default_factory=list)  # 数据流
     entry_points: List[Dict] = field(default_factory=list)  # 入口点
+    packages: Dict[str, Any] = field(default_factory=dict)  # 包结构（通用）
     
     # 测试覆盖
     test_files: List[str] = field(default_factory=list)  # 测试文件列表
@@ -626,6 +804,15 @@ class GoScanner:
         self._scan_test_files(ir, dir_path, max_files)
         self._extract_api_spec(ir, dir_path, max_files)
         self._extract_business_logic(ir, dir_path, max_entries=100)
+        
+        # 通用代码知识提取（不依赖 HTTP routes）
+        try:
+            extractor = CodeKnowledgeExtractor(str(dir_path), ir.language)
+            pkg_data = extractor.extract()
+            ir.packages = pkg_data.get('packages', {})
+            print(f"  Universal code analysis: {pkg_data.get('package_count', 0)} packages extracted")
+        except Exception as e:
+            print(f"  WARNING: Universal code analysis failed ({e})")
         
         return ir
     
@@ -3512,6 +3699,8 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         "business_logic": all_ir[0].business_logic[:20] if all_ir else [],
         # 业务术语表（LLM 从 business_logic 自动生成）
         "business_terminology": business_terminology,
+        # 通用包结构（从 CodeKnowledgeExtractor 提取）
+        "packages": all_ir[0].packages if all_ir and hasattr(all_ir[0], "packages") else {},
     }
     # 合并图谱数据到 IR 缓存
     ir_cache.update(ir_cache_extra)
@@ -3613,177 +3802,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-class CodeKnowledgeExtractor:
-    """通用代码知识提取器 — 支持 Go/Python/Java"""
-    
-    def __init__(self, repo_path: str, language: str = "go"):
-        self.repo_path = Path(repo_path)
-        self.language = language
-        self.packages = {}
-    
-    def extract(self) -> Dict[str, Any]:
-        """提取代码知识"""
-        if self.language == "go":
-            return self._extract_go()
-        elif self.language == "python":
-            return self._extract_python()
-        elif self.language == "java":
-            return self._extract_java()
-        else:
-            return {"error": f"Unsupported language: {self.language}"}
-    
-    def _extract_go(self) -> Dict[str, Any]:
-        """提取 Go 代码知识"""
-        packages = {}
-        
-        for go_file in self.repo_path.rglob("**/*.go"):
-            if "test" in go_file.name.lower() or "mock" in go_file.name.lower():
-                continue
-            
-            try:
-                text = go_file.read_text(encoding="utf-8", errors="ignore")
-            except:
-                continue
-            
-            # 找 package 声明（跳过注释）
-            lines = text.split("\n")
-            pkg_name = None
-            for line in lines:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("//") and not stripped.startswith("/*") and not stripped.startswith("*"):
-                    pkg_match = re.match(r"package\s+(\w+)", stripped)
-                    if pkg_match:
-                        pkg_name = pkg_match.group(1)
-                    break
-            
-            if not pkg_name:
-                continue
-            
-            if pkg_name not in packages:
-                packages[pkg_name] = {"files": [], "imports": set(), "interfaces": {}, "structs": {}, "functions": []}
-            
-            rel_path = str(go_file.relative_to(self.repo_path.parent))
-            packages[pkg_name]["files"].append(rel_path)
-            
-            # 提取 import
-            imports = re.findall(r'"([^"]+)"', text)
-            packages[pkg_name]["imports"].update(imports)
-            
-            # 提取 interface 定义
-            interfaces = re.findall(r"type\s+(\w+)\s+interface\s*{(.*?)^\}", text, re.MULTILINE | re.DOTALL)
-            for name, body in interfaces:
-                methods = re.findall(r"\s+(\w+)\s*\(|\s+(\w+)\s+\w+\s+\(", body)
-                method_list = [m[0] or m[1] for m in methods if m[0] or m[1]]
-                packages[pkg_name]["interfaces"][name] = {"file": rel_path, "methods": method_list[:10]}
-            
-            # 提取 struct 定义
-            structs = re.findall(r"type\s+(\w+)\s+struct\s*{(.*?)^\}", text, re.MULTILINE | re.DOTALL)
-            for name, body in structs:
-                fields = re.findall(r"\s+(\w+)\s+\w+", body)
-                packages[pkg_name]["structs"][name] = {"file": rel_path, "fields": fields[:10]}
-            
-            # 提取导出函数
-            funcs = re.findall(r"func\s+(\w+)\s*\(", text)
-            for name in funcs:
-                if name[0].isupper():
-                    packages[pkg_name]["functions"].append(name)
-        
-        return self._build_summary(packages)
-    
-    def _extract_python(self) -> Dict[str, Any]:
-        """提取 Python 代码知识"""
-        packages = {}
-        
-        for py_file in self.repo_path.rglob("**/*.py"):
-            if "__pycache__" in str(py_file) or "test" in py_file.name.lower():
-                continue
-            
-            try:
-                text = py_file.read_text(encoding="utf-8", errors="ignore")
-            except:
-                continue
-            
-            rel_path = str(py_file.relative_to(self.repo_path.parent))
-            parts = rel_path.split("/")
-            pkg_name = parts[0] if len(parts) > 1 else "root"
-            
-            if pkg_name not in packages:
-                packages[pkg_name] = {"files": [], "imports": set(), "classes": {}, "functions": []}
-            
-            packages[pkg_name]["files"].append(rel_path)
-            
-            # 提取 import
-            imports = re.findall(r"from\s+(\S+)\s+import|\s+import\s+(\S+)", text)
-            for m in imports:
-                for imp in m:
-                    if imp:
-                        packages[pkg_name]["imports"].add(imp)
-            
-            # 提取 class 定义
-            classes = re.findall(r"class\s+(\w+)(?:\(([^)]+)\))?:\s*\n((?:\s+.*)*)", text, re.DOTALL)
-            for name, bases, body in classes:
-                methods = re.findall(r"def\s+(\w+)\s*\(", body)
-                packages[pkg_name]["classes"][name] = {"file": rel_path, "bases": bases.split(",") if bases else [], "methods": methods[:10]}
-            
-            # 提取 top-level 函数
-            funcs = re.findall(r"^def\s+(\w+)\s*\(", text, re.MULTILINE)
-            for name in funcs:
-                if not name.startswith("_"):
-                    packages[pkg_name]["functions"].append(name)
-        
-        return self._build_summary(packages)
-    
-    def _extract_java(self) -> Dict[str, Any]:
-        """提取 Java 代码知识"""
-        packages = {}
-        
-        for java_file in self.repo_path.rglob("**/*.java"):
-            try:
-                text = java_file.read_text(encoding="utf-8", errors="ignore")
-            except:
-                continue
-            
-            # 找 package 声明
-            pkg_match = re.search(r"package\s+([\w.]+);", text)
-            if not pkg_match:
-                continue
-            pkg_name = pkg_match.group(1)
-            
-            if pkg_name not in packages:
-                packages[pkg_name] = {"files": [], "imports": set(), "classes": {}, "interfaces": {}}
-            
-            rel_path = str(java_file.relative_to(self.repo_path.parent))
-            packages[pkg_name]["files"].append(rel_path)
-            
-            # 提取 import
-            imports = re.findall(r"import\s+([\w.]+);", text)
-            packages[pkg_name]["imports"].update(imports)
-            
-            # 提取 class/interface 定义
-            types = re.findall(r"(?:public|private|protected)?\s*(?:class|interface|enum)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?\s*\{", text)
-            for type_name, extends, implements in types:
-                is_interface = "interface" in text[text.find(type_name)-50:text.find(type_name)].lower() if type_name in text else False
-                
-                if is_interface:
-                    packages[pkg_name]["interfaces"][type_name] = {"file": rel_path, "extends": extends.split(",") if extends else [], "methods": []}
-                else:
-                    packages[pkg_name]["classes"][type_name] = {"file": rel_path, "extends": extends.split(",") if extends else [], "implements": implements.split(",") if implements else [], "fields": [], "methods": []}
-        
-        return self._build_summary(packages)
-    
-    def _build_summary(self, packages: Dict) -> Dict[str, Any]:
-        """构建知识摘要"""
-        serializable_packages = {}
-        for pkg, data in packages.items():
-            serializable_packages[pkg] = {
-                "files": data.get("files", [])[:20],
-                "imports": sorted(list(data.get("imports", set())))[:20],
-                "interfaces": data.get("interfaces", {}),
-                "structs": data.get("structs", {}),
-                "classes": data.get("classes", {}),
-                "functions": sorted(list(set(data.get("functions", []))))[:50],
-            }
-        
-        return {"language": self.language, "packages": serializable_packages, "package_count": len(serializable_packages)}
