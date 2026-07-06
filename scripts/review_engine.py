@@ -311,38 +311,6 @@ class ReviewEngine:
                 prompt_parts.append(f"- `{op}` on `{table}` in `{file}`")
             prompt_parts.append("")
 
-        # 状态机
-        if ir.state_machines:
-            prompt_parts.append("## 状态机（从 constant 包自动提取）")
-            for sm in ir.state_machines:
-                if isinstance(sm, dict):
-                    entity = sm.get("entity", "unknown")
-                    values = sm.get("values", {})
-                    prompt_parts.append(f"- **{entity}**: {values}")
-            prompt_parts.append("")
-
-        # 业务规则
-        if ir.business_rules:
-            prompt_parts.append("## 业务规则（从错误码和校验逻辑提取）")
-            for cat, rules in ir.business_rules.items():
-                if isinstance(rules, dict):
-                    desc = rules.get("description", cat)
-                    rule_list = rules.get("rules", [])
-                    prompt_parts.append(f"- **{desc}**: {rule_list[:5]}")
-            prompt_parts.append("")
-
-        # 服务拓扑
-        if ir.service_topology:
-            prompt_parts.append("## 服务拓扑（从 import + HTTP/RPC 推断）")
-            for svc in ir.service_topology.get("services", []):
-                name = svc.get("name", "unknown")
-                desc = svc.get("description", "")
-                deps = svc.get("dependencies", [])
-                if deps:
-                    prompt_parts.append(f"- **{name}**: {desc} → 依赖: {deps}")
-                else:
-                    prompt_parts.append(f"- **{name}**: {desc}")
-            prompt_parts.append("")
         
         # 测试覆盖情况
         if ir.test_functions:

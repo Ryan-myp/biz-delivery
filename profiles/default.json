@@ -100,5 +100,123 @@
       "apollo",
       "gas"
     ]
+  },
+  "state_machines": {
+    "AdGroup": {
+      "fields": [
+        "Status",
+        "OpStatus"
+      ],
+      "Status": {
+        "values": {
+          "0": "INIT",
+          "1": "SUBMITTED",
+          "2": "SHARED",
+          "3": "LIVE",
+          "4": "PAUSED"
+        }
+      },
+      "OpStatus": {
+        "values": {
+          "0": "INIT",
+          "1": "SUBMITTED",
+          "2": "SHARED",
+          "101": "PENDING_SHARE",
+          "201": "ADD_ON",
+          "202": "PENDING_REGULAR_PAUSED",
+          "203": "PENDING_EMERGENCY_PAUSED"
+        }
+      }
+    },
+    "Task": {
+      "fields": [
+        "Status"
+      ],
+      "Status": {
+        "values": {
+          "0": "SUCC",
+          "1": "AD_SHARE_RECORD_FAIL",
+          "2": "GSHEET_FAIL",
+          "3": "MAIL_FAIL",
+          "4": "MAIL_NOTIFICATION_RECORD_FAIL"
+        }
+      }
+    },
+    "ImageStopTemplate": {
+      "fields": [
+        "TemplateStatus",
+        "IsDeleted",
+        "IsDraft"
+      ],
+      "TemplateStatus": {
+        "values": {
+          "0": "DRAFT",
+          "1": "PENDING_APPROVAL",
+          "2": "REJECTED",
+          "3": "READY_TO_USE"
+        }
+      }
+    }
+  },
+  "business_rules": {
+    "adgroup_creation": [
+      "AdGroup Name 不能为空",
+      "AdGroup Name 长度不能超过 255 字符",
+      "AdGroup Status 只能是 INIT/SUBMITTED/SHARED/LIVE/PAUSED"
+    ],
+    "adgroup_share": [
+      "只有 AdGroup Owner 才能发起分享",
+      "Partner 必须存在且状态正常",
+      "AdGroup 不能重复分享给同一个 Partner"
+    ],
+    "image_stop_template": [
+      "Template 必须经过审核才能上线",
+      "审核状态只能是 DRAFT/PENDING_APPROVAL/REJECTED/READY_TO_USE",
+      "拒绝时需要记录拒绝原因"
+    ]
+  },
+  "service_topology": {
+    "services": [
+      {
+        "name": "DAP",
+        "port": 8888,
+        "dependencies": [
+          "Apollo Config",
+          "MySQL",
+          "Redis",
+          "ADP",
+          "Proxy"
+        ]
+      },
+      {
+        "name": "Apollo Config",
+        "instances": [
+          "apollo-config.i.toc-mkt.shopee.io"
+        ]
+      },
+      {
+        "name": "ADP",
+        "rpc_calls": [
+          "BuildCloseMainTicketRequestFromCloseCreativeRequest",
+          "BuildCreativeRequestUpdateNotifyRequest"
+        ]
+      },
+      {
+        "name": "Proxy",
+        "description": "代理层，转发到渠道 API"
+      },
+      {
+        "name": "MetaAPI",
+        "description": "Meta 渠道 API"
+      },
+      {
+        "name": "TikTokAPI",
+        "description": "TikTok 渠道 API"
+      },
+      {
+        "name": "DV360API",
+        "description": "DV360 渠道 API"
+      }
+    ]
   }
 }
