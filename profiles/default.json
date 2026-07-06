@@ -102,100 +102,246 @@
     ]
   },
   "state_machines": {
-    "AdGroup": {
+    "Task.Status": {
       "fields": [
-        "Status",
-        "OpStatus"
+        "SUCC",
+        "AD_SHARE_RECORD_FAIL",
+        "GSHEET_FAIL",
+        "MAIL_FAIL",
+        "MAIL_NOTIFICATION_RECORD_FAIL"
       ],
-      "Status": {
-        "values": {
-          "0": "INIT",
-          "1": "SUBMITTED",
-          "2": "SHARED",
-          "3": "LIVE",
-          "4": "PAUSED"
-        }
-      },
-      "OpStatus": {
-        "values": {
-          "0": "INIT",
-          "1": "SUBMITTED",
-          "2": "SHARED",
-          "101": "PENDING_SHARE",
-          "201": "ADD_ON",
-          "202": "PENDING_REGULAR_PAUSED",
-          "203": "PENDING_EMERGENCY_PAUSED"
-        }
+      "values": {
+        "0": "TASK_STATUS_SUCC",
+        "1": "TASK_STATUS_AD_SHARE_RECORD_FAIL",
+        "2": "TASK_STATUS_GSHEET_FAIL",
+        "3": "TASK_STATUS_MAIL_FAIL",
+        "4": "TASK_STATUS_MAIL_NOTIFICATION_RECORD_FAIL"
       }
     },
-    "Task": {
+    "AdGroup.Status": {
       "fields": [
-        "Status"
+        "INIT",
+        "SUBMITTED",
+        "SHARED",
+        "LIVE",
+        "PAUSED"
       ],
-      "Status": {
-        "values": {
-          "0": "SUCC",
-          "1": "AD_SHARE_RECORD_FAIL",
-          "2": "GSHEET_FAIL",
-          "3": "MAIL_FAIL",
-          "4": "MAIL_NOTIFICATION_RECORD_FAIL"
-        }
+      "values": {
+        "0": "AD_GROUP_STATUS_INIT",
+        "1": "AD_GROUP_STATUS_SUBMITTED",
+        "2": "AD_GROUP_STATUS_SHARED",
+        "3": "AD_GROUP_STATUS_LIVE",
+        "4": "AD_GROUP_STATUS_PAUSED"
       }
     },
-    "ImageStopTemplate": {
+    "AdGroup.OpStatus": {
       "fields": [
-        "TemplateStatus",
-        "IsDeleted",
-        "IsDraft"
+        "INIT",
+        "SUBMITTED",
+        "PENDING_SHARE",
+        "SHARED",
+        "ADD_ON",
+        "PENDING_REGULAR_PAUSED",
+        "PENDING_EMERGENCY_PAUSED"
       ],
-      "TemplateStatus": {
-        "values": {
-          "0": "DRAFT",
-          "1": "PENDING_APPROVAL",
-          "2": "REJECTED",
-          "3": "READY_TO_USE"
-        }
+      "values": {
+        "0": "AD_GROUP_OP_STATUS_INIT",
+        "1": "AD_GROUP_OP_STATUS_SUBMITTED",
+        "101": "AD_GROUP_OP_STATUS_PENDING_SHARE",
+        "2": "AD_GROUP_OP_STATUS_SHARED",
+        "201": "AD_GROUP_OP_STATUS_ADD_ON",
+        "202": "AD_GROUP_OP_STATUS_PENDING_REGULAR_PAUSED",
+        "203": "AD_GROUP_OP_STATUS_PENDING_EMERGENCY_PAUSED"
       }
     }
   },
   "business_rules": {
-    "adgroup_creation": [
-      "AdGroup Name 不能为空",
-      "AdGroup Name 长度不能超过 255 字符",
-      "AdGroup Status 只能是 INIT/SUBMITTED/SHARED/LIVE/PAUSED"
+    "general_errors": [
+      "SUCCESS: success",
+      "UNKOWN_ERROR: unknown error",
+      "INVALID_PARAMS: invalid params",
+      "NETWORK_ERROR: network error",
+      "SERVER_BUSY: server busy"
     ],
-    "adgroup_share": [
-      "只有 AdGroup Owner 才能发起分享",
-      "Partner 必须存在且状态正常",
-      "AdGroup 不能重复分享给同一个 Partner"
+    "database_errors": [
+      "DB_NOT_FOUND: not found from database",
+      "DB_DATA_DUPLICATE: insert data exists",
+      "DB_QUERY_FAIL: database query failed",
+      "DB_EXCUTE_FAIL: database execute failed",
+      "DB_TRANSACTION_FAIL: database transaction failed"
     ],
-    "image_stop_template": [
-      "Template 必须经过审核才能上线",
-      "审核状态只能是 DRAFT/PENDING_APPROVAL/REJECTED/READY_TO_USE",
-      "拒绝时需要记录拒绝原因"
+    "redis_errors": [
+      "RDS_INCR_FAIL: redis incr failed",
+      "RDS_LOCK_IS_LOCKING: redis lock is locking by others",
+      "RDS_SET_FAIL: redis set failed",
+      "RDS_GET_FAIL: redis get failed",
+      "RDS_DEL_FAIL: redis del failed"
+    ],
+    "http_errors": [
+      "HTTP_REQUEST_FAIL: http request failed",
+      "HTTP_READ_BODY_FAIL: http read body failed",
+      "HTTP_REQUEST_NO_BODY: http request no body",
+      "HTTP_NEW_REQUEST_FAIL: http new request fail",
+      "HTTP_INVALID_STATUS: http invalid status"
+    ],
+    "creative_errors": [
+      "USER_NOT_LOGIN: user not login",
+      "USER_NOT_FOUND: user not found"
+    ],
+    "imagestop_errors": [
+      "USER_NOT_PERMISSION: user no permission",
+      "WRONG_URL_PATH_TO_PREMISSION: wrong url path to error",
+      "PERMISSION_INVALID: user permission invalid"
+    ],
+    "other_errors": [
+      "JSON_FORMAT_ERROR: request json format error",
+      "S3_CLIENT_INVALID: s3 client invalid",
+      "S3_UPLOAD_FAIL: s3 upload failed",
+      "S3_DOWNLOAD_FAIL: s3 download failed",
+      "S3_DELETE_FAIL: s3 delete failed"
+    ],
+    "adshare_errors": [
+      "BUSINESS_CONFIG_NOT_FOUND: business config not found",
+      "BUSINESS_CONFIG_MODULE_DUPLICATE: business config module duplicate",
+      "BUSINESS_CONFIG_MODULE_NOT_DEFINE: business config module not defined",
+      "BUSINESS_CONFIG_MUDULE_ITEM_DUPLICATE: business config module item duplicate",
+      "BUSINESS_CONFIG_MUDULE_ITEM_NOT_FOUND: business config module item not found"
+    ],
+    "adgroup_constraints": [
+      "MAX_AD_GROUP_CAMPAIGN_NAME_SIZE = 50",
+      "MAX_AD_GROUP_LAST_EDIT_BY_SIZE = 50",
+      "MAX_AD_GROUP_SHORTEN_HEADLINE_SIZE = 19",
+      "MAX_AD_GROUP_HEADLINE_SIZE = 25",
+      "MAX_AD_GROUP_SHORTEN_TEXT_SIZE = 42",
+      "MAX_AD_GROUP_TEXT_SIZE = 90",
+      "MAX_AD_GROUP_CUSTOM_LANDING_PAGE = 700",
+      "MAX_AD_GROUP_CUSTOM_LANDING_PAGE_DEEP_LINK = 700",
+      "MAX_AD_GROUP_AUTO_MAIL_ID_SIZE = 20",
+      "MAX_AD_GROUP_BATCH_DOWNLOAD_SIZE = 5"
+    ],
+    "media_constraints": [
+      "MIN_DURATION_SECOND = 1"
+    ],
+    "seatalk_imagestop_constraints": [
+      "MAX_IMAGE_STOP_NOTIFICATION_ITEM_NUM = 100"
+    ],
+    "partner_constraints": [
+      "MAX_SIZE = 30",
+      "MAX_SIZE = 50",
+      "MAX_SIZE = 700",
+      "MAX_COUNT = 15"
+    ],
+    "business_config_constraints": [
+      "MAX_LENGTH_Geo = 2",
+      "MAX_LENGTH_CampaignPurpose = 10",
+      "MAX_LENGTH_ContentCategory = 30",
+      "MAX_LENGTH_Messaging = 50",
+      "MAX_LENGTH_MessagingRemark = 200",
+      "MAX_SIZE_BannerWidth = 5000",
+      "MAX_SIZE_BannerHeight = 5000",
+      "MAX_SIZE_BannerSpecialSize = 1",
+      "MAX_SIZE_VideoDuration = 300"
+    ],
+    "creativeplatform_requirement_constraints": [
+      "MAX_REGENERATION_REASON = 500"
+    ],
+    "imagestop_creative_package_constraints": [
+      "MIN_AMOUNT = 1",
+      "MAX_CREATIVE_PACKAGE_CREATIVE_MAX_AMOUNT = 20",
+      "MAX_GROUP_PARTITIN_MAX_PACKAGE_AMOUNT = 1"
+    ],
+    "creativecenter_creative_package_constraints": [
+      "MAX_CREATIVE_REQUEST_CREATIVE_PACKAGE_NAME = 200",
+      "MAX_CREATIVE_REQUEST_CREATIVE_PACKAGE_KSP = 100"
+    ],
+    "imagestop_creative_group_constraints": [
+      "MAX_IMAGE_STOP_CREATIVE_GROUP_NAME = 200",
+      "MAX_CREATIVE_COUNT = 40"
+    ],
+    "creative_constraints": [
+      "MAX_CREATIVE_VIDEO_SIZE = 157286400",
+      "MAX_CREATIVE_VIDEO_DURATION = 300",
+      "MAX_CREATIVE_GIF_DURATION = 60",
+      "MAX_CREATIVE_BANNER_SIZE = 1048576",
+      "MAX_CREATIVE_BANNER_GIF_SIZE = 1048576"
+    ],
+    "library_media_constraints": [
+      "MAX_SIZE = 128",
+      "MIN_WIDTH = 350",
+      "MIN_HEIGHT = 350"
+    ],
+    "imagestop_template_constraints": [
+      "MAX_LENGTH = 5000",
+      "MAX_IMAGE_STOP_TEMPLATE_NAME = 200"
+    ],
+    "seatalk_constraints": [
+      "MAX_SUMMARY_SEATALK_PARTNER_COUNT = 2",
+      "MAX_SUMMARY_SEATALK_GROUP_COUNT = 2"
+    ],
+    "admin_operation_constraints": [
+      "MIN_TOOL_ONLY_REPORT_TRUE = 1",
+      "MIN_TOOL_ONLY_REPORT_FALSE = 0",
+      "MIN_TOOL_ADS_EXPORT_ONLY_EXPORT_TRUE = 1",
+      "MIN_TOOL_ADS_EXPORT_ONLY_EXPORT_FALSE = 0",
+      "MIN_TOOL_EXPORT_WITH_SHARE_TRUE = 1",
+      "MIN_TOOL_EXPORT_WITH_SHARE_FALSE = 0"
+    ],
+    "imagestop_creative_constraints": [
+      "MAX_LENGTH = 5000"
+    ],
+    "custom_config_constraints": [
+      "MIN_SIZE_BannerTemplateSizeWidth = 20",
+      "MIN_SIZE_BannerTemplateSizeHeight = 20",
+      "MAX_SIZE_BannerTemplateSizeWidth = 2000",
+      "MAX_SIZE_BannerTemplateSizeHeight = 2000"
+    ],
+    "creativecenter_creative_constraints": [
+      "MAX_LONG_SIDE_LENGTH_TIKTOK = 1920",
+      "MAX_RESOLUTION_VALUE_TIKTOK = 3686400"
     ]
   },
   "service_topology": {
     "services": [
       {
-        "name": "DAP",
+        "name": "DAP (Creative Platform)",
+        "description": "创意平台主服务",
         "port": 8888,
         "dependencies": [
-          "Apollo Config",
           "MySQL",
           "Redis",
-          "ADP",
-          "Proxy"
+          "Apollo Config"
+        ]
+      },
+      {
+        "name": "MySQL",
+        "description": "关系型数据库",
+        "entities": [
+          "AdGroup",
+          "Creative",
+          "Template",
+          "Partner",
+          "Requirement"
+        ]
+      },
+      {
+        "name": "Redis",
+        "description": "缓存/分布式锁",
+        "usage": [
+          "session_cache",
+          "distributed_lock",
+          "permission_check"
         ]
       },
       {
         "name": "Apollo Config",
+        "description": "配置中心",
         "instances": [
           "apollo-config.i.toc-mkt.shopee.io"
         ]
       },
       {
-        "name": "ADP",
+        "name": "ADP (Ad Delivery Platform)",
+        "description": "广告投放平台",
         "rpc_calls": [
           "BuildCloseMainTicketRequestFromCloseCreativeRequest",
           "BuildCreativeRequestUpdateNotifyRequest"
