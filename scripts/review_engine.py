@@ -313,6 +313,34 @@ class ReviewEngine:
 
         
         # 测试覆盖情况
+# 从 profile 加载状态机/业务规则/服务拓扑
+        profile_data = self.profile
+        if profile_data.get("state_machines"):
+            prompt_parts.append("## 状态机（从 profile 配置）")
+            for entity, sm in profile_data["state_machines"].items():
+                prompt_parts.append(f"- **{entity}**: {sm.get('fields', [])}")
+                for field, details in sm.get("Status", {}).items():
+                    if isinstance(details, dict) and "values" in details:
+                        prompt_parts.append(f"  {field}: {details['values']}")
+            prompt_parts.append("")
+
+        if profile_data.get("business_rules"):
+            prompt_parts.append("## 业务规则（从 profile 配置）")
+            for cat, rules in profile_data["business_rules"].items():
+                prompt_parts.append(f"- **{cat}**: {rules[:5]}")
+            prompt_parts.append("")
+
+        if profile_data.get("service_topology"):
+            prompt_parts.append("## 服务拓扑（从 profile 配置）")
+            for svc in profile_data["service_topology"].get("services", []):
+                name = svc.get("name", "unknown")
+                desc = svc.get("description", "")
+                deps = svc.get("dependencies", [])
+                if deps:
+                    prompt_parts.append(f"- **{name}**: {desc} → 依赖: {deps}")
+                else:
+                    prompt_parts.append(f"- **{name}**: {desc}")
+            prompt_parts.append("")
         if ir.test_functions:
             prompt_parts.append("## 测试覆盖情况")
             prompt_parts.append(f"- **测试文件**: {len(ir.test_files)}")
