@@ -311,7 +311,7 @@ class GoScanner:
             pass
         
         # 构建调用图和入口点（测试扫描和 API 文档提取在 scan_directory 中统一调用）
-        self._extract_business_logic(ir, dir_path, max_entries=50)
+        self._extract_business_logic(ir, dir_path, max_entries=100)
         self._build_call_graph_from_signatures(ir)
         
         # 提取 SQL/GORM 操作
@@ -625,7 +625,7 @@ class GoScanner:
         # 统一调用测试扫描和 API 文档提取（不依赖 rg 可用性）
         self._scan_test_files(ir, dir_path, max_files)
         self._extract_api_spec(ir, dir_path, max_files)
-        self._extract_business_logic(ir, dir_path, max_entries=50)
+        self._extract_business_logic(ir, dir_path, max_entries=100)
         
         return ir
     
@@ -706,7 +706,7 @@ class GoScanner:
                 ir.imports.append(ImportDef(module=imp_path, is_local="git." in imp_path and "github.com" not in imp_path))
         
         # 构建调用图（从 func 签名推断）
-        self._extract_business_logic(ir, dir_path, max_entries=50)
+        self._extract_business_logic(ir, dir_path, max_entries=100)
         self._build_call_graph_from_signatures(ir)
         
         # 提取 API 文档（OpenAPI-like spec）
@@ -739,7 +739,7 @@ class GoScanner:
         
         return ir
     
-    def _extract_business_logic(self, ir: IRDocument, dir_path: Path, max_entries: int = 50):
+    def _extract_business_logic(self, ir: IRDocument, dir_path: Path, max_entries: int = 200):
         """从入口点（路由 handler）递归追踪调用链到 service/dao/外部 API
         
         借鉴 codebase-memory-mcp 的 pass_calls 方法：
@@ -751,7 +751,7 @@ class GoScanner:
         import re as re_mod
         
         # 第一步：构建全局函数名 → 文件映射 + 方法体缓存
-        all_go_files = list(dir_path.rglob("*.go"))
+        all_go_files = list(dir_path.rglob("app/*_module.go"))
         func_to_files = {}
         func_bodies = {}  # (file, func_name) → body_text
         
@@ -824,7 +824,7 @@ class GoScanner:
         
         # 第二步：扫描所有 *_module.go 文件，提取路由注册和 handler
         module_files = []
-        for path in sorted(dir_path.rglob("*_module.go")):
+        for path in sorted(dir_path.rglob("**/*_module.go")):
             try:
                 text = path.read_text(encoding='utf-8', errors='ignore')
                 module_files.append((path, text))
@@ -840,7 +840,7 @@ class GoScanner:
             rel_path = str(module_path.relative_to(dir_path.parent))
             
             # 提取路由注册
-            route_pattern = re_mod.compile(r'(?:group|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*m\.(\w+)')
+            route_pattern = re_mod.compile(r'(?:group|groupPermission|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*(?:m\.)?(\w+)')
             route_matches = list(route_pattern.finditer(module_text))
             
             if not route_matches:

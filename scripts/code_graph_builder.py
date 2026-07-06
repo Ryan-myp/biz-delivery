@@ -164,7 +164,7 @@ class GoParser:
 
     # 路由注册
     ROUTE_RE = re.compile(
-        r'(?:group|r|engine)\.(GET|POST|PUT|DELETE|PATCH|Any|Handle)\s*\(\s*["\']([^"\']+)["\']'
+        r'(?:group|groupPermission|r|engine)\.(GET|POST|PUT|DELETE|PATCH|Any|Handle)\s*\(\s*["\']([^"\']+)["\']'
         r'(?:\s*,\s*(.+?))?\s*\)'
     )
 
