@@ -200,7 +200,70 @@ class CodeKnowledgeExtractor:
                 "functions": sorted(list(set(data.get("functions", []))))[:50],
             }
         
-        return {"language": self.language, "packages": serializable_packages, "package_count": len(serializable_packages)}
+        # 提取核心流程逻辑
+        flow = self._extract_flow()
+        
+        return {
+            "language": self.language, 
+            "packages": serializable_packages, 
+            "package_count": len(serializable_packages),
+            "flow": flow,
+        }
+    
+    def _extract_flow(self) -> Dict[str, Any]:
+        """提取核心流程逻辑"""
+        flow = {
+            "startup": [],
+            "cli_commands": {},
+            "templates": [],
+        }
+        
+        # 1. 提取启动流程
+        for go_file in self.repo_path.rglob("**/main.go"):
+            try:
+                content = go_file.read_text(encoding="utf-8", errors="ignore")
+            except:
+                continue
+            
+            # 找关键调用
+            calls = re.findall(r'(\w+)\.\w+\(', content)
+            rel_path = str(go_file.relative_to(self.repo_path.parent))
+            flow["startup"].append({
+                "file": rel_path,
+                "calls": list(set(calls))[:10],
+            })
+        
+        # 2. 提取 CLI 命令
+        for go_file in self.repo_path.rglob("**/*.go"):
+            if "test" in go_file.name.lower():
+                continue
+            try:
+                content = go_file.read_text(encoding="utf-8", errors="ignore")
+            except:
+                continue
+            
+            # 找 cobra.Command 定义
+            cmd_matches = re.findall(r'func\s+(\w+Command)\s*\(\)\s*\*cobra\.Command', content)
+            if cmd_matches:
+                pkg = go_file.parent.name
+                if pkg not in flow["cli_commands"]:
+                    flow["cli_commands"][pkg] = []
+                flow["cli_commands"][pkg].extend(cmd_matches)
+        
+        # 3. 提取模板文件
+        for go_file in self.repo_path.rglob("**/*.go"):
+            if "test" in go_file.name.lower():
+                continue
+            try:
+                content = go_file.read_text(encoding="utf-8", errors="ignore")
+            except:
+                continue
+            
+            if "embed.FS" in content or "//go:embed" in content:
+                rel_path = str(go_file.relative_to(self.repo_path.parent))
+                flow["templates"].append(rel_path)
+        
+        return flow
 
 
 
@@ -802,6 +865,7 @@ class GoScanner:
             pkg_data = extractor.extract()
             ir.packages = pkg_data.get('packages', {})
             ir.language = pkg_data.get('language', 'go')
+            ir.flow = pkg_data.get('flow', {})  # 核心流程逻辑
             print(f"  Universal code analysis: {pkg_data.get('package_count', 0)} packages extracted")
         except Exception as e:
             print(f"  WARNING: Universal code analysis failed ({e})")
@@ -3727,6 +3791,8 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         "business_terminology": business_terminology,
         # 通用包结构（从 CodeKnowledgeExtractor 提取）
         "packages": all_ir[0].packages if all_ir and hasattr(all_ir[0], "packages") else {},
+        # 核心流程逻辑（从 CodeKnowledgeExtractor 提取）
+        "flow": all_ir[0].flow if all_ir and hasattr(all_ir[0], "flow") else {},
     }
     # 合并图谱数据到 IR 缓存
     ir_cache.update(ir_cache_extra)
