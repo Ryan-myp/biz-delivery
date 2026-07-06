@@ -1,0 +1,10 @@
+{
+  "business_domain": "eino",
+  "repositories": [
+    {
+      "path": "/Users/yanping.ma/GolandProjects/eino",
+      "language": "go",
+      "name": "eino"
+    }
+  ]
+}
