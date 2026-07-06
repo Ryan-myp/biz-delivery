@@ -789,30 +789,49 @@ class GoScanner:
     
     def scan_directory(self, dir_path: Path, max_files: int = 500,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
-        """扫描整个目录"""
-        # 优先用 ripgrep，不可用时 fallback 到 Python re
-        if self.use_ripgrep and self._is_rgrep_available():
-            try:
-                ir = self._scan_with_rgrep(dir_path, max_files)
-            except Exception as e:
-                print(f"  WARNING: ripgrep scan failed ({e}), falling back to Python re", file=sys.stderr)
-                ir = self._scan_with_python_re(dir_path, max_files, incremental, changed_files)
-        else:
-            ir = self._scan_with_python_re(dir_path, max_files, incremental, changed_files)
+        """扫描整个目录 — 使用 CodeKnowledgeExtractor（快速）+ GoScanner 轻量提取"""
+        ir = IRDocument(
+            repo_name=dir_path.name,
+            repo_path=str(dir_path),
+            language="go",
+        )
         
-        # 统一调用测试扫描和 API 文档提取（不依赖 rg 可用性）
-        self._scan_test_files(ir, dir_path, max_files)
-        self._extract_api_spec(ir, dir_path, max_files)
-        self._extract_business_logic(ir, dir_path, max_entries=100)
-        
-        # 通用代码知识提取（不依赖 HTTP routes）
+        # 1. 通用代码知识提取（快速，不依赖 HTTP routes）
         try:
-            extractor = CodeKnowledgeExtractor(str(dir_path), ir.language)
+            extractor = CodeKnowledgeExtractor(str(dir_path), "go")
             pkg_data = extractor.extract()
             ir.packages = pkg_data.get('packages', {})
+            ir.language = pkg_data.get('language', 'go')
             print(f"  Universal code analysis: {pkg_data.get('package_count', 0)} packages extracted")
         except Exception as e:
             print(f"  WARNING: Universal code analysis failed ({e})")
+        
+        # 2. 轻量提取 structs/functions（只扫描前 100 个文件）
+        import re as re_mod
+        try:
+            all_go_files = list(dir_path.rglob("**/*.go"))[:100]
+            for go_file in all_go_files:
+                try:
+                    text = go_file.read_text(encoding="utf-8", errors="ignore")
+                except:
+                    continue
+                
+                rel_path = str(go_file.relative_to(dir_path.parent))
+                
+                # 提取 struct
+                structs = re_mod.findall(r"type\s+(\w+)\s+struct\s*{(.*?)^\}", text, re_mod.MULTILINE | re_mod.DOTALL)
+                for name, body in structs:
+                    ir.structs.append(StructDef(name=name, file=rel_path, fields=[]))
+                
+                # 提取函数
+                funcs = re_mod.findall(r"func\s+(\w+)\s*\(", text)
+                for name in funcs:
+                    if name[0].isupper():
+                        ir.functions.append(FuncDef(name=name, file=rel_path))
+            
+            print(f"  Light extraction: {len(ir.structs)} structs, {len(ir.functions)} functions")
+        except Exception as e:
+            print(f"  WARNING: Light extraction failed ({e})")
         
         return ir
     
@@ -935,6 +954,13 @@ class GoScanner:
         3. 提取 SQL/外部 API 调用
         4. 生成完整调用树
         """
+        # 快速检查：如果没有 *_module.go 文件，跳过
+        module_files = list(dir_path.rglob("**/*_module.go"))
+        if not module_files:
+            module_files = list(dir_path.rglob("**/router.go")) + list(dir_path.rglob("**/handler.go"))
+            if not module_files:
+                print(f"  Skipping _extract_business_logic (no module/router/handler files)")
+                return
         import re as re_mod
         
         # 第一步：构建全局函数名 → 文件映射 + 方法体缓存
