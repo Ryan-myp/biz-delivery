@@ -92,6 +92,107 @@ def expand_query(query: str, profile: dict = None) -> List[str]:
 
 
 # ──────────────────────────────────────────────
+# Fuzzy Search — Levenshtein 编辑距离
+# ──────────────────────────────────────────────
+
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """计算两个字符串的 Levenshtein 编辑距离"""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    if not s2:
+        return len(s1)
+    
+    prev_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        curr_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = prev_row[j + 1] + 1
+            deletions = curr_row[j] + 1
+            substitutions = prev_row[j] + (c1 != c2)
+            curr_row.append(min(insertions, deletions, substitutions))
+        prev_row = curr_row
+    
+    return prev_row[-1]
+
+
+def fuzzy_match(query: str, target: str, threshold: float = 0.7) -> bool:
+    """判断 query 和 target 是否 fuzzy 匹配"""
+    return fuzzy_score(query, target) >= threshold
+
+
+def fuzzy_score(query: str, target: str) -> float:
+    """计算两个字符串的 fuzzy 相似度 [0, 1]
+    
+    基于 Levenshtein 编辑距离归一化。
+    对中文：按字符比较；对英文：按单词比较。
+    """
+    if not query and not target:
+        return 1.0
+    if not query or not target:
+        return 0.0
+    
+    q_lower = query.lower()
+    t_lower = target.lower()
+    
+    if q_lower == t_lower:
+        return 1.0
+    
+    # 对于短字符串（<=10字符），用编辑距离
+    if max(len(q_lower), len(t_lower)) <= 10:
+        dist = levenshtein_distance(q_lower, t_lower)
+        max_len = max(len(q_lower), len(t_lower))
+        return 1.0 - dist / max_len if max_len > 0 else 1.0
+    
+    # 对于长字符串，用子串匹配 + 编辑距离混合
+    # 先检查子串包含
+    if q_lower in t_lower or t_lower in q_lower:
+        shorter = min(len(q_lower), len(t_lower))
+        longer = max(len(q_lower), len(t_lower))
+        return 0.8 + 0.2 * (shorter / longer)
+    
+    # 用编辑距离
+    dist = levenshtein_distance(q_lower, t_lower)
+    max_len = max(len(q_lower), len(t_lower))
+    return 1.0 - dist / max_len if max_len > 0 else 1.0
+
+
+# ──────────────────────────────────────────────
+# Synonym Expansion — 同义词扩展
+# ──────────────────────────────────────────────
+
+def expand_synonyms(query: str, profile: dict = None) -> List[str]:
+    """同义词扩展 — 从 profile 的 synonym_map 和 query_aliases 扩展查询词
+    
+    增强版：同时支持 synonym_map（业务词→多语言同义词）和 query_aliases（中文→代码映射）。
+    """
+    keywords = [query]
+    
+    if not profile:
+        return keywords
+    
+    # 1. 从 synonym_map 扩展
+    synonym_map = profile.get('synonym_map', {})
+    for term, variants in synonym_map.items():
+        if term.lower() in query.lower():
+            keywords.extend(variants)
+    
+    # 2. 从 query_aliases 扩展
+    aliases = profile.get('query_aliases', {})
+    for alias, terms in aliases.items():
+        if alias.lower() in query.lower():
+            keywords.extend(terms)
+    
+    # 3. 从 query 中提取中英文关键词（驼峰分割）
+    import re
+    camel = re.findall(r'[A-Z][a-z]+|[a-z]+', query)
+    keywords.extend(camel)
+    
+    # 去重，保留顺序
+    keywords = list(dict.fromkeys(keywords))
+    return keywords[:20]
+
+
+# ──────────────────────────────────────────────
 # Semantic Search — 轻量级 TF-IDF + Cosine Similarity
 # ──────────────────────────────────────────────
 
@@ -254,14 +355,14 @@ def semantic_expand_query(query: str, ir_data: dict, top_k: int = 20) -> List[st
 def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None, profile: dict = None) -> List[Dict]:
     """搜索代码 — 从 IR 缓存中匹配函数/路由/struct
     
-    复用 learn_repo.py 扫描后的 IR 缓存
-    
-    增强：语义搜索作为精确匹配的补充
+    增强：
+    1. 使用 expand_synonyms（支持 synonym_map + query_aliases）
+    2. fuzzy_score 替代精确匹配
+    3. 语义搜索作为补充
     """
     # 加载 profile 获取 query_aliases
     if profile is None:
         import json
-        # 尝试从 args 传入的 profile_path
         profile_path = str(Path(__file__).parent.parent / "profiles" / "default.json")
         if Path(profile_path).exists():
             try:
@@ -270,8 +371,8 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
             except:
                 pass
     
-    # 使用 query_expander 扩展查询词
-    expanded_queries = expand_query(query, profile)
+    # 使用 expand_synonyms 扩展查询词（替代旧的 expand_query）
+    expanded_queries = expand_synonyms(query, profile)
     
     if cache_dir:
         cache_file = Path(cache_dir) / "ir_cache.json"
@@ -279,14 +380,14 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
             with open(cache_file) as f:
                 ir_data = json.load(f)
 
-            # 先用精确 + fuzzy 搜索
-            results = _search_code_exact(ir_data, expanded_queries, top_k)
+            # 先用 fuzzy 搜索
+            results = _search_code_fuzzy(ir_data, expanded_queries, top_k)
             
             # 如果结果太少，启用语义搜索补充
             if len(results) < top_k // 2:
                 semantic_queries = semantic_expand_query(query, ir_data, top_k=15)
                 if semantic_queries:
-                    semantic_results = _search_code_exact(ir_data, semantic_queries, top_k)
+                    semantic_results = _search_code_fuzzy(ir_data, semantic_queries, top_k)
                     # 合并去重（基于 path+type）
                     seen = {(r.get('path'), r.get('type')) for r in results}
                     for sr in semantic_results:
@@ -300,8 +401,8 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
     return []
 
 
-def _search_code_exact(ir_data: dict, queries: List[str], top_k: int) -> List[Dict]:
-    """精确搜索 — 复用原有的 fuzzy + synonym 搜索逻辑"""
+def _search_code_fuzzy(ir_data: dict, queries: List[str], top_k: int) -> List[Dict]:
+    """Fuzzy 搜索 — 使用 fuzzy_score 替代精确匹配"""
     results = []
     for q in queries:
         query_lower = q.lower()
@@ -441,6 +542,56 @@ def search_api_docs(query: str, repo_path: str, top_k: int = 10, cache_dir: str 
                     })
             
             return results[:10]
+    
+    return []
+
+
+def search_business(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
+    """搜索业务逻辑 — 从 IR 缓存中匹配 business_logic / core_flows / state machines"""
+    if cache_dir:
+        cache_file = Path(cache_dir) / "ir_cache.json"
+        if cache_file.exists():
+            import json
+            with open(cache_file) as f:
+                ir_data = json.load(f)
+            
+            results = []
+            query_lower = query.lower()
+            
+            # 搜索 business_logic
+            for bl in ir_data.get('business_logic', []):
+                handler = bl.get('handler', '')
+                route = bl.get('route', '')
+                desc = bl.get('description', '')
+                searchable = f"{handler} {route} {desc}".lower()
+                score = fuzzy_score(query_lower, searchable)
+                if score >= 0.3:
+                    results.append({
+                        'type': 'business_logic',
+                        'title': f"业务逻辑: {handler}",
+                        'path': bl.get('file', ''),
+                        'line': 0,
+                        'content': searchable[:300],
+                        'score': score,
+                    })
+            
+            # 搜索 core_flows（如果存在）
+            for cf in ir_data.get('core_flows', []):
+                fname = cf.get('flow_name', '')
+                fprefix = cf.get('route_prefix', '')
+                searchable = f"{fname} {fprefix}".lower()
+                score = fuzzy_score(query_lower, searchable)
+                if score >= 0.3:
+                    results.append({
+                        'type': 'core_flow',
+                        'title': f"核心流程: {fname}",
+                        'path': '',
+                        'line': 0,
+                        'content': searchable[:300],
+                        'score': score,
+                    })
+            
+            return results[:top_k]
     
     return []
 
