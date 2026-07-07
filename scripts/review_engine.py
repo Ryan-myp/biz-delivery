@@ -15,7 +15,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 # 导入 learn_repo 的扫描器和 IR
 sys.path.insert(0, str(Path(__file__).parent))
@@ -315,6 +315,9 @@ class ReviewEngine:
         # 测试覆盖情况
 # 从 profile 加载状态机/业务规则/服务拓扑
         
+        # 从 profile 加载状态机/业务规则/服务拓扑
+        profile_data = self.profile.get('profile', {})
+        
         # 注入核心业务流程（从 IR 自动推断）
         if hasattr(ir, 'core_flows') and ir.core_flows:
             prompt_parts.append("## 核心业务流程（从代码自动推断）")
@@ -357,6 +360,14 @@ class ReviewEngine:
         if summary_file and summary_file.exists():
             prompt_parts.append("## 项目知识摘要（从代码自动提取）")
             prompt_parts.append(summary_file.read_text(encoding='utf-8'))
+            prompt_parts.append("")
+        
+        # 注入知识库（从 ryan-personal-knowledge 自动选择相关知识）
+        kb_refs = self._get_kb_references(prd_text)
+        if kb_refs:
+            prompt_parts.append("## 相关知识参考（从知识库自动提取）")
+            for ref in kb_refs:
+                prompt_parts.append(ref)
             prompt_parts.append("")
 
         if ir.test_functions:
@@ -524,6 +535,91 @@ class ReviewEngine:
         
         prompt = "\n".join(prompt_parts)
         return prompt
+
+    def _get_kb_references(self, prd_text: str) -> List[str]:
+        """根据 PRD 内容，从知识库选择相关知识"""
+        references = []
+        
+        # 知识库路径
+        kb_base = Path('/Users/yanping.ma/ryan-personal-knowledge/knowledge')
+        if not kb_base.exists():
+            return references
+        
+        # PRD 关键词
+        keywords = re.findall(r'[\u4e00-\u9fa5]{2,}|[a-zA-Z]{2,}', prd_text)
+        keywords = list(set(k.lower() for k in keywords))
+        
+        # 知识目录映射
+        kb_dirs = {
+            '竞价': 'advertising',
+            '出价': 'advertising',
+            'bidding': 'advertising',
+            '竞价引擎': 'advertising',
+            'redis': 'middleware',
+            '缓存': 'middleware',
+            'kafka': 'middleware',
+            '消息队列': 'middleware',
+            'mysql': 'middleware',
+            '数据库': 'middleware',
+            'es': 'middleware',
+            'elasticsearch': 'middleware',
+            '搜索': 'middleware',
+            'k8s': 'infrastructure',
+            'docker': 'infrastructure',
+            '部署': 'infrastructure',
+            '架构': 'architecture',
+            '设计': 'architecture',
+            '高并发': 'architecture',
+            '微服务': 'microservice',
+            'agent': 'agent-ai',
+            'AI': 'agent-ai',
+            '推荐': 'advertising',
+            'CTR': 'advertising',
+            'CVR': 'advertising',
+            '排序': 'advertising',
+            '召回': 'advertising',
+        }
+        
+        # 匹配关键词
+        matched_dirs = set()
+        for kw in keywords:
+            if kw in kb_dirs:
+                matched_dirs.add(kb_dirs[kw])
+        
+        # 读取相关知识文件
+        for kb_dir in matched_dirs:
+            kb_path = kb_base / kb_dir
+            if not kb_path.exists():
+                continue
+            
+            # 读取 README.md
+            readme = kb_path / 'README.md'
+            if readme.exists():
+                try:
+                    content = readme.read_text(encoding='utf-8', errors='ignore')
+                    references.append(f"### {kb_dir}/README.md")
+                    references.append(content[:1000])
+                    references.append("")
+                except:
+                    pass
+            
+            # 读取前 3 个深度文件
+            md_files = sorted(kb_path.rglob('*.md'))[:3]
+            for md_file in md_files:
+                if md_file.name == 'README.md':
+                    continue
+                try:
+                    content = md_file.read_text(encoding='utf-8', errors='ignore')
+                    # 只取前 500 行
+                    lines = content.split('\n')[:500]
+                    references.append(f"### {md_file.relative_to(kb_base)}")
+                    references.append('\n'.join(lines))
+                    references.append("")
+                except:
+                    pass
+        
+        return references
+
 
 
         return prompt

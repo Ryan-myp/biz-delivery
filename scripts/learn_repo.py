@@ -1307,6 +1307,7 @@ class GoScanner:
                     if any(stripped.startswith(kw) for kw in ['if ', 'else if', 'switch ', 'case ', 'for ', 'range ', 'return ']):
                         control_points.append(stripped[:150])
                 
+                
                 # 提取数据流
                 data_flow_keywords = ('bind', 'valid', 'request', 'req', 'dto', 'model', 
                                      'entity', 'dao', 'insert', 'save', 'update', 'delete', 
@@ -1318,6 +1319,9 @@ class GoScanner:
                     if any(kw in lower for kw in data_flow_keywords):
                         if ':=' in line or '=' in line or '.(' in line:
                             data_points.append(line.strip()[:150])
+                
+                # 增强：推断完整数据流路径（Request → Handler → Service → DAO → DB）
+                data_flow = self._infer_data_flow(handler_body, call_tree)
                 
                 # 生成描述
                 first_layer_calls = [c['name'] for c in call_tree[:10]]
@@ -1331,6 +1335,7 @@ class GoScanner:
                     "call_tree": call_tree,  # 完整的递归调用树
                     "control_points": control_points[:8],
                     "data_points": data_points[:8],
+                    "data_flow": data_flow,  # 增强：完整数据流路径
                     "description": description,
                 })
                 extracted += 1
@@ -1528,8 +1533,96 @@ class GoScanner:
                 return f"{cn}流程"
         return f"业务流 ({route_prefix})"
 
+    def _infer_data_flow(self, handler_body: str, call_tree: list) -> Dict:
+        """从 handler 代码推断完整数据流路径
+        
+        策略：
+        1. 识别请求来源（gin.Context / Request struct / URL params）
+        2. 追踪变量传递（req → service → dao → db）
+        3. 识别外部调用（RPC / HTTP / MQ）
+        4. 识别数据落点（Insert / Update / Query / Delete）
+        
+        Returns:
+            {
+                "stages": ["Request", "Handler", "Service", "DAO", "DB"],
+                "request_source": "gin.Context",
+                "data_ops": ["insert", "update"],
+                "external_calls": ["adp_rpc"],
+                "full_path": "Request → Handler → AdGroupService → AdGroupDAO → Insert → MySQL",
+            }
+        """
+        import re as re_mod
+        
+        stages = []
+        data_ops = []
+        external_calls = []
+        request_source = ""
+        
+        # 1. 识别请求来源
+        if 'gin.Context' in handler_body or 'c.Bind' in handler_body:
+            request_source = "gin.Context (HTTP Request)"
+            stages.append("Request")
+        elif 'request.Request' in handler_body or 'req *' in handler_body:
+            request_source = "RPC Request"
+            stages.append("Request")
+        else:
+            stages.append("Request")
+            request_source = "HTTP Request"
+        
+        # 2. 识别 Handler 层
+        stages.append("Handler")
+        
+        # 3. 识别 Service 层调用
+        service_calls = re_mod.findall(r'(?:m\.|\.)(\w+Service)\s*\(', handler_body)
+        service_calls += re_mod.findall(r'(\w+Service)\.(Create|Update|Delete|Get|List|Query|Build)', handler_body)
+        if service_calls:
+            stages.append("Service")
+            for svc in set(service_calls):
+                if isinstance(svc, tuple):
+                    svc = svc[0]
+                svc_methods = re_mod.findall(rf'{svc}\.(Create|Update|Delete|Get|List|Query|Build|Validate)', handler_body)
+                if svc_methods:
+                    data_ops.extend(svc_methods)
+        
+        # 4. 识别 DAO 层调用
+        dao_calls = re_mod.findall(r'(?:dao\.|\.)(\w+DAO)\s*\(', handler_body)
+        dao_methods = re_mod.findall(r'DAO\.(Insert|Update|Delete|Get|List|Query|Count|Exists)', handler_body)
+        if dao_calls or dao_methods:
+            stages.append("DAO")
+            for m in dao_methods:
+                data_ops.append(m.lower())
+        
+        # 5. 识别直接 DB 操作
+        db_ops = re_mod.findall(r'\.(Insert|Update|Delete|Query|Get|List|Count|Exec|Scan)\s*\(', handler_body)
+        for op in db_ops:
+            if op not in data_ops:
+                data_ops.append(op.lower())
+        
+        # 6. 识别外部 RPC/HTTP/MQ 调用
+        rpc_calls = re_mod.findall(r'(?:client|rpc|proxy|external)\.(\w+)', handler_body)
+        mq_calls = re_mod.findall(r'(?:mq|kafka|rabbit|pubsub|publish)\.\w+', handler_body)
+        
+        if rpc_calls:
+            external_calls.extend([f"RPC:{c}" for c in set(rpc_calls)])
+        if mq_calls:
+            external_calls.extend([f"MQ:{c}" for c in set(mq_calls)])
+        
+        # 7. 构建完整路径
+        if "DB" not in stages and ("DAO" in stages or data_ops):
+            stages.append("DB")
+        full_path = " → ".join(stages)
+        if external_calls:
+            full_path += f" [+{', '.join(external_calls[:3])}]"
+        
+        return {
+            "stages": stages,
+            "request_source": request_source,
+            "data_ops": list(set(data_ops)),
+            "external_calls": external_calls[:5],
+            "full_path": full_path,
+        }
+
     def _scan_test_files(self, ir: IRDocument, dir_path: Path, max_files: int):
-        """扫描测试文件 — 提取测试函数、被测函数、覆盖率报告"""
         # 1. 找测试文件（用 find 命令，rg --files-with-matches 搜的是文件内容不是文件名）
         try:
             r = subprocess.run(

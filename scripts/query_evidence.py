@@ -13,6 +13,7 @@
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -90,20 +91,184 @@ def expand_query(query: str, profile: dict = None) -> List[str]:
     
     return keywords[:10]  # 最多 10 个关键词
 
-def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
+
+# ──────────────────────────────────────────────
+# Semantic Search — 轻量级 TF-IDF + Cosine Similarity
+# ──────────────────────────────────────────────
+
+def _tokenize(text: str) -> List[str]:
+    """轻量分词：中文按字符切分，英文按单词切分"""
+    import re
+    # 提取英文单词
+    words = re.findall(r'[a-zA-Z]+', text)
+    # 提取中文字符
+    chars = re.findall(r'[\u4e00-\u9fff]', text)
+    return words + chars
+
+
+def _compute_tf(tokens: List[str]) -> Dict[str, float]:
+    """计算词频 (Term Frequency)"""
+    tf = {}
+    if not tokens:
+        return tf
+    for token in tokens:
+        tf[token] = tf.get(token, 0) + 1
+    # 归一化
+    total = len(tokens)
+    for token in tf:
+        tf[token] /= total
+    return tf
+
+
+def _compute_idf(documents: List[List[str]]) -> Dict[str, float]:
+    """计算逆文档频率 (Inverse Document Frequency)"""
+    n_docs = len(documents)
+    if n_docs == 0:
+        return {}
+    
+    df = {}  # document frequency
+    for doc in documents:
+        unique_tokens = set(doc)
+        for token in unique_tokens:
+            df[token] = df.get(token, 0) + 1
+    
+    idf = {}
+    for token, freq in df.items():
+        idf[token] = 1.0 + math.log(n_docs / (1 + freq))
+    
+    return idf
+
+
+def _cosine_similarity(vec_a: Dict[str, float], vec_b: Dict[str, float]) -> float:
+    """计算两个向量的余弦相似度"""
+    if not vec_a or not vec_b:
+        return 0.0
+    
+    # 交集
+    common_keys = set(vec_a.keys()) & set(vec_b.keys())
+    if not common_keys:
+        return 0.0
+    
+    dot_product = sum(vec_a[k] * vec_b[k] for k in common_keys)
+    norm_a = math.sqrt(sum(v * v for v in vec_a.values()))
+    norm_b = math.sqrt(sum(v * v for v in vec_b.values()))
+    
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    
+    return dot_product / (norm_a * norm_b)
+
+
+def semantic_search(query: str, documents: List[str], top_k: int = 10) -> List[Dict]:
+    """轻量级语义搜索 — 基于 TF-IDF + Cosine Similarity
+    
+    Args:
+        query: 查询文本
+        documents: 文档列表（可以是函数签名、路由描述、struct 字段等）
+        top_k: 返回前 K 个结果
+    
+    Returns:
+        List of {doc, score, rank}
+    """
+    import math
+    
+    query_tokens = _tokenize(query)
+    query_tf = _compute_tf(query_tokens)
+    
+    doc_tokens_list = [_tokenize(doc) for doc in documents]
+    idf = _compute_idf(doc_tokens_list)
+    
+    # 为每个文档计算 IDF 加权的 TF 向量
+    doc_vectors = []
+    for tokens in doc_tokens_list:
+        tf = _compute_tf(tokens)
+        # IDF 加权
+        weighted = {token: tf[token] * idf.get(token, 1.0) for token in tf}
+        doc_vectors.append(weighted)
+    
+    # 计算相似度
+    scores = []
+    for i, doc_vec in enumerate(doc_vectors):
+        sim = _cosine_similarity(query_tf, doc_vec)
+        if sim > 0:
+            scores.append({'doc': documents[i], 'score': sim, 'rank': i})
+    
+    # 排序
+    scores.sort(key=lambda x: x['score'], reverse=True)
+    return scores[:top_k]
+
+
+def semantic_expand_query(query: str, ir_data: dict, top_k: int = 20) -> List[str]:
+    """基于 IR 数据的语义查询扩展
+    
+    策略：
+    1. 从 IR 中收集所有可搜索文本（函数名、路由、struct、描述）
+    2. 用语义搜索找到与 query 最相关的 IR 条目
+    3. 提取其中的关键词作为扩展查询词
+    
+    Returns:
+        扩展后的查询词列表
+    """
+    searchable = []
+    
+    # 收集函数签名
+    for func in ir_data.get('functions', []):
+        sig = func.get('signature', '')
+        if sig:
+            searchable.append(sig)
+    
+    # 收集路由描述
+    for route in ir_data.get('routes', []):
+        route_str = f"{route.get('method', '')} {route.get('path', '')} {route.get('handler', '')}"
+        if route_str:
+            searchable.append(route_str)
+    
+    # 收集 handler 描述
+    for bl in ir_data.get('business_logic', []):
+        desc = bl.get('description', '')
+        if desc:
+            searchable.append(desc)
+    
+    # 收集 struct 名和字段
+    for struct in ir_data.get('structs', []):
+        struct_str = f"{struct.get('name', '')} {' '.join(f.get('name', '') for f in struct.get('fields', []))}"
+        if struct_str:
+            searchable.append(struct_str)
+    
+    # 语义搜索
+    results = semantic_search(query, searchable, top_k=min(top_k, len(searchable)))
+    
+    # 提取相关关键词
+    expanded = []
+    for r in results:
+        doc = r['doc']
+        # 从匹配的文档中提取有意义的词
+        tokens = _tokenize(doc)
+        for t in tokens:
+            if len(t) >= 2 and t not in expanded:
+                expanded.append(t)
+        if len(expanded) >= top_k * 2:
+            break
+    
+    return expanded[:top_k * 2]
+
+def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None, profile: dict = None) -> List[Dict]:
     """搜索代码 — 从 IR 缓存中匹配函数/路由/struct
     
     复用 learn_repo.py 扫描后的 IR 缓存
+    
+    增强：语义搜索作为精确匹配的补充
     """
     # 加载 profile 获取 query_aliases
-    import json
-    profile_path = str(Path(__file__).parent.parent / "profiles" / "default.json")
-    profile = {}
-    try:
-        with open(profile_path) as f:
-            profile = json.load(f)
-    except:
-        pass
+    if profile is None:
+        import json
+        profile_path = str(Path(__file__).parent.parent / "profiles" / "default.json")
+        profile = {}
+        try:
+            with open(profile_path) as f:
+                profile = json.load(f)
+        except:
+            pass
     
     # 使用 query_expander 扩展查询词
     expanded_queries = expand_query(query, profile)
@@ -114,93 +279,115 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
             with open(cache_file) as f:
                 ir_data = json.load(f)
 
-            # 搜索函数（用扩展后的查询词）
-            results = []
-            for expanded_query in expanded_queries:
-                query_lower = expanded_query.lower()
-                for func in ir_data.get('functions', []):
-                    if query_lower in func.get('name', '').lower():
-                        results.append({
-                            'type': 'function',
-                            'title': func['name'],
-                            'path': func.get('file', ''),
-                            'line': func.get('line', 0),
-                            'content': func.get('signature', ''),
-                            'score': 1.0,
-                        })
-
-            # 搜索路由
-            for route in ir_data.get('routes', []):
-                route_str = f"{route.get('method', '')} {route.get('path', '')} {route.get('handler', '')}".lower()
-                if any(eq.lower() in route_str for eq in expanded_queries):
-                    results.append({
-                        'type': 'route',
-                        'title': f"{route.get('method', '').upper()} {route.get('path', '')}",
-                        'path': route.get('file', ''),
-                        'line': route.get('line', 0),
-                        'content': route.get('handler', ''),
-                        'score': 1.0,
-                    })
-
-            # 搜索 struct
-            for struct in ir_data.get('structs', []):
-                if any(eq.lower() in struct.get('name', '').lower() for eq in expanded_queries):
-                    results.append({
-                        'type': 'struct',
-                        'title': struct['name'],
-                        'path': struct.get('file', ''),
-                        'line': struct.get('line', 0),
-                        'content': '\n'.join([f.get('name', str(f)) for f in struct.get('fields', [])[:5]]),
-                        'score': 1.0,
-                    })
-
-            # 搜索 entity-table 映射
-            for et in ir_data.get('entity_tables', []):
-                entity = et.get('entity', '')
-                table = et.get('table', '')
-                searchable = f"{entity} {table}".lower()
-                if any(eq.lower() in searchable for eq in expanded_queries):
-                    results.append({
-                        'type': 'entity_table',
-                        'title': f"{entity} -> {table}",
-                        'path': et.get('file', ''),
-                        'line': 0,
-                        'content': searchable,
-                        'score': 1.0,
-                    })
-
-            # 搜索 business_logic
-            for bl in ir_data.get('business_logic', []):
-                handler = bl.get('handler', '')
-                route = bl.get('route', '')
-                searchable = f"{handler} {route}".lower()
-                if any(eq.lower() in searchable for eq in expanded_queries):
-                    results.append({
-                        'type': 'business_logic',
-                        'title': f"业务逻辑: {handler}",
-                        'path': bl.get('file', ''),
-                        'line': 0,
-                        'content': searchable[:200],
-                        'score': 1.0,
-                    })
-
-            # 搜索 business_terminology
-            for term, info in ir_data.get('business_terminology', {}).items():
-                searchable = term.lower()
-                if any(eq.lower() in searchable for eq in expanded_queries):
-                    results.append({
-                        'type': 'business_terminology',
-                        'title': f"业务术语: {term}",
-                        'path': '',
-                        'line': 0,
-                        'content': searchable,
-                        'score': 1.0,
-                    })
-
-            return results[:10]
+            # 先用精确 + fuzzy 搜索
+            results = _search_code_exact(ir_data, expanded_queries, top_k)
+            
+            # 如果结果太少，启用语义搜索补充
+            if len(results) < top_k // 2:
+                semantic_queries = semantic_expand_query(query, ir_data, top_k=15)
+                if semantic_queries:
+                    semantic_results = _search_code_exact(ir_data, semantic_queries, top_k)
+                    # 合并去重（基于 path+type）
+                    seen = {(r.get('path'), r.get('type')) for r in results}
+                    for sr in semantic_results:
+                        key = (sr.get('path'), sr.get('type'))
+                        if key not in seen:
+                            seen.add(key)
+                            results.append(sr)
+            
+            return results[:top_k]
     
     return []
 
+
+def _search_code_exact(ir_data: dict, queries: List[str], top_k: int) -> List[Dict]:
+    """精确搜索 — 复用原有的 fuzzy + synonym 搜索逻辑"""
+    results = []
+    for q in queries:
+        query_lower = q.lower()
+        
+        # 搜索函数
+        for func in ir_data.get('functions', []):
+            fname = func.get('name', '').lower()
+            fsig = func.get('signature', '').lower()
+            score = fuzzy_score(query_lower, fname)
+            if score >= 0.3:
+                results.append({
+                    'type': 'function',
+                    'title': func['name'],
+                    'path': func.get('file', ''),
+                    'line': func.get('line', 0),
+                    'content': func.get('signature', ''),
+                    'score': score,
+                })
+        
+        # 搜索路由
+        for route in ir_data.get('routes', []):
+            route_str = f"{route.get('method', '')} {route.get('path', '')} {route.get('handler', '')}".lower()
+            score = fuzzy_score(query_lower, route_str)
+            if score >= 0.3:
+                results.append({
+                    'type': 'route',
+                    'title': f"{route.get('method', '').upper()} {route.get('path', '')}",
+                    'path': route.get('file', ''),
+                    'line': route.get('line', 0),
+                    'content': route.get('handler', ''),
+                    'score': score,
+                })
+        
+        # 搜索 struct
+        for struct in ir_data.get('structs', []):
+            sname = struct.get('name', '').lower()
+            score = fuzzy_score(query_lower, sname)
+            if score >= 0.3:
+                results.append({
+                    'type': 'struct',
+                    'title': struct['name'],
+                    'path': struct.get('file', ''),
+                    'line': struct.get('line', 0),
+                    'content': '\n'.join([f.get('name', str(f)) for f in struct.get('fields', [])[:5]]),
+                    'score': score,
+                })
+        
+        # 搜索 entity-table 映射
+        for et in ir_data.get('entity_tables', []):
+            entity = et.get('entity', '')
+            table = et.get('table', '')
+            searchable = f"{entity} {table}".lower()
+            score = fuzzy_score(query_lower, searchable)
+            if score >= 0.3:
+                results.append({
+                    'type': 'entity_table',
+                    'title': f"{entity} -> {table}",
+                    'path': et.get('file', ''),
+                    'line': 0,
+                    'content': searchable,
+                    'score': score,
+                })
+        
+        # 搜索 business_logic
+        for bl in ir_data.get('business_logic', []):
+            handler = bl.get('handler', '')
+            route = bl.get('route', '')
+            searchable = f"{handler} {route}".lower()
+            score = fuzzy_score(query_lower, searchable)
+            if score >= 0.3:
+                results.append({
+                    'type': 'business_logic',
+                    'title': f"业务逻辑: {handler}",
+                    'path': bl.get('file', ''),
+                    'line': 0,
+                    'content': searchable[:200],
+                    'score': score,
+                })
+    
+    # 去重（基于 path + type），保留最高分
+    seen = {}
+    for r in results:
+        key = (r.get('path'), r.get('type'))
+        if key not in seen or r.get('score', 0) > seen[key].get('score', 0):
+            seen[key] = r
+    return list(seen.values())
 
 
 def search_schema(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
