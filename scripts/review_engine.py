@@ -590,7 +590,7 @@ class ReviewEngine:
         return prompt
 
     def _get_kb_references(self, prd_text: str) -> List[str]:
-        """根据 PRD 内容，从知识库选择相关知识"""
+        """根据 PRD 内容，从知识库选择相关知识 — 增强版"""
         references = []
         
         # 知识库路径
@@ -598,78 +598,67 @@ class ReviewEngine:
         if not kb_base.exists():
             return references
         
-        # PRD 关键词
-        keywords = re.findall(r'[\u4e00-\u9fa5]{2,}|[a-zA-Z]{2,}', prd_text)
-        keywords = list(set(k.lower() for k in keywords))
+        # PRD 关键词（按权重排序）
+        high_priority = ['竞价', '出价', 'bidding', '竞价引擎', 'CTR', 'CVR', '排序', '召回', '推荐']
+        medium_priority = ['redis', '缓存', 'kafka', '消息队列', 'mysql', '数据库', 'es', 'elasticsearch', '搜索']
+        low_priority = ['k8s', 'docker', '部署', '架构', '设计', '高并发', '微服务', 'agent', 'AI']
         
-        # 知识目录映射
-        kb_dirs = {
-            '竞价': 'advertising',
-            '出价': 'advertising',
-            'bidding': 'advertising',
-            '竞价引擎': 'advertising',
-            'redis': 'middleware',
-            '缓存': 'middleware',
-            'kafka': 'middleware',
-            '消息队列': 'middleware',
-            'mysql': 'middleware',
-            '数据库': 'middleware',
-            'es': 'middleware',
-            'elasticsearch': 'middleware',
-            '搜索': 'middleware',
-            'k8s': 'infrastructure',
-            'docker': 'infrastructure',
-            '部署': 'infrastructure',
-            '架构': 'architecture',
-            '设计': 'architecture',
-            '高并发': 'architecture',
-            '微服务': 'microservice',
-            'agent': 'agent-ai',
-            'AI': 'agent-ai',
-            '推荐': 'advertising',
-            'CTR': 'advertising',
-            'CVR': 'advertising',
-            '排序': 'advertising',
-            '召回': 'advertising',
-        }
+        # 精确匹配（高优先级）
+        for kw in high_priority:
+            if kw.lower() in prd_text.lower():
+                kb_dir = 'advertising'
+                kb_path = kb_base / kb_dir
+                if kb_path.exists():
+                    # 读取前 3 个深度文件（前 150 行）
+                    md_files = sorted(kb_path.rglob('*-deep.md'))[:3]
+                    for md_file in md_files:
+                        try:
+                            content = md_file.read_text(encoding='utf-8', errors='ignore')
+                            lines = content.split('\n')[:150]
+                            references.append(f"### {md_file.relative_to(kb_base)}")
+                            references.append('\n'.join(lines))
+                            references.append("")
+                        except:
+                            pass
+                    break  # 只取最高优先级
         
-        # 匹配关键词
-        matched_dirs = set()
-        for kw in keywords:
-            if kw in kb_dirs:
-                matched_dirs.add(kb_dirs[kw])
+        # 中优先级
+        if not references:
+            for kw in medium_priority:
+                if kw.lower() in prd_text.lower():
+                    kb_dir = 'middleware'
+                    kb_path = kb_base / kb_dir
+                    if kb_path.exists():
+                        md_files = sorted(kb_path.rglob('*-deep.md'))[:2]
+                        for md_file in md_files:
+                            try:
+                                content = md_file.read_text(encoding='utf-8', errors='ignore')
+                                lines = content.split('\n')[:150]
+                                references.append(f"### {md_file.relative_to(kb_base)}")
+                                references.append('\n'.join(lines))
+                                references.append("")
+                            except:
+                                pass
+                        break
         
-        # 读取相关知识文件（只取前 200 行）
-        for kb_dir in matched_dirs:
-            kb_path = kb_base / kb_dir
-            if not kb_path.exists():
-                continue
-            
-            # 读取 README.md（前 500 行）
-            readme = kb_path / 'README.md'
-            if readme.exists():
-                try:
-                    content = readme.read_text(encoding='utf-8', errors='ignore')
-                    lines = content.split('\n')[:500]
-                    references.append(f"### {kb_dir}/README.md")
-                    references.append('\n'.join(lines))
-                    references.append("")
-                except:
-                    pass
-            
-            # 读取前 2 个深度文件（前 200 行）
-            md_files = sorted(kb_path.rglob('*.md'))[:2]
-            for md_file in md_files:
-                if md_file.name == 'README.md':
-                    continue
-                try:
-                    content = md_file.read_text(encoding='utf-8', errors='ignore')
-                    lines = content.split('\n')[:200]
-                    references.append(f"### {md_file.relative_to(kb_base)}")
-                    references.append('\n'.join(lines))
-                    references.append("")
-                except:
-                    pass
+        # 低优先级
+        if not references:
+            for kw in low_priority:
+                if kw.lower() in prd_text.lower():
+                    kb_dir = 'architecture'
+                    kb_path = kb_base / kb_dir
+                    if kb_path.exists():
+                        md_files = sorted(kb_path.rglob('*-deep.md'))[:2]
+                        for md_file in md_files:
+                            try:
+                                content = md_file.read_text(encoding='utf-8', errors='ignore')
+                                lines = content.split('\n')[:150]
+                                references.append(f"### {md_file.relative_to(kb_base)}")
+                                references.append('\n'.join(lines))
+                                references.append("")
+                            except:
+                                pass
+                        break
         
         return references
 

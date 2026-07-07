@@ -210,6 +210,40 @@ class CodeKnowledgeExtractor:
             "flow": flow,
         }
     
+    
+    def _extract_cross_repo_deps(self, ir: IRDocument) -> List[Dict]:
+        """提取跨仓库依赖 — 从 HTTP 调用和 RPC 调用推断"""
+        deps = []
+        
+        # 扫描所有 Go 文件
+        for go_file in self.repo_path.rglob("**/*.go"):
+            if "test" in go_file.name.lower():
+                continue
+            try:
+                content = go_file.read_text(encoding="utf-8", errors="ignore")
+            except:
+                continue
+            
+            # 找 HTTP 调用
+            http_calls = re.findall(r'(http\.(Get|Post|Put|Delete)\s*\(\s*"[^"]+"\s*,\s*[^)]+\)', content)
+            if http_calls:
+                deps.append({
+                    'type': 'http',
+                    'file': str(go_file.relative_to(self.repo_path.parent)),
+                    'calls': [c[0] for c in http_calls[:5]],
+                })
+            
+            # 找 RPC 调用
+            rpc_calls = re.findall(r'(grpc\.(Client|Server)\s*\w+\s*\()', content)
+            if rpc_calls:
+                deps.append({
+                    'type': 'rpc',
+                    'file': str(go_file.relative_to(self.repo_path.parent)),
+                    'calls': [c[0] for c in rpc_calls[:5]],
+                })
+        
+        return deps
+
     def _extract_flow(self) -> Dict[str, Any]:
         """提取核心流程逻辑"""
         flow = {
@@ -4207,3 +4241,87 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ============================================================================
+# 知识库缓存机制
+# ============================================================================
+
+class KnowledgeCache:
+    """知识库缓存 — 避免重复扫描"""
+    
+    def __init__(self, cache_dir: str):
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_file = self.cache_dir / 'kb_cache.json'
+        self.cache = self._load_cache()
+    
+    def _load_cache(self) -> dict:
+        """加载缓存"""
+        if self.cache_file.exists():
+            try:
+                return json.load(open(self.cache_file))
+            except:
+                return {}
+        return {}
+    
+    def _save_cache(self):
+        """保存缓存"""
+        self.cache_file.write_text(json.dumps(self.cache, ensure_ascii=False, indent=2), encoding='utf-8')
+    
+    def get(self, key: str, default=None):
+        """获取缓存"""
+        return self.cache.get(key, default)
+    
+    def set(self, key: str, value: dict, ttl: int = 3600):
+        """设置缓存"""
+        self.cache[key] = {
+            'data': value,
+            'timestamp': time.time(),
+            'ttl': ttl,
+        }
+        self._save_cache()
+    
+    def is_expired(self, key: str) -> bool:
+        """检查是否过期"""
+        entry = self.cache.get(key)
+        if not entry:
+            return True
+        return time.time() - entry.get('timestamp', 0) > entry.get('ttl', 3600)
+    
+    def invalidate(self, key: str):
+        """失效缓存"""
+        if key in self.cache:
+            del self.cache[key]
+            self._save_cache()
+
+
+def generate_kb_cache(kb_base: str, cache_dir: str) -> dict:
+    """生成知识库缓存 — 提取文件索引和关键词"""
+    cache = KnowledgeCache(cache_dir)
+    
+    if cache.is_expired('kb_index'):
+        kb_path = Path(kb_base)
+        if not kb_path.exists():
+            return {}
+        
+        index = {}
+        md_files = list(kb_path.rglob('**/*.md'))
+        for md_file in md_files[:100]:  # 限制数量
+            try:
+                content = md_file.read_text(encoding='utf-8', errors='ignore')
+                # 提取关键词
+                keywords = re.findall(r'[\u4e00-\u9fa5]{2,}|[a-zA-Z]{2,}', content.lower())
+                keywords = list(set(keywords))
+                
+                rel_path = str(md_file.relative_to(kb_path.parent))
+                index[rel_path] = {
+                    'keywords': keywords[:20],
+                    'lines': len(content.split('\n')),
+                }
+            except:
+                continue
+        
+        cache.set('kb_index', index)
+    
+    return cache.get('kb_index', {})
