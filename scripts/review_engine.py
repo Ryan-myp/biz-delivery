@@ -654,8 +654,12 @@ class ReviewEngine:
                 kb_dir = 'advertising'
                 kb_path = kb_base / kb_dir
                 if kb_path.exists():
-                    # 读取前 3 个深度文件（前 150 行）
-                    md_files = sorted(kb_path.rglob('*-deep.md'))[:3]
+                    # 读取前 2 个深度文件 + 1 个排障手册（各 150 行）
+                    md_files = sorted(kb_path.rglob('*-deep.md'))[:2]
+                    # 加上广告排障手册
+                    ad_trouble = kb_base / 'advertising' / 'ad-troubleshooting-manual-deep.md'
+                    if ad_trouble.exists():
+                        md_files.append(ad_trouble)
                     for md_file in md_files:
                         try:
                             content = md_file.read_text(encoding='utf-8', errors='ignore')
