@@ -309,6 +309,44 @@ def rrf_fuse(candidates: List[List[Dict]], k: int = 60) -> List[Dict]:
 # 5. 主流程
 # ──────────────────────────────────────────────
 
+
+
+def search_kb(query: str, kb_paths: List[str], top_k: int = 10, profile_path: str = None) -> List[Dict]:
+    """搜索知识库 — 从 markdown 文件中提取相关知识"""
+    results = []
+    
+    if not kb_paths:
+        kb_paths = ["/Users/yanping.ma/ryan-personal-knowledge/knowledge"]
+    
+    for kb_path in kb_paths:
+        kb_dir = Path(kb_path)
+        if not kb_dir.exists():
+            continue
+        
+        md_files = list(kb_dir.rglob('**/*.md'))
+        for md_file in md_files[:50]:
+            try:
+                md_content = md_file.read_text(encoding='utf-8', errors='ignore')
+            except:
+                continue
+            
+            query_lower = query.lower()
+            if query_lower in md_content.lower():
+                idx = md_content.lower().find(query_lower)
+                context_start = max(0, idx - 200)
+                context_end = min(len(md_content), idx + 500)
+                context = md_content[context_start:context_end].strip()
+                
+                results.append({
+                    'type': 'knowledge',
+                    'title': md_file.name,
+                    'path': str(md_file.relative_to(kb_dir.parent)),
+                    'content': context[:300],
+                    'score': 1.0,
+                })
+    
+    return results[:top_k]
+
 def run_evidence_query(query: str, profile_path: str = None, wiki_path: str = None,
                        top_k: int = 10, sources: List[str] = None, cache_dir: str = None) -> Dict[str, Any]:
     """
@@ -348,6 +386,21 @@ def run_evidence_query(query: str, profile_path: str = None, wiki_path: str = No
         if results:
             candidates.append(results)
             path_results['business'] = results
+
+    # 知识库搜索
+    if "knowledge" in sources:
+        kb_paths = []
+        profile_path = str(Path(__file__).parent.parent / "profiles" / "default.json")
+        try:
+            with open(profile_path) as f:
+                profile = json.load(f)
+            kb_paths = profile.get("knowledge_base_paths", [])
+        except:
+            pass
+        results = search_kb(query, kb_paths, top_k, profile_path)
+        if results:
+            candidates.append(results)
+            path_results["knowledge"] = results
 
     # Wiki 增强
     if wiki_path and wiki_path != 'none':

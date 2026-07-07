@@ -356,6 +356,14 @@ class TDEngine:
                 prompt_parts.append(f"- **未覆盖函数**: {', '.join(uncovered)}")
             prompt_parts.append("")
         
+        # 注入核心业务流程
+        if hasattr(ir, 'core_flows') and ir.core_flows:
+            prompt_parts.append("## 核心业务流程（从代码自动推断）")
+            for cf in ir.core_flows[:6]:
+                prompt_parts.append(f"- **{cf.get('flow_name', '?')}**: {cf.get('entry_point', '?')} → {cf.get('data_flow', '?')}")
+                prompt_parts.append(f"  调用: {', '.join(cf.get('call_chain', [])[:5])}")
+            prompt_parts.append("")
+        
         # 证据查询结果
         if filtered.get('evidence'):
             prompt_parts.append("## 代码库证据（基于 PRD 关键词查询）")

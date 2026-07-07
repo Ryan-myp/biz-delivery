@@ -314,7 +314,18 @@ class ReviewEngine:
         
         # 测试覆盖情况
 # 从 profile 加载状态机/业务规则/服务拓扑
-        profile_data = self.profile
+        
+        # 注入核心业务流程（从 IR 自动推断）
+        if hasattr(ir, 'core_flows') and ir.core_flows:
+            prompt_parts.append("## 核心业务流程（从代码自动推断）")
+            for cf in ir.core_flows[:8]:
+                prompt_parts.append(f"- **{cf.get('flow_name', '?')}**: {cf.get('entry_point', '?')}")
+                prompt_parts.append(f"  路由: {cf.get('route_prefix', '?')}")
+                prompt_parts.append(f"  调用链: {', '.join(cf.get('call_chain', [])[:6])}")
+                prompt_parts.append(f"  数据流: {cf.get('data_flow', '?')}")
+                prompt_parts.append(f"  深度: {cf.get('max_depth', 0)}")
+            prompt_parts.append("")
+        
         if profile_data.get("state_machines"):
             prompt_parts.append("## 状态机（从 profile 配置）")
             for entity, sm in profile_data["state_machines"].items():

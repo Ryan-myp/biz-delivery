@@ -478,6 +478,9 @@ class IRDocument:
     # 业务逻辑（从入口点追踪调用链）
     business_logic: List[Dict] = field(default_factory=list)  # {route, handler, call_chain, description}
     
+    # 核心业务流程（自动推断）
+    core_flows: List[Dict] = field(default_factory=list)  # {flow_name, entry_point, call_chain, data_flow, max_depth}
+    
     # 向后兼容
     compat_issues: List[Dict] = field(default_factory=list)
 
@@ -623,6 +626,8 @@ class GoScanner:
         # 构建调用图和入口点（测试扫描和 API 文档提取在 scan_directory 中统一调用）
         self._extract_business_logic(ir, dir_path, max_entries=100)
         self._build_call_graph_from_signatures(ir)
+        # 推断核心业务流程（从 business_logic 聚类）
+        ir.core_flows = self._infer_core_business_flow(ir)
         
         # 提取 SQL/GORM 操作
         self._extract_sql_operations(ir, dir_path, max_files)
@@ -1412,6 +1417,116 @@ class GoScanner:
         
         return result
 
+    def _infer_core_business_flow(self, ir: IRDocument) -> List[Dict]:
+        """从业务逻辑中自动推断核心业务流程
+        
+        策略：
+        1. 从 business_logic 中提取调用链最深的 handler（通常是核心流程入口）
+        2. 按调用深度排序，找到最长调用链
+        3. 识别关键业务阶段（创建→审核→发布→上线）
+        4. 提取数据流向（用户→API→Service→DAO→DB）
+        """
+        if not ir.business_logic:
+            return []
+        
+        flows = []
+        for bl in ir.business_logic:
+            call_tree = bl.get('call_tree', [])
+            max_depth = self._calc_max_depth(call_tree)
+            chain = self._flatten_call_chain(call_tree)
+            flows.append({
+                "handler": bl.get('handler', ''),
+                "route": bl.get('route', ''),
+                "method": bl.get('method', ''),
+                "file": bl.get('file', ''),
+                "max_depth": max_depth,
+                "call_chain": chain[:15],
+                "data_points": bl.get('data_points', []),
+                "control_points": bl.get('control_points', []),
+            })
+        
+        flows.sort(key=lambda x: x['max_depth'], reverse=True)
+        grouped = self._cluster_business_flows(flows[:15])
+        return grouped
+    
+    def _calc_max_depth(self, call_tree: list, current: int = 0) -> int:
+        if not call_tree:
+            return current
+        max_d = current
+        for entry in call_tree:
+            d = self._calc_max_depth(entry.get('calls', []), current + 1)
+            max_d = max(max_d, d)
+        return max_d
+    
+    def _flatten_call_chain(self, call_tree: list, chain: list = None) -> list:
+        if chain is None:
+            chain = []
+        for entry in call_tree:
+            name = entry.get('name', '')
+            if name and name not in chain:
+                chain.append(name)
+            self._flatten_call_chain(entry.get('calls', []), chain)
+        return chain
+    
+    def _cluster_business_flows(self, flows: list) -> List[Dict]:
+        clusters = defaultdict(list)
+        for f in flows:
+            route = f.get('route', '')
+            parts = route.rstrip('/').split('/')
+            prefix = '/'.join(parts[:3]) if len(parts) >= 3 else route
+            clusters[prefix].append(f)
+        
+        result = []
+        for prefix, group in clusters.items():
+            group.sort(key=lambda x: x['max_depth'], reverse=True)
+            top = group[0]
+            flow_name = self._infer_flow_name(prefix, top)
+            all_chains = []
+            for g in group:
+                all_chains.extend(g['call_chain'])
+            all_chains = list(dict.fromkeys(all_chains))[:20]
+            
+            data_flow_parts = []
+            for dp in top.get('data_points', [])[:5]:
+                if any(kw in dp.lower() for kw in ['dao.', 'db.', 'insert', 'update', 'query']):
+                    data_flow_parts.append('DB')
+                elif any(kw in dp.lower() for kw in ['service.', 'create', 'build']):
+                    data_flow_parts.append('Service')
+                elif any(kw in dp.lower() for kw in ['req', 'bind', 'valid']):
+                    data_flow_parts.append('Request')
+            if not data_flow_parts:
+                data_flow_parts = ['Handler', 'Service', 'DAO']
+            
+            result.append({
+                "flow_name": flow_name,
+                "route_prefix": prefix,
+                "handlers": [g['handler'] for g in group],
+                "entry_point": top['handler'],
+                "call_chain": all_chains,
+                "data_flow": " → ".join(data_flow_parts),
+                "max_depth": top['max_depth'],
+                "stage_count": len(group),
+            })
+        return result
+    
+    def _infer_flow_name(self, route_prefix: str, flow: dict) -> str:
+        handler = flow.get('handler', '').lower()
+        route = flow.get('route', '').lower()
+        verb_map = {
+            'create': '创建', 'add': '新增', 'insert': '插入',
+            'update': '更新', 'edit': '编辑', 'modify': '修改',
+            'delete': '删除', 'remove': '移除',
+            'get': '查询', 'list': '列表', 'search': '搜索', 'query': '检索',
+            'approve': '审核', 'review': '复核', 'audit': '审计',
+            'publish': '发布', 'release': '上线', 'submit': '提交',
+            'pause': '暂停', 'resume': '恢复', 'activate': '激活',
+            'share': '分享', 'export': '导出', 'import': '导入',
+            'sync': '同步', 'refresh': '刷新',
+        }
+        for eng, cn in verb_map.items():
+            if eng in handler or eng in route:
+                return f"{cn}流程"
+        return f"业务流 ({route_prefix})"
 
     def _scan_test_files(self, ir: IRDocument, dir_path: Path, max_files: int):
         """扫描测试文件 — 提取测试函数、被测函数、覆盖率报告"""

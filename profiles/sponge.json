@@ -56,5 +56,9 @@
       "token",
       "jwt"
     ]
-  }
+  },
+  "knowledge_base_paths": [
+    "/Users/yanping.ma/ryan-personal-knowledge/knowledge"
+  ],
+  "wiki_engine": "ryan-personal-knowledge"
 }
