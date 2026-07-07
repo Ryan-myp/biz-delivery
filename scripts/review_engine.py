@@ -639,32 +639,32 @@ class ReviewEngine:
             if kw in kb_dirs:
                 matched_dirs.add(kb_dirs[kw])
         
-        # 读取相关知识文件
+        # 读取相关知识文件（只取前 200 行）
         for kb_dir in matched_dirs:
             kb_path = kb_base / kb_dir
             if not kb_path.exists():
                 continue
             
-            # 读取 README.md
+            # 读取 README.md（前 500 行）
             readme = kb_path / 'README.md'
             if readme.exists():
                 try:
                     content = readme.read_text(encoding='utf-8', errors='ignore')
+                    lines = content.split('\n')[:500]
                     references.append(f"### {kb_dir}/README.md")
-                    references.append(content[:1000])
+                    references.append('\n'.join(lines))
                     references.append("")
                 except:
                     pass
             
-            # 读取前 3 个深度文件
-            md_files = sorted(kb_path.rglob('*.md'))[:3]
+            # 读取前 2 个深度文件（前 200 行）
+            md_files = sorted(kb_path.rglob('*.md'))[:2]
             for md_file in md_files:
                 if md_file.name == 'README.md':
                     continue
                 try:
                     content = md_file.read_text(encoding='utf-8', errors='ignore')
-                    # 只取前 500 行
-                    lines = content.split('\n')[:500]
+                    lines = content.split('\n')[:200]
                     references.append(f"### {md_file.relative_to(kb_base)}")
                     references.append('\n'.join(lines))
                     references.append("")
