@@ -60,5 +60,105 @@
   "knowledge_base_paths": [
     "/Users/yanping.ma/ryan-personal-knowledge/knowledge"
   ],
-  "wiki_engine": "ryan-personal-knowledge"
+  "wiki_engine": "ryan-personal-knowledge",
+  "synonyms": {
+    "素材": [
+      "creative",
+      "广告图",
+      "banner",
+      "图片",
+      "视频",
+      "media",
+      "asset"
+    ],
+    "竞价": [
+      "bidding",
+      "出价",
+      "拍卖",
+      "竞价引擎",
+      "realtime bidding"
+    ],
+    "广告组": [
+      "adgroup",
+      "广告计划",
+      "campaign"
+    ],
+    "创意审核": [
+      "review",
+      "审核",
+      "approval",
+      "audit"
+    ],
+    "归因": [
+      "attribution",
+      "归因分析",
+      "conversion attribution"
+    ],
+    "缓存": [
+      "cache",
+      "redis",
+      "memcached"
+    ],
+    "数据库": [
+      "db",
+      "database",
+      "mysql",
+      "postgresql"
+    ],
+    "消息队列": [
+      "mq",
+      "message queue",
+      "kafka",
+      "rabbitmq",
+      "nats"
+    ],
+    "高并发": [
+      "high concurrency",
+      "高吞吐",
+      "qps",
+      "tps"
+    ],
+    "微服务": [
+      "microservice",
+      "grpc",
+      "rpc"
+    ],
+    "推荐": [
+      "recommendation",
+      "recsys",
+      "推荐系统"
+    ],
+    "排序": [
+      "ranking",
+      "排序引擎",
+      "rerank"
+    ],
+    "召回": [
+      "recall",
+      "召回引擎",
+      "multi-recall"
+    ],
+    "CTR": [
+      "点击率",
+      "click through rate"
+    ],
+    "CVR": [
+      "转化率",
+      "conversion rate"
+    ],
+    "eCPM": [
+      "千次展示收益",
+      "effective cpm"
+    ],
+    "预算": [
+      "budget",
+      "花费",
+      "扣费"
+    ],
+    "定向": [
+      "targeting",
+      "定向投放",
+      "受众"
+    ]
+  }
 }

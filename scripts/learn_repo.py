@@ -1459,34 +1459,85 @@ class GoScanner:
     def _infer_core_business_flow(self, ir: IRDocument) -> List[Dict]:
         """从业务逻辑中自动推断核心业务流程
         
-        策略：
+        增强策略：
         1. 从 business_logic 中提取调用链最深的 handler（通常是核心流程入口）
-        2. 按调用深度排序，找到最长调用链
-        3. 识别关键业务阶段（创建→审核→发布→上线）
-        4. 提取数据流向（用户→API→Service→DAO→DB）
+        2. 从 entry_points 提取非 HTTP 入口（CLI commands, cron jobs, background workers）
+        3. 按调用深度排序，找到最长调用链
+        4. 识别关键业务阶段（创建→审核→发布→上线）
+        5. 提取数据流向（用户→API→Service→DAO→DB）
+        6. 合并调用链相似的 flow（避免重复）
         """
-        if not ir.business_logic:
-            return []
-        
         flows = []
-        for bl in ir.business_logic:
-            call_tree = bl.get('call_tree', [])
-            max_depth = self._calc_max_depth(call_tree)
-            chain = self._flatten_call_chain(call_tree)
-            flows.append({
-                "handler": bl.get('handler', ''),
-                "route": bl.get('route', ''),
-                "method": bl.get('method', ''),
-                "file": bl.get('file', ''),
-                "max_depth": max_depth,
-                "call_chain": chain[:15],
-                "data_points": bl.get('data_points', []),
-                "control_points": bl.get('control_points', []),
-            })
         
+        # 1. 从 HTTP routes 推断
+        if ir.business_logic:
+            for bl in ir.business_logic:
+                call_tree = bl.get('call_tree', [])
+                max_depth = self._calc_max_depth(call_tree)
+                chain = self._flatten_call_chain(call_tree)
+                flows.append({
+                    "handler": bl.get('handler', ''),
+                    "route": bl.get('route', ''),
+                    "method": bl.get('method', ''),
+                    "file": bl.get('file', ''),
+                    "entry_type": "http",
+                    "max_depth": max_depth,
+                    "call_chain": chain[:15],
+                    "data_points": bl.get('data_points', []),
+                    "control_points": bl.get('control_points', []),
+                    "data_flow": bl.get('data_flow', {}),
+                })
+        
+        # 2. 从 entry_points 推断非 HTTP 入口
+        if hasattr(ir, 'entry_points') and ir.entry_points:
+            for ep in ir.entry_points[:20]:
+                if isinstance(ep, str):
+                    ep = {"name": ep}
+                ep_name = ep.get('name', ep.get('package', ''))
+                if not ep_name:
+                    continue
+                # 检查是否有对应的非 HTTP 入口（如 CLI command, main func, worker）
+                files = ep.get('files', [])
+                if not files and isinstance(ep.get('files', []), list):
+                    files = ep['files']
+                
+                # 从 call_graph 推断入口点的下游调用
+                downstream = []
+                if hasattr(ir, 'call_graph') and ir.call_graph:
+                    for edge in ir.call_graph:
+                        if isinstance(edge, dict):
+                            caller = edge.get('caller', edge.get('from', ''))
+                            if caller == ep_name:
+                                downstream.append(edge.get('callee', edge.get('to', '')))
+                        elif hasattr(edge, 'caller'):
+                            if edge.caller == ep_name:
+                                downstream.append(edge.callee)
+                
+                if downstream:
+                    flows.append({
+                        "handler": ep_name,
+                        "route": "",
+                        "method": "",
+                        "file": files[0] if files else "",
+                        "entry_type": "entry_point",
+                        "max_depth": 0,
+                        "call_chain": downstream[:15],
+                        "data_points": [],
+                        "control_points": [],
+                        "data_flow": {},
+                    })
+        
+        # 3. 按深度排序，取 top 20
         flows.sort(key=lambda x: x['max_depth'], reverse=True)
-        grouped = self._cluster_business_flows(flows[:15])
-        return grouped
+        flows = flows[:20]
+        
+        # 4. 聚类合并（基于 route prefix + call chain similarity）
+        grouped = self._cluster_business_flows(flows)
+        
+        # 5. 去重：合并调用链高度相似（Jaccard > 0.7）的 flow
+        deduped = self._deduplicate_flows(grouped)
+        
+        return deduped
     
     def _calc_max_depth(self, call_tree: list, current: int = 0) -> int:
         if not call_tree:
@@ -1508,43 +1559,86 @@ class GoScanner:
         return chain
     
     def _cluster_business_flows(self, flows: list) -> List[Dict]:
+        """聚类业务流 — 基于 route prefix + entry_type
+        
+        增强：
+        - 对 entry_point 类型的 flow 单独分组（CLI/command/worker）
+        - 对 HTTP flow 按 route prefix 聚类
+        - 合并同一 cluster 中的 handler 和 data_flow
+        """
         clusters = defaultdict(list)
         for f in flows:
+            entry_type = f.get('entry_type', 'http')
             route = f.get('route', '')
-            parts = route.rstrip('/').split('/')
-            prefix = '/'.join(parts[:3]) if len(parts) >= 3 else route
-            clusters[prefix].append(f)
+            handler = f.get('handler', '')
+            
+            if entry_type == 'entry_point':
+                # entry_point 类型：用 handler name 作为 key
+                key = f"__entry_point__/{handler}"
+            elif route:
+                parts = route.rstrip('/').split('/')
+                prefix = '/'.join(parts[:3]) if len(parts) >= 3 else route
+                key = f"http/{prefix}"
+            else:
+                # fallback: 用 handler 名
+                key = f"http/__unknown__/{handler}"
+            
+            clusters[key].append(f)
         
         result = []
-        for prefix, group in clusters.items():
+        for key, group in clusters.items():
             group.sort(key=lambda x: x['max_depth'], reverse=True)
             top = group[0]
-            flow_name = self._infer_flow_name(prefix, top)
+            
+            # 推断 flow name
+            if key.startswith('__entry_point__'):
+                flow_name = f"{top['handler']} 入口"
+            else:
+                route_prefix = key.split('/', 2)[-1] if '/' in key else key
+                flow_name = self._infer_flow_name(route_prefix, top)
+            
+            # 合并 call_chain
             all_chains = []
             for g in group:
                 all_chains.extend(g['call_chain'])
-            all_chains = list(dict.fromkeys(all_chains))[:20]
+            all_chains = list(dict.fromkeys(all_chains))[:30]
             
+            # 合并 data_flow（从 data_flow dict 中提取）
             data_flow_parts = []
-            for dp in top.get('data_points', [])[:5]:
-                if any(kw in dp.lower() for kw in ['dao.', 'db.', 'insert', 'update', 'query']):
-                    data_flow_parts.append('DB')
-                elif any(kw in dp.lower() for kw in ['service.', 'create', 'build']):
-                    data_flow_parts.append('Service')
-                elif any(kw in dp.lower() for kw in ['req', 'bind', 'valid']):
-                    data_flow_parts.append('Request')
+            for g in group:
+                df = g.get('data_flow', {})
+                if isinstance(df, dict) and df.get('stages'):
+                    data_flow_parts = df['stages']
+                    break
             if not data_flow_parts:
-                data_flow_parts = ['Handler', 'Service', 'DAO']
+                for dp in top.get('data_points', [])[:5]:
+                    if any(kw in dp.lower() for kw in ['dao.', 'db.', 'insert', 'update', 'query']):
+                        if 'DB' not in data_flow_parts:
+                            data_flow_parts.append('DB')
+                    elif any(kw in dp.lower() for kw in ['service.', 'create', 'build']):
+                        if 'Service' not in data_flow_parts:
+                            data_flow_parts.append('Service')
+                    elif any(kw in dp.lower() for kw in ['req', 'bind', 'valid']):
+                        if 'Request' not in data_flow_parts:
+                            data_flow_parts.append('Request')
+            if not data_flow_parts:
+                data_flow_parts = ['Request', 'Handler', 'Service', 'DAO', 'DB']
+            
+            # 收集所有 entry_types
+            entry_types = set()
+            for g in group:
+                entry_types.add(g.get('entry_type', 'http'))
             
             result.append({
                 "flow_name": flow_name,
-                "route_prefix": prefix,
-                "handlers": [g['handler'] for g in group],
+                "route_prefix": key.split('/', 2)[-1] if '/' in key else key,
+                "handlers": list(dict.fromkeys(g['handler'] for g in group))[:10],
                 "entry_point": top['handler'],
                 "call_chain": all_chains,
                 "data_flow": " → ".join(data_flow_parts),
                 "max_depth": top['max_depth'],
                 "stage_count": len(group),
+                "entry_types": ", ".join(sorted(entry_types)),
             })
         return result
     
@@ -1566,7 +1660,68 @@ class GoScanner:
             if eng in handler or eng in route:
                 return f"{cn}流程"
         return f"业务流 ({route_prefix})"
-
+    
+    def _deduplicate_flows(self, flows: List[Dict]) -> List[Dict]:
+        """去重：合并调用链高度相似的 flow（Jaccard 相似度 > 0.7）
+        
+        避免同一个业务流被拆成多个相似条目。
+        """
+        if len(flows) <= 1:
+            return flows
+        
+        result = []
+        used = [False] * len(flows)
+        
+        for i, flow_i in enumerate(flows):
+            if used[i]:
+                continue
+            
+            # 以 flow_i 为基础，合并所有高度相似的
+            merged = {
+                "flow_name": flow_i["flow_name"],
+                "route_prefix": flow_i["route_prefix"],
+                "handlers": list(flow_i["handlers"]),
+                "entry_point": flow_i["entry_point"],
+                "call_chain": list(flow_i["call_chain"]),
+                "data_flow": flow_i["data_flow"],
+                "max_depth": flow_i["max_depth"],
+                "stage_count": flow_i["stage_count"],
+                "entry_types": {flow_i.get("entry_type", "http")},
+            }
+            
+            chain_i = set(flow_i["call_chain"])
+            used[i] = True
+            
+            for j in range(i + 1, len(flows)):
+                if used[j]:
+                    continue
+                flow_j = flows[j]
+                chain_j = set(flow_j["call_chain"])
+                
+                # Jaccard 相似度
+                intersection = chain_i & chain_j
+                union = chain_i | chain_j
+                if not union:
+                    continue
+                jaccard = len(intersection) / len(union)
+                
+                if jaccard > 0.7:
+                    # 合并
+                    merged["handlers"].extend(flow_j["handlers"])
+                    merged["handlers"] = list(dict.fromkeys(merged["handlers"]))[:20]
+                    merged["call_chain"].extend(flow_j["call_chain"])
+                    merged["call_chain"] = list(dict.fromkeys(merged["call_chain"]))[:30]
+                    merged["entry_types"].add(flow_j.get("entry_type", "http"))
+                    merged["max_depth"] = max(merged["max_depth"], flow_j["max_depth"])
+                    merged["stage_count"] += flow_j["stage_count"]
+                    used[j] = True
+            
+            merged["entry_types"] = ", ".join(sorted(merged["entry_types"]))
+            merged["handlers"] = merged["handlers"][:10]
+            result.append(merged)
+        
+        return result
+    
     def _infer_data_flow(self, handler_body: str, call_tree: list) -> Dict:
         """从 handler 代码推断完整数据流路径
         

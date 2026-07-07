@@ -60,36 +60,35 @@ def expand_query(query: str, profile: dict = None) -> List[str]:
     """扩展查询词 — 把中文查询扩展为多个关键词
     
     策略：
-    1. 从 query_aliases 扩展中文业务词
-    2. 从业务术语表扩展同义词
-    3. 从 IR 缓存的 functions/route handler 扩展匹配项
+    1. 从 synonyms 扩展同义词
+    2. 从 query_aliases 扩展中文业务词
+    3. 从 query 中提取中英文关键词
     """
     keywords = [query]
     
-    # 1. 从 profile 加载 query_aliases
+    # 1. 从 profile 加载 synonyms
+    if profile:
+        synonyms = profile.get('synonyms', {})
+        for term, terms in synonyms.items():
+            if term.lower() in query.lower():
+                keywords.extend(terms)
+    
+    # 2. 从 query_aliases 扩展
     if profile:
         aliases = profile.get('query_aliases', {})
-        expanded = []
         for alias, terms in aliases.items():
             if alias.lower() in query.lower():
-                expanded.extend(terms)
-        keywords.extend(expanded)
-    
-    # 2. 从 business_terminology 扩展
-    # 这个需要 IR 缓存，暂时跳过
+                keywords.extend(terms)
     
     # 3. 从 query 中提取中英文关键词
-    # 中文：直接分词
-    # 英文：按驼峰/下划线分割
     import re
-    # 提取驼峰命名
     camel = re.findall(r'[A-Z][a-z]+|[a-z]+', query)
     keywords.extend(camel)
     
     # 去重
     keywords = list(dict.fromkeys(keywords))
     
-    return keywords[:10]  # 最多 10 个关键词
+    return keywords[:15]  # 最多 15 个关键词
 
 
 # ──────────────────────────────────────────────
@@ -262,13 +261,14 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
     # 加载 profile 获取 query_aliases
     if profile is None:
         import json
+        # 尝试从 args 传入的 profile_path
         profile_path = str(Path(__file__).parent.parent / "profiles" / "default.json")
-        profile = {}
-        try:
-            with open(profile_path) as f:
-                profile = json.load(f)
-        except:
-            pass
+        if Path(profile_path).exists():
+            try:
+                with open(profile_path) as f:
+                    profile = json.load(f)
+            except:
+                pass
     
     # 使用 query_expander 扩展查询词
     expanded_queries = expand_query(query, profile)
