@@ -53,6 +53,43 @@ def extract_intent(query: str) -> Tuple[str, float]:
 # 2. 多路证据查询引擎
 # ──────────────────────────────────────────────
 
+
+
+def expand_query(query: str, profile: dict = None) -> List[str]:
+    """扩展查询词 — 把中文查询扩展为多个关键词
+    
+    策略：
+    1. 从 query_aliases 扩展中文业务词
+    2. 从业务术语表扩展同义词
+    3. 从 IR 缓存的 functions/route handler 扩展匹配项
+    """
+    keywords = [query]
+    
+    # 1. 从 profile 加载 query_aliases
+    if profile:
+        aliases = profile.get('query_aliases', {})
+        expanded = []
+        for alias, terms in aliases.items():
+            if alias.lower() in query.lower():
+                expanded.extend(terms)
+        keywords.extend(expanded)
+    
+    # 2. 从 business_terminology 扩展
+    # 这个需要 IR 缓存，暂时跳过
+    
+    # 3. 从 query 中提取中英文关键词
+    # 中文：直接分词
+    # 英文：按驼峰/下划线分割
+    import re
+    # 提取驼峰命名
+    camel = re.findall(r'[A-Z][a-z]+|[a-z]+', query)
+    keywords.extend(camel)
+    
+    # 去重
+    keywords = list(dict.fromkeys(keywords))
+    
+    return keywords[:10]  # 最多 10 个关键词
+
 def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = None) -> List[Dict]:
     """搜索代码 — 从 IR 缓存中匹配函数/路由/struct
     
@@ -68,13 +105,8 @@ def search_code(query: str, repo_path: str, top_k: int = 10, cache_dir: str = No
     except:
         pass
     
-    # 扩展 query_aliases
-    aliases = profile.get("query_aliases", {})
-    expanded_queries = [query]
-    for alias, terms in aliases.items():
-        if alias.lower() in query.lower():
-            expanded_queries.extend(terms)
-    expanded_queries = list(dict.fromkeys(expanded_queries))  # 去重
+    # 使用 query_expander 扩展查询词
+    expanded_queries = expand_query(query, profile)
     
     if cache_dir:
         cache_file = Path(cache_dir) / "ir_cache.json"
