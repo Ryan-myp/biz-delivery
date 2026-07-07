@@ -267,6 +267,75 @@ class CodeKnowledgeExtractor:
 
 
 
+def _generate_enhanced_summary(ir: dict, kb_dir: str) -> str:
+    """生成增强版知识摘要"""
+    packages = ir.get('packages', {})
+    flow = ir.get('flow', {})
+    cli_cmds = flow.get('cli_commands', {})
+    total_cmds = sum(len(cmds) for cmds in cli_cmds.values())
+    
+    lines = [
+        f"# {ir.get('repo_name', 'Project')} 知识摘要",
+        "",
+        "## 概览",
+        f"- 语言: {ir.get('language', 'unknown')}",
+        f"- 包数: {len(packages)}",
+        f"- 接口总数: {sum(len(p.get('interfaces', {})) for p in packages.values())}",
+        f"- 结构体总数: {len(ir.get('structs', []))}",
+        f"- 导出函数总数: {len(ir.get('functions', []))}",
+        f"- CLI 命令: {total_cmds} 个 ({len(cli_cmds)} 个包)",
+        "",
+        "## 核心包",
+        ""
+    ]
+    
+    sorted_pkgs = sorted(packages.items(), key=lambda x: len(x[1].get('files', [])), reverse=True)[:10]
+    for pkg, data in sorted_pkgs:
+        lines.append(f"### `{pkg}`")
+        lines.append(f"- Files: {len(data.get('files', []))}")
+        
+        interfaces = data.get('interfaces', {})
+        if interfaces:
+            lines.append(f"- **Interfaces**: {', '.join(interfaces.keys())[:100]}")
+        
+        funcs = data.get('functions', [])
+        if funcs:
+            lines.append(f"- **Key Functions**: {', '.join(funcs[:5])}")
+        
+        lines.append("")
+    
+    if cli_cmds:
+        lines.append("## CLI 命令体系")
+        lines.append("")
+        for pkg, cmds in sorted(cli_cmds.items(), key=lambda x: len(x[1]), reverse=True):
+            unique_cmds = list(set(cmds))[:8]
+            lines.append(f"### `{pkg}`")
+            lines.append(f"- Commands: {', '.join(unique_cmds)}")
+            lines.append("")
+    
+    startup = flow.get('startup', [])
+    if startup:
+        lines.append("## 核心流程")
+        lines.append("")
+        lines.append("### 启动流程")
+        lines.append("```")
+        for s in startup[:1]:
+            lines.append(s.get('file', ''))
+            lines.append(f"  ↓")
+            calls = s.get('calls', [])
+            lines.append(f"  {', '.join(calls[:5])}")
+        lines.append("```")
+        lines.append("")
+    
+    summary = '\n'.join(lines)
+    
+    summary_file = Path(kb_dir) / "summary.md"
+    summary_file.write_text(summary, encoding='utf-8')
+    
+    return summary
+
+
+
 # ============================================================================
 # IR (Intermediate Representation) — 多语言统一中间表示
 # ============================================================================
@@ -3814,6 +3883,13 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         print(f"  Business cards: {sc} scenarios, {la} LLM analyses, {er} entities, {ec} error categories")
     except Exception as e:
         print(f"  ⚠️  Failed to generate business cards: {e}")
+    
+    # 生成增强版知识摘要
+    try:
+        summary = _generate_enhanced_summary(ir_cache, knowledge_base_dir)
+        print(f"  📝 Summary generated: {len(summary)} chars")
+    except Exception as e:
+        print(f"  WARNING: Summary generation failed ({e})")
     
     return {
         "status": "ok",
