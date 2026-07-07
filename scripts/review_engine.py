@@ -15,7 +15,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 # 导入 learn_repo 的扫描器和 IR
 sys.path.insert(0, str(Path(__file__).parent))
@@ -137,18 +137,15 @@ class ReviewEngine:
     def _query_evidence_for_prd(self, ir: IRDocument, prd_text: str, cache_dir: str) -> dict:
         """从 PRD 提取关键词，调用 query_evidence 查询代码库证据
         
-        策略：
-        1. 从 PRD 提取关键词
-        2. 针对每个关键词调用 query_evidence 搜索
-        3. 返回相关证据
-        
-        返回: {
-            'keywords': [...],
-            'evidence': [...],
-            'total': int,
-        }
+        增强策略：
+        1. 从 PRD 提取中英文关键词
+        2. 用 expand_synonyms 扩展业务词
+        3. 搜索 code + schema + api_docs + business + core_flows
+        4. 返回相关证据 + 预检结果
         """
         import re
+        from query_evidence import expand_synonyms
+        
         # 提取关键词：按标点/空格分句，取有意义的短语
         parts = re.split(r'[，。、；：\s\n]+', prd_text)
         keywords = []
@@ -156,63 +153,149 @@ class ReviewEngine:
             p = p.strip()
             if 2 <= len(p) <= 15:
                 keywords.append(p)
-            elif len(p) >= 3:  # 长英文单词
+            elif len(p) >= 3:
                 keywords.append(p)
-        keywords = list(dict.fromkeys(keywords))[:10]  # 去重保序
+        keywords = list(dict.fromkeys(keywords))[:15]  # 去重保序
         
-        print(f"  Extracted {len(keywords)} keywords: {keywords[:5]}")
+        # 用 expand_synonyms 扩展（支持 synonym_map + query_aliases）
+        profile = self.profile.get('profile', {})
+        expanded_queries = expand_synonyms(prd_text, profile)
+        all_queries = list(dict.fromkeys(keywords + expanded_queries))[:20]
         
-        # 先搜 terminology（中文业务词 → 代码映射），提取相关 handler 名
-        expanded_keywords = list(keywords)
-        for keyword in keywords:
-            try:
-                result = run_evidence_query(
-                    query=keyword,
-                    wiki_path=self.wiki_path,
-                    top_k=5,
-                    sources=["code"],
-                    cache_dir=cache_dir,
-                )
-                for ev in result.get('evidence', []):
-                    if ev.get('type') == 'terminology':
-                        for handler in ev.get('related_handlers', []):
-                            if handler not in expanded_keywords:
-                                expanded_keywords.append(handler)
-            except:
-                pass
+        print(f"  Extracted {len(all_queries)} queries: {all_queries[:5]}")
         
-        # 调用 query_evidence 查询代码
+        # 多路搜索
         all_evidence = []
-        for keyword in expanded_keywords:
+        sources = ["code", "schema", "api_docs", "business"]
+        for query in all_queries:
             try:
                 result = run_evidence_query(
-                    query=keyword,
+                    query=query,
                     wiki_path=self.wiki_path,
                     top_k=5,
-                    sources=["code", "schema", "api_docs"],
+                    sources=sources,
                     cache_dir=cache_dir,
                 )
                 if result.get('evidence'):
                     all_evidence.extend(result['evidence'])
             except Exception as e:
-                print(f"  ⚠️  Query failed for '{keyword}': {e}")
+                pass
         
-        # 去重
-        seen = set()
+        # 去重（基于 path + type），保留最高分
+        seen = {}
         unique_evidence = []
         for item in all_evidence:
-            path = item.get('path', item.get('file_path', ''))
-            if path and path not in seen:
-                seen.add(path)
-                unique_evidence.append(item)
+            key = (item.get('path', ''), item.get('type', ''))
+            score = item.get('score', 0)
+            if key not in seen or score > seen[key].get('score', 0):
+                seen[key] = item
         
-        print(f"  Found {len(unique_evidence)} evidence items")
+        unique_evidence = list(seen.values())
+        
+        # 预检：检查 PRD 中提到的实体是否在代码中存在
+        prechecks = self._run_prechecks(ir, prd_text, unique_evidence)
+        
+        print(f"  Found {len(unique_evidence)} evidence items, {len(prechecks)} prechecks")
         
         return {
             'keywords': keywords,
-            'evidence': unique_evidence,
+            'evidence': unique_evidence[:30],
             'total': len(unique_evidence),
+            'prechecks': prechecks,
         }
+    
+    def _run_prechecks(self, ir: IRDocument, prd_text: str, evidence: list) -> List[Dict]:
+        """运行预检查 — 在 LLM 审查前先标记明显问题
+        
+        返回: [{check_name, severity, description}]
+        """
+        checks = []
+        
+        # 1. PRD 提到的业务实体是否在代码中存在
+        prd_entities = set()
+        # 从 PRD 提取可能的实体名（大写驼峰、中文业务词）
+        import re as re_mod
+        camel_entities = re_mod.findall(r'[A-Z][a-z]+[A-Z]\w*', prd_text)
+        chinese_entities = re_mod.findall(r'[\u4e00-\u9fff]{2,6}', prd_text)
+        
+        code_entities = set()
+        for s in ir.structs:
+            if hasattr(s, 'name'):
+                code_entities.add(s.name)
+            elif isinstance(s, dict):
+                code_entities.add(s.get('name', ''))
+        for f in ir.functions:
+            if hasattr(f, 'name'):
+                code_entities.add(f.name)
+            elif isinstance(f, dict):
+                code_entities.add(f.get('name', ''))
+        
+        for entity in camel_entities:
+            if entity in code_entities:
+                checks.append({
+                    'check': 'entity_exists',
+                    'severity': 'info',
+                    'entity': entity,
+                    'message': f"PRD 提到的实体 '{entity}' 在代码中存在",
+                })
+            else:
+                # 检查 fuzzy 匹配
+                from query_evidence import fuzzy_score
+                best_match = None
+                best_score = 0
+                for ce in code_entities:
+                    score = fuzzy_score(entity.lower(), ce.lower())
+                    if score > best_score:
+                        best_score = score
+                        best_match = ce
+                if best_score < 0.5:
+                    checks.append({
+                        'check': 'entity_missing',
+                        'severity': 'warn',
+                        'entity': entity,
+                        'message': f"PRD 提到的实体 '{entity}' 在代码中未找到（fuzzy 最佳匹配: {best_match} @ {best_score:.2f}）",
+                    })
+        
+        # 2. PRD 提到的路由是否在代码中存在
+        prd_routes = re_mod.findall(r'/api/\w+/\w+', prd_text)
+        code_routes = set()
+        for r in ir.routes:
+            if hasattr(r, 'path'):
+                code_routes.add(r.path)
+            elif isinstance(r, dict):
+                code_routes.add(r.get('path', ''))
+        
+        for route in prd_routes:
+            if route not in code_routes:
+                # fuzzy match
+                from query_evidence import fuzzy_score
+                best_route = None
+                best_score = 0
+                for cr in code_routes:
+                    score = fuzzy_score(route.lower(), cr.lower())
+                    if score > best_score:
+                        best_score = score
+                        best_route = cr
+                if best_score < 0.5:
+                    checks.append({
+                        'check': 'route_missing',
+                        'severity': 'warn',
+                        'route': route,
+                        'message': f"PRD 提到的路由 '{route}' 在代码中未找到",
+                    })
+        
+        # 3. 性能风险预检：PRD 提到高并发/大批量但代码中没有缓存
+        perf_keywords = ['高并发', '大量', '批量', 'QPS', 'performance', 'throughput']
+        has_perf_req = any(kw in prd_text for kw in perf_keywords)
+        has_cache = any('redis' in str(s).lower() or 'cache' in str(s).lower() for s in code_entities)
+        if has_perf_req and not has_cache:
+            checks.append({
+                'check': 'performance_risk',
+                'severity': 'high',
+                'message': "PRD 提到性能相关需求但代码中未发现缓存策略",
+            })
+        
+        return checks
     
     def _build_review_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, cache_dir: str = None) -> str:
         """构建 PRD 审查 prompt — 注入完整 IR 数据"""

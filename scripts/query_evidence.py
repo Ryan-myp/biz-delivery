@@ -798,3 +798,63 @@ if __name__ == '__main__':
     print()
     for i, ev in enumerate(result['evidence'][:result['top_k'] if hasattr(result, 'top_k') else 5], 1):
         print(f"  {i}. {ev.get('title', ev.get('path', 'unknown'))}")
+
+
+def _infer_semantic_tags(queries: List[str]) -> List[str]:
+    """从查询词推断语义标签"""
+    tags = []
+    cn_map = {
+        'create': '创建', 'add': '新增', 'new': '新建',
+        'get': '查询', 'list': '列表', 'search': '搜索',
+        'delete': '删除', 'update': '更新', 'edit': '编辑',
+        'share': '分享', 'publish': '发布', 'review': '审核',
+        'bid': '竞价', 'price': '价格', 'cost': '成本',
+        'cache': '缓存', 'index': '索引', 'sync': '同步',
+        'notify': '通知', 'report': '报表', 'stat': '统计',
+    }
+    
+    for q in queries:
+        q_lower = q.lower()
+        for en, cn in cn_map.items():
+            if en in q_lower:
+                tags.append(en)
+                tags.append(cn)
+    
+    return list(set(tags))
+
+
+def _search_by_tags(ir_data: dict, tags: List[str], top_k: int = 10) -> List[Dict]:
+    """按语义标签搜索"""
+    results = []
+    
+    # 搜索 functions
+    for func in ir_data.get('functions', []):
+        name = func.get('name', '').lower()
+        for tag in tags:
+            if tag in name:
+                results.append({
+                    'type': 'function',
+                    'title': func.get('name', ''),
+                    'path': func.get('file', ''),
+                    'content': f"函数: {func.get('name', '')}",
+                    'score': 1.0,
+                    'source': 'semantic_tag',
+                })
+                break
+    
+    # 搜索 routes
+    for route in ir_data.get('routes', []):
+        path = route.get('path', '').lower()
+        for tag in tags:
+            if tag in path:
+                results.append({
+                    'type': 'route',
+                    'title': route.get('path', ''),
+                    'path': route.get('module', ''),
+                    'content': f"路由: {route.get('method', '')} {route.get('path', '')}",
+                    'score': 1.0,
+                    'source': 'semantic_tag',
+                })
+                break
+    
+    return results[:top_k]
