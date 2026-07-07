@@ -341,6 +341,13 @@ class ReviewEngine:
                 else:
                     prompt_parts.append(f"- **{name}**: {desc}")
             prompt_parts.append("")
+        # 注入知识摘要
+        summary_file = Path(self.kb_dir) / "summary.md" if self.kb_dir else None
+        if summary_file and summary_file.exists():
+            prompt_parts.append("## 项目知识摘要（从代码自动提取）")
+            prompt_parts.append(summary_file.read_text(encoding='utf-8'))
+            prompt_parts.append("")
+
         if ir.test_functions:
             prompt_parts.append("## 测试覆盖情况")
             prompt_parts.append(f"- **测试文件**: {len(ir.test_files)}")
