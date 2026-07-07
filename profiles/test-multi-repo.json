@@ -1,0 +1,19 @@
+{
+  "business_domain": "test-multi-repo",
+  "repositories": [
+    {
+      "path": "/Users/yanping.ma/GolandProjects/conc",
+      "language": "go",
+      "name": "conc"
+    },
+    {
+      "path": "/Users/yanping.ma/GolandProjects/eino",
+      "language": "go",
+      "name": "eino"
+    }
+  ],
+  "evidence_sources": {
+    "code": true,
+    "graph": true
+  }
+}

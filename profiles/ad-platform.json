@@ -1,0 +1,46 @@
+{
+  "business_domain": "ad-platform",
+  "repositories": [
+    {
+      "path": "/Users/yanping.ma/GolandProjects/ad_smart_delivery_platform",
+      "language": "go",
+      "name": "adp",
+      "description": "广告交付平台"
+    },
+    {
+      "path": "/Users/yanping.ma/GolandProjects/creative-platform",
+      "language": "go",
+      "name": "creative-platform",
+      "description": "创意平台"
+    },
+    {
+      "path": "/Users/yanping.ma/GolandProjects/eino",
+      "language": "go",
+      "name": "eino",
+      "description": "Agent 编排框架"
+    }
+  ],
+  "evidence_sources": {
+    "code": true,
+    "graph": true
+  },
+  "query_aliases": {
+    "广告组": [
+      "adgroup",
+      "ad_group",
+      "campaign"
+    ],
+    "素材": [
+      "creative",
+      "media",
+      "image",
+      "video"
+    ],
+    "审核": [
+      "review",
+      "audit",
+      "approve",
+      "reject"
+    ]
+  }
+}

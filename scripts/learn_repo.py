@@ -3833,35 +3833,56 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
 
     
     # 保存 IR 缓存（供 query_evidence 复用）
-    ir_cache = {
-        "repo_name": all_ir[0].repo_name if all_ir else "",
-        "repo_path": all_ir[0].repo_path if all_ir else "",
-        "language": all_ir[0].language if all_ir else "",
-        "structs": [asdict(s) for s in all_ir[0].structs[:100]] if all_ir else [],
-        "functions": [asdict(f) for f in all_ir[0].functions[:100]] if all_ir else [],
-        "routes": [{
-            "path": r.path,
-            "method": r.method,
+    # 合并多仓库数据
+    all_packages = {}
+    all_flow = {}
+    all_structs = []
+    all_functions = []
+    all_routes = []
+    all_business_logic = []
+    
+    for ir in all_ir:
+        # 包结构
+        if hasattr(ir, 'packages') and ir.packages:
+            for pkg_name, pkg_data in ir.packages.items():
+                all_packages[pkg_name] = pkg_data
+        
+        # 流程
+        if hasattr(ir, 'flow') and ir.flow:
+            all_flow.update(ir.flow)
+        
+        # 其他数据（取前 100 个）
+        all_structs.extend([asdict(s) for s in ir.structs[:50]])
+        all_functions.extend([asdict(f) for f in ir.functions[:100]])
+        all_routes.extend([{
+            "path": r.path if hasattr(r, 'path') else r.get('path', ''),
+            "method": r.method if hasattr(r, 'method') else r.get('method', ''),
             "handler": _clean_handler(r.handler) if hasattr(r, 'handler') else r.get('handler', ''),
             "module": r.module if hasattr(r, 'module') else r.get('module', ''),
-        } for r in all_ir[0].routes[:100]] if all_ir else [],
-        "tables": [asdict(t) for t in all_ir[0].tables[:50]] if all_ir else [],
-        "entity_tables": all_ir[0].entity_tables[:50] if all_ir else [],
-        "sql_operations": all_ir[0].sql_operations[:100] if all_ir else [],
-        "error_codes": all_ir[0].error_codes[:100] if all_ir else [],
-        "auth_models": all_ir[0].auth_models[:20] if all_ir else [],
+        } for r in ir.routes[:50]])
+        all_business_logic.extend(ir.business_logic[:10])
+    
+    ir_cache = {
+        "repo_name": ", ".join(ir.repo_name for ir in all_ir),
+        "repo_path": ", ".join(ir.repo_path for ir in all_ir),
+        "language": all_ir[0].language if all_ir else "",
+        "structs": all_structs[:100],
+        "functions": all_functions[:100],
+        "routes": all_routes[:100],
+        "tables": [],
+        "entity_tables": [],
+        "sql_operations": [],
+        "error_codes": [],
+        "auth_models": [],
         "test_coverage": {
-            "test_files": len(all_ir[0].test_files) if all_ir else 0,
-            "test_functions": len(all_ir[0].test_functions) if all_ir else 0,
-            "coverage_pct": all_ir[0].coverage_report.get('coverage_pct', 0) if all_ir else 0,
+            "test_files": sum(len(ir.test_files) for ir in all_ir),
+            "test_functions": sum(len(ir.test_functions) for ir in all_ir),
+            "coverage_pct": sum(ir.coverage_report.get('coverage_pct', 0) for ir in all_ir) / len(all_ir) if all_ir else 0,
         },
-        "business_logic": all_ir[0].business_logic[:20] if all_ir else [],
-        # 业务术语表（LLM 从 business_logic 自动生成）
+        "business_logic": all_business_logic[:20],
         "business_terminology": business_terminology,
-        # 通用包结构（从 CodeKnowledgeExtractor 提取）
-        "packages": all_ir[0].packages if all_ir and hasattr(all_ir[0], "packages") else {},
-        # 核心流程逻辑（从 CodeKnowledgeExtractor 提取）
-        "flow": all_ir[0].flow if all_ir and hasattr(all_ir[0], "flow") else {},
+        "packages": all_packages,
+        "flow": all_flow,
     }
     # 合并图谱数据到 IR 缓存
     ir_cache.update(ir_cache_extra)
