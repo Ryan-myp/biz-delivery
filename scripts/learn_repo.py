@@ -3912,6 +3912,14 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
     except Exception as e:
         print(f"  WARNING: Summary generation failed ({e})")
     
+    # 生成文档包（architecture.md, flows.md, schema.md, glossary.md）
+    try:
+        from _generate_docs import generate_docs
+        generate_docs(ir_cache, knowledge_base_dir)
+        print(f"  📄 Docs generated")
+    except Exception as e:
+        print(f"  WARNING: Doc generation failed ({e})")
+    
     return {
         "status": "ok",
         "repos_scanned": len(all_ir),
