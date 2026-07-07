@@ -487,6 +487,44 @@ class ReviewEngine:
         prompt_parts.append("- **兼容性风险**: 是否影响现有功能？是否需要灰度发布？")
         prompt_parts.append("")
         
+        # 新增：兼容性检查（从 profile 读取旧接口列表）
+        prompt_parts.append("### 5. 兼容性检查（从 profile 配置）")
+        if profile_data.get("business_rules"):
+            prompt_parts.append("- **约束冲突**: PRD 是否违反了已有的业务规则/约束？")
+            for cat, rules in profile_data["business_rules"].items():
+                if isinstance(rules, list) and len(rules) <= 10:
+                    prompt_parts.append(f"  - 已有规则 `{cat}`: {', '.join(str(r) for r in rules[:3])}")
+        if profile_data.get("service_topology"):
+            prompt_parts.append("- **服务依赖**: PRD 涉及的服务是否会影响上下游依赖？")
+            for svc in profile_data["service_topology"].get("services", []):
+                name = svc.get("name", "")
+                deps = svc.get("dependencies", [])
+                if deps:
+                    prompt_parts.append(f"  - `{name}` 依赖: {', '.join(deps[:5])}")
+        prompt_parts.append("")
+        
+        # 新增：性能风险评估
+        prompt_parts.append("### 6. 性能风险评估")
+        if hasattr(ir, 'perf_hotspots') and ir.perf_hotspots:
+            prompt_parts.append("- **已知性能热点**（从代码分析）:")
+            for hs in ir.perf_hotspots[:5]:
+                prompt_parts.append(f"  - `{hs.get('func', '?')}` @ {hs.get('file', '?')}: {hs.get('reason', 'N/A')}")
+        prompt_parts.append("- **QPS 评估**: PRD 描述的功能预计 QPS 是多少？现有架构能否支撑？")
+        prompt_parts.append("- **数据库压力**: 新增查询是否走了索引？是否有 N+1 查询风险？")
+        prompt_parts.append("- **缓存策略**: 读多写少的场景是否考虑了缓存？缓存失效策略？")
+        prompt_parts.append("- **外部依赖**: 调用的外部 API 是否有超时/重试/熔断策略？")
+        prompt_parts.append("")
+        
+        # 新增：核心业务流程校验
+        if hasattr(ir, 'core_flows') and ir.core_flows:
+            prompt_parts.append("### 7. 核心业务流程校验")
+            prompt_parts.append("- **流程冲突**: PRD 描述的流程是否与现有核心流程冲突？")
+            for cf in ir.core_flows[:5]:
+                flow_name = cf.get('flow_name', '?')
+                data_flow = cf.get('data_flow', '?')
+                prompt_parts.append(f"  - 现有流程 `{flow_name}`: {data_flow}")
+            prompt_parts.append("")
+        
         # 输出格式
         prompt_parts.append("## 输出格式")
         prompt_parts.append("请按以下 Markdown 格式输出审查报告：")
@@ -527,6 +565,21 @@ class ReviewEngine:
         prompt_parts.append("- **实现难度**: 高/中/低 — 理由")
         prompt_parts.append("- **依赖风险**: 无/低/中/高 — 说明")
         prompt_parts.append("- **兼容性风险**: 无/低/中/高 — 说明")
+        prompt_parts.append("")
+        prompt_parts.append("## 兼容性检查")
+        prompt_parts.append("- **业务规则冲突**: [具体规则] — 违反程度 + 建议")
+        prompt_parts.append("- **服务依赖影响**: [服务名] — 影响范围 + 建议")
+        prompt_parts.append("- **旧接口兼容**: 旧接口是否受影响？是否需要 versioning？")
+        prompt_parts.append("")
+        prompt_parts.append("## 性能风险评估")
+        prompt_parts.append("- **QPS 预估**: [数值] — 现有架构是否支撑？")
+        prompt_parts.append("- **数据库风险**: [索引/N+1/锁竞争] — 说明")
+        prompt_parts.append("- **缓存策略**: [有/无] — 建议")
+        prompt_parts.append("- **外部依赖风险**: [超时/重试/熔断] — 说明")
+        prompt_parts.append("")
+        prompt_parts.append("## 核心流程校验")
+        prompt_parts.append("- **流程冲突**: PRD 流程是否与现有核心流程冲突？")
+        prompt_parts.append("- **数据流冲突**: PRD 数据流向是否与现有架构一致？")
         prompt_parts.append("")
         prompt_parts.append("## 结论与建议")
         prompt_parts.append("[总结性建议]")
