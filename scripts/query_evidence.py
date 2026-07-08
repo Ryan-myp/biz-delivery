@@ -872,3 +872,151 @@ def _search_by_tags(ir_data: dict, tags: List[str], top_k: int = 10) -> List[Dic
                 break
     
     return results[:top_k]
+
+
+# ============================================================================
+# TF-IDF 语义搜索
+# ============================================================================
+
+class SimpleVectorizer:
+    """简单 TF-IDF 向量化器"""
+    
+    def __init__(self):
+        self.idf = {}
+        self.vocab = {}
+    
+    def fit(self, documents: List[str]):
+        """构建 IDF"""
+        n_docs = len(documents)
+        df = {}
+        
+        for doc in documents:
+            terms = set(doc.lower().split())
+            for term in terms:
+                df[term] = df.get(term, 0) + 1
+        
+        for term, count in df.items():
+            self.idf[term] = math.log(n_docs / (1 + count))
+            self.vocab[term] = len(self.vocab)
+    
+    def transform(self, documents: List[str]) -> List[List[float]]:
+        """转换为 TF-IDF 向量"""
+        vectors = []
+        for doc in documents:
+            terms = doc.lower().split()
+            tf = {}
+            for term in terms:
+                tf[term] = tf.get(term, 0) + 1
+            
+            vector = []
+            for term in self.vocab:
+                tf_val = tf.get(term, 0) / max(len(terms), 1)
+                vector.append(tf_val * self.idf.get(term, 0))
+            
+            vectors.append(vector)
+        
+        return vectors
+    
+    def cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """余弦相似度"""
+        dot = sum(a * b for a, b in zip(vec1, vec2))
+        norm1 = math.sqrt(sum(a * a for a in vec1))
+        norm2 = math.sqrt(sum(b * b for b in vec2))
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        
+        return dot / (norm1 * norm2)
+
+
+# 全局缓存
+_vectorizer = None
+_vectors = None
+
+
+def get_vectorizer() -> SimpleVectorizer:
+    """获取或创建向量器"""
+    global _vectorizer, _vectors
+    
+    if _vectorizer is None:
+        _vectorizer = SimpleVectorizer()
+        _vectors = None
+    
+    return _vectorizer
+
+
+def build_function_vectors(ir_data: dict) -> List[List[float]]:
+    """构建函数/路由的 TF-IDF 向量"""
+    global _vectors
+    
+    if _vectors is not None:
+        return _vectors
+    
+    docs = []
+    
+    # 函数
+    for func in ir_data.get('functions', []):
+        name = func.get('name', '')
+        file = func.get('file', '')
+        doc = f"{name} {file}"
+        docs.append(doc)
+    
+    # 路由
+    for route in ir_data.get('routes', []):
+        path = route.get('path', '')
+        handler = route.get('handler', '')
+        doc = f"{path} {handler}"
+        docs.append(doc)
+    
+    if not docs:
+        return []
+    
+    vectorizer = get_vectorizer()
+    vectorizer.fit(docs)
+    _vectors = vectorizer.transform(docs)
+    
+    return _vectors
+
+
+def search_by_similarity(query: str, ir_data: dict, top_k: int = 10) -> List[Dict]:
+    """基于语义相似度的搜索"""
+    vectors = build_function_vectors(ir_data)
+    
+    if not vectors:
+        return []
+    
+    vectorizer = get_vectorizer()
+    query_vec = vectorizer.transform([query])
+    
+    results = []
+    for i, vec in enumerate(vectors):
+        sim = vectorizer.cosine_similarity(query_vec[0], vec)
+        if sim > 0.1:  # 阈值
+            # 判断是函数还是路由
+            n_funcs = len(ir_data.get('functions', []))
+            if i < n_funcs:
+                func = ir_data['functions'][i]
+                results.append({
+                    'type': 'function',
+                    'title': func.get('name', ''),
+                    'path': func.get('file', ''),
+                    'content': f"函数: {func.get('name', '')}",
+                    'score': sim,
+                    'source': 'similarity',
+                })
+            else:
+                route_idx = i - n_funcs
+                route = ir_data['routes'][route_idx]
+                results.append({
+                    'type': 'route',
+                    'title': route.get('path', ''),
+                    'path': route.get('module', ''),
+                    'content': f"路由: {route.get('method', '')} {route.get('path', '')}",
+                    'score': sim,
+                    'source': 'similarity',
+                })
+    
+    # 按相似度排序
+    results.sort(key=lambda x: x['score'], reverse=True)
+    
+    return results[:top_k]
