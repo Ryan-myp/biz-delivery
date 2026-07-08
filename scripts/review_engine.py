@@ -894,9 +894,12 @@ class ReviewEngine:
             return references
         
         # PRD 关键词（按权重排序）
-        high_priority = ['竞价', '出价', 'bidding', '竞价引擎', 'CTR', 'CVR', '排序', '召回', '推荐']
-        medium_priority = ['redis', '缓存', 'kafka', '消息队列', 'mysql', '数据库', 'es', 'elasticsearch', '搜索']
-        low_priority = ['k8s', 'docker', '部署', '架构', '设计', '高并发', '微服务', 'agent', 'AI']
+        high_priority = ['竞价', '出价', 'bidding', '竞价引擎', 'CTR', 'CVR', '排序', '召回', '推荐',
+                        '分享', '素材', '创意', 'creative', 'adgroup', '广告组', 'campaign', '通知', 'notify']
+        medium_priority = ['redis', '缓存', 'kafka', '消息队列', 'mysql', '数据库', 'es', 'elasticsearch', '搜索',
+                          '权限', 'permission', 'role', 'acl', '审核', 'review', 'approve', 'reject', '批量', 'batch']
+        low_priority = ['k8s', 'docker', '部署', '架构', '设计', '高并发', '微服务', 'agent', 'AI',
+                       '性能', 'performance', 'qps', 'tps', '延迟', 'latency', '超时', 'timeout', '重试', 'retry']
         
         # 精确匹配（高优先级）
         for kw in high_priority:
