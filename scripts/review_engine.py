@@ -476,6 +476,26 @@ class ReviewEngine:
                     prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
             prompt_parts.append("")
         
+        # 预检查结果（从 _run_prechecks 自动检测）
+        if filtered.get('prechecks'):
+            prompt_parts.append("## 预检查结果（自动检测）")
+            high_checks = [c for c in filtered['prechecks'] if c.get('severity') == 'high']
+            warn_checks = [c for c in filtered['prechecks'] if c.get('severity') == 'warn']
+            info_checks = [c for c in filtered['prechecks'] if c.get('severity') == 'info']
+            if high_checks:
+                prompt_parts.append("### 🔴 高风险（必须关注）")
+                for c in high_checks:
+                    prompt_parts.append(f"- **{c.get('check', '?')}**: {c.get('message', '')}")
+            if warn_checks:
+                prompt_parts.append("### 🟡 警告（建议关注）")
+                for c in warn_checks:
+                    prompt_parts.append(f"- **{c.get('check', '?')}**: {c.get('message', '')}")
+            if info_checks:
+                prompt_parts.append("### 🔵 信息（仅供参考）")
+                for c in info_checks:
+                    prompt_parts.append(f"- **{c.get('check', '?')}**: {c.get('message', '')}")
+            prompt_parts.append("")
+        
         # 业务卡片（从 business_cards.json 加载）
         # 从 kb_dir 找 business_cards.json
         bc_file = None

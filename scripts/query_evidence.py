@@ -811,6 +811,20 @@ def _infer_semantic_tags(queries: List[str]) -> List[str]:
         'bid': '竞价', 'price': '价格', 'cost': '成本',
         'cache': '缓存', 'index': '索引', 'sync': '同步',
         'notify': '通知', 'report': '报表', 'stat': '统计',
+        # 广告平台特有
+        'creative': '创意', 'adgroup': '广告组', 'campaign': '广告计划',
+        'targeting': '定向', 'audience': '受众', 'placement': '广告位',
+        'impression': '展示', 'click': '点击', 'conversion': '转化',
+        'ctr': '点击率', 'cvr': '转化率', 'ecpm': '千次展示收益',
+        'budget': '预算', 'billing': '计费', 'invoice': '发票',
+        'fraud': '反作弊', 'audit': '审核', 'quality': '质量',
+        'delivery': '投放', 'reach': '触达', 'frequency': '频次',
+        'pacing': '投放节奏', 'optimization': '优化',
+        # 技术特有
+        'gateway': '网关', 'proxy': '代理', 'loadbalancer': '负载均衡',
+        'monitor': '监控', 'alert': '告警', 'log': '日志',
+        'pipeline': '管道', 'stream': '流', 'batch': '批量',
+        'realtime': '实时', 'offline': '离线', 'online': '在线',
     }
     
     for q in queries:
