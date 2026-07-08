@@ -195,6 +195,12 @@ class ReviewEngine:
         # 预检：检查 PRD 中提到的实体是否在代码中存在
         prechecks = self._run_prechecks(ir, prd_text, unique_evidence)
         
+        # 业务规则自动校验
+        profile = self.profile.get('profile', {})
+        rule_checks = self._validate_business_rules(ir, prd_text, profile)
+        if rule_checks:
+            prechecks.extend(rule_checks)
+        
         print(f"  Found {len(unique_evidence)} evidence items, {len(prechecks)} prechecks")
         
         return {
@@ -294,6 +300,131 @@ class ReviewEngine:
                 'severity': 'high',
                 'message': "PRD 提到性能相关需求但代码中未发现缓存策略",
             })
+        
+        return checks
+    
+    def _validate_business_rules(self, ir: IRDocument, prd_text: str, profile: dict) -> List[Dict]:
+        """自动化业务规则校验 — 从 profile 读取规则，预检 PRD 合规性
+        
+        检查项：
+        1. 错误码校验：PRD 提到的错误场景是否有对应错误码
+        2. 权限校验：PRD 提到的操作是否有鉴权
+        3. 数据模型校验：PRD 字段是否在现有 struct 中有对应
+        4. 状态机校验：PRD 流程是否符合状态机定义
+        5. 外部依赖校验：PRD 调用的外部服务是否在代码中存在
+        
+        Returns:
+            List of [{rule, severity, description, suggestion}]
+        """
+        checks = []
+        profile_data = profile.get('profile', {}) if isinstance(profile, dict) else profile
+        
+        # 1. 错误码覆盖检查
+        existing_error_codes = set()
+        for ec in getattr(ir, 'error_codes', []):
+            if hasattr(ec, 'name'):
+                existing_error_codes.add(ec.name.lower())
+            elif isinstance(ec, dict):
+                existing_error_codes.add(ec.get('name', '').lower())
+        
+        # 从 PRD 提取错误场景关键词
+        error_keywords = ['失败', '错误', '异常', '超时', '拒绝', 'denied', 'error', 'fail', 
+                         'timeout', '403', '404', '500', '限制', '限流', 'rate limit']
+        prd_error_scenes = [kw for kw in error_keywords if kw in prd_text]
+        
+        if prd_error_scenes and not existing_error_codes:
+            checks.append({
+                'rule': 'error_code_coverage',
+                'severity': 'high',
+                'description': f"PRD 提到了 {len(prd_error_scenes)} 个错误场景，但代码库中未发现错误码定义",
+                'suggestion': '需要在 error_code.go 或类似文件中定义对应错误码',
+            })
+        
+        # 2. 鉴权检查
+        auth_models = getattr(ir, 'auth_models', [])
+        has_auth = len(auth_models) > 0
+        
+        auth_keywords = ['鉴权', '权限', 'auth', 'permission', 'token', '登录', '认证']
+        prd_has_auth = any(kw in prd_text for kw in auth_keywords)
+        
+        if prd_has_auth and not has_auth:
+            checks.append({
+                'rule': 'auth_missing',
+                'severity': 'high',
+                'description': 'PRD 涉及权限相关操作，但代码库中未发现鉴权中间件',
+                'suggestion': '确认是否使用现有鉴权体系，或需要新增鉴权逻辑',
+            })
+        
+        # 3. 数据模型校验
+        existing_structs = set()
+        for s in getattr(ir, 'structs', []):
+            if hasattr(s, 'name'):
+                existing_structs.add(s.name.lower())
+            elif isinstance(s, dict):
+                existing_structs.add(s.get('name', '').lower())
+        
+        # 从 PRD 提取可能的 struct 名
+        import re as re_mod
+        prd_struct_candidates = re_mod.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*', prd_text)
+        missing_structs = [s for s in prd_struct_candidates if s.lower() not in existing_structs]
+        
+        # 过滤掉常见非业务 struct（如 Request, Response, Context 等）
+        skip_structs = {'request', 'response', 'context', 'option', 'config', 'params', 'input', 'output'}
+        missing_structs = [s for s in missing_structs if s.lower() not in skip_structs]
+        
+        if missing_structs[:5]:  # 最多报告 5 个
+            checks.append({
+                'rule': 'struct_missing',
+                'severity': 'medium',
+                'description': f"PRD 可能涉及以下未在代码中发现的 struct: {', '.join(missing_structs[:5])}",
+                'suggestion': '确认是否需要新建 struct，或使用现有 struct',
+            })
+        
+        # 4. 状态机校验
+        state_machines = profile_data.get('state_machines', {})
+        if state_machines:
+            # 从 PRD 提取状态转换关键词
+            state_keywords = ['状态', 'status', 'transition', '流转', '审批', '审核', '发布']
+            prd_has_state = any(kw in prd_text for kw in state_keywords)
+            
+            if prd_has_state:
+                for entity, sm in state_machines.items():
+                    allowed_transitions = []
+                    if isinstance(sm, dict):
+                        for field, details in sm.get('Status', {}).items():
+                            if isinstance(details, dict) and 'transitions' in details:
+                                allowed_transitions.extend(details['transitions'])
+                    
+                    if not allowed_transitions:
+                        checks.append({
+                            'rule': 'state_machine_no_transitions',
+                            'severity': 'low',
+                            'description': f"状态机 `{entity}` 未定义转换规则，无法校验 PRD 流程",
+                            'suggestion': '在 profile 中补充 state_machines 的 transitions 定义',
+                        })
+        
+        # 5. 外部依赖校验
+        existing_imports = set()
+        for imp in getattr(ir, 'imports', []):
+            if hasattr(imp, 'module'):
+                existing_imports.add(imp.module.lower())
+            elif isinstance(imp, dict):
+                existing_imports.add(imp.get('module', '').lower())
+        
+        # 从 PRD 提取可能的 RPC/HTTP 依赖
+        rpc_keywords = ['RPC', 'gRPC', 'HTTP', 'API', '服务调用', '微服务', 'dubbo', 'thrift']
+        prd_rpc_refs = [kw for kw in rpc_keywords if kw in prd_text]
+        
+        if prd_rpc_refs:
+            # 检查是否引用了已知的 RPC 包
+            known_rpc_pkgs = [pkg for pkg in existing_imports if any(k in pkg for k in ['rpc', 'grpc', 'pb', 'proto'])]
+            if not known_rpc_pkgs:
+                checks.append({
+                    'rule': 'rpc_dependency_unknown',
+                    'severity': 'medium',
+                    'description': f"PRD 提到了 {len(prd_rpc_refs)} 个外部依赖场景，但未发现 RPC/gRPC 包引用",
+                    'suggestion': '确认外部服务是否已注册为依赖，或需要新增 RPC 客户端',
+                })
         
         return checks
     
@@ -476,24 +607,40 @@ class ReviewEngine:
                     prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
             prompt_parts.append("")
         
-        # 预检查结果（从 _run_prechecks 自动检测）
+        # 预检查结果（从 _run_prechecks + _validate_business_rules 自动检测）
         if filtered.get('prechecks'):
             prompt_parts.append("## 预检查结果（自动检测）")
-            high_checks = [c for c in filtered['prechecks'] if c.get('severity') == 'high']
-            warn_checks = [c for c in filtered['prechecks'] if c.get('severity') == 'warn']
-            info_checks = [c for c in filtered['prechecks'] if c.get('severity') == 'info']
+            # severity 映射: high->high, warn/medium->warn, info/low->info
+            high_checks = [c for c in filtered['prechecks'] if c.get('severity') in ('high', 'critical')]
+            warn_checks = [c for c in filtered['prechecks'] if c.get('severity') in ('warn', 'medium')]
+            info_checks = [c for c in filtered['prechecks'] if c.get('severity') in ('info', 'low')]
+            
+            label_field = 'check' if any('check' in c for c in filtered['prechecks']) else 'rule'
+            
             if high_checks:
                 prompt_parts.append("### 🔴 高风险（必须关注）")
                 for c in high_checks:
-                    prompt_parts.append(f"- **{c.get('check', '?')}**: {c.get('message', '')}")
+                    rule_name = c.get(label_field, c.get('rule', '?'))
+                    msg = c.get('message', c.get('description', ''))
+                    suggestion = c.get('suggestion', '')
+                    prompt_parts.append(f"- **{rule_name}**: {msg}")
+                    if suggestion:
+                        prompt_parts.append(f"  建议: {suggestion}")
             if warn_checks:
                 prompt_parts.append("### 🟡 警告（建议关注）")
                 for c in warn_checks:
-                    prompt_parts.append(f"- **{c.get('check', '?')}**: {c.get('message', '')}")
+                    rule_name = c.get(label_field, c.get('rule', '?'))
+                    msg = c.get('message', c.get('description', ''))
+                    suggestion = c.get('suggestion', '')
+                    prompt_parts.append(f"- **{rule_name}**: {msg}")
+                    if suggestion:
+                        prompt_parts.append(f"  建议: {suggestion}")
             if info_checks:
                 prompt_parts.append("### 🔵 信息（仅供参考）")
                 for c in info_checks:
-                    prompt_parts.append(f"- **{c.get('check', '?')}**: {c.get('message', '')}")
+                    rule_name = c.get(label_field, c.get('rule', '?'))
+                    msg = c.get('message', c.get('description', ''))
+                    prompt_parts.append(f"- **{rule_name}**: {msg}")
             prompt_parts.append("")
         
         # 业务卡片（从 business_cards.json 加载）
