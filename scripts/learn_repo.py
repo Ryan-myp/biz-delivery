@@ -4311,6 +4311,13 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
     except Exception as e:
         print(f"  WARNING: Summary generation failed ({e})")
     
+    # 代码质量检查
+    try:
+        quality = _check_code_quality(ir_cache)
+        print(f"  📊 Code quality: {quality}")
+    except Exception as e:
+        print(f"  WARNING: Quality check failed ({e})")
+    
     # 生成文档包（architecture.md, flows.md, schema.md, glossary.md）
     try:
         from _generate_docs import generate_docs
@@ -4482,3 +4489,34 @@ def generate_kb_cache(kb_base: str, cache_dir: str) -> dict:
         cache.set('kb_index', index)
     
     return cache.get('kb_index', {})
+
+
+def _check_code_quality(ir: dict) -> str:
+    """从代码扫描结果推断代码质量"""
+    issues = []
+    
+    # 1. 测试覆盖率
+    test_cov = ir.get('test_coverage', {})
+    if test_cov.get('coverage_pct', 0) < 30:
+        issues.append("⚠️ 测试覆盖率低 (< 30%)")
+    elif test_cov.get('coverage_pct', 0) < 60:
+        issues.append("🟡 测试覆盖率中等 (30-60%)")
+    else:
+        issues.append("✅ 测试覆盖率高 (> 60%)")
+    
+    # 2. 错误码数量
+    error_codes = ir.get('error_codes', [])
+    if len(error_codes) < 10:
+        issues.append("⚠️ 错误码定义少 (< 10)")
+    else:
+        issues.append(f"✅ 错误码定义充足 ({len(error_codes)} 个)")
+    
+    # 3. 文档注释
+    structs = ir.get('structs', [])
+    has_comments = sum(1 for s in structs if s.get('comments'))
+    if has_comments < len(structs) * 0.5:
+        issues.append("⚠️ 文档注释不足")
+    else:
+        issues.append("✅ 文档注释良好")
+    
+    return "; ".join(issues)
