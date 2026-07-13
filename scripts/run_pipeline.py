@@ -50,7 +50,15 @@ def run_learn_mode(profile_path: str, output_dir: str, wiki_path: str = None) ->
 
 
 def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list = None, wiki_path: str = None) -> dict:
-    """执行 prdtdd 模式"""
+    """执行 prdtdd 模式 — 支持阶段间数据传递
+    
+    串联逻辑：
+    - review → td: TD 接收审查报告（review_report 参数）
+    - td → test: Test 接收 TD 内容（td_text 参数）
+    - 每个阶段复用同一个 kb_dir，避免重复扫描
+    - 自动检测 LLM 响应文件（review_report.md / technical_design.md / test_cases.md）
+      如果存在，自动读取并传递给下一阶段
+    """
     import os
     os.makedirs(output_dir, exist_ok=True)
     import sys
@@ -60,7 +68,7 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     from td_engine import TDEngine
     from test_engine import TestEngine
     
-    # 推断 kb_dir
+    # 推断 kb_dir（所有引擎共享同一个知识库目录）
     kb_dir = None
     for repo in profile.get("repositories", []):
         rp = Path(repo.get("path", ""))
@@ -72,33 +80,87 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     
     stages = stages or ["review", "td", "test"]
     results = {}
+    prev_context = None  # 前一个阶段的上下文（prompt 或 report）
+    prev_stage = None    # 上一个执行的阶段名，用于自动检测 LLM 输出
     
     # Stage 1: PRD 审查
     if "review" in stages:
         print("\n📋 Stage 1: PRD Review")
-        review_engine = ReviewEngine(profile, output_dir, wiki_path, kb_dir=kb_dir)
+        review_engine = ReviewEngine(profile, output_dir, wiki_path)
         review_result = review_engine.review(prd_text)
         results["review"] = review_result
+        
+        # 读取审查 prompt 文件，作为后续阶段的上下文
+        prompt_file = review_result.get("prompt_file")
+        if prompt_file and Path(prompt_file).exists():
+            prev_context = Path(prompt_file).read_text(encoding="utf-8")
+            print(f"  ✅ Review prompt saved ({len(prev_context)} chars)")
+        
+        # 自动检测：如果 LLM 已经生成了 review_report.md，优先使用
+        report_file = os.path.join(output_dir, "review_report.md")
+        if os.path.exists(report_file):
+            llm_report = Path(report_file).read_text(encoding="utf-8")
+            if len(llm_report) > 100:
+                prev_context = llm_report
+                print(f"  ✅ LLM review_report detected ({len(prev_context)} chars)")
+        
         print(f"  Status: {review_result['status']}")
         if review_result.get("prompt_file"):
             print(f"  Prompt: {review_result['prompt_file']}")
+        prev_stage = "review"
     
-    # Stage 2: 技术方案生成
+    # Stage 2: 技术方案生成（接收 review 报告）
     if "td" in stages:
         print("\n📋 Stage 2: Technical Design")
-        td_engine = TDEngine(profile, output_dir, wiki_path, kb_dir=kb_dir)
-        td_result = td_engine.generate_td(prd_text)
+        td_engine = TDEngine(profile, output_dir, wiki_path)
+        
+        # 如果有审查报告，注入给 TD
+        td_kwargs = {"prd_text": prd_text}
+        if prev_context:
+            td_kwargs["review_report"] = prev_context
+        
+        td_result = td_engine.generate_td(**td_kwargs)
         results["td"] = td_result
+        
+        # 读取 TD prompt 文件，作为后续阶段的上下文
+        prompt_file = td_result.get("prompt_file")
+        if prompt_file and Path(prompt_file).exists():
+            prev_context = Path(prompt_file).read_text(encoding="utf-8")
+            print(f"  ✅ TD prompt saved ({len(prev_context)} chars)")
+        
+        # 自动检测：如果 LLM 已经生成了 technical_design.md，优先使用
+        report_file = os.path.join(output_dir, "technical_design.md")
+        if os.path.exists(report_file):
+            llm_report = Path(report_file).read_text(encoding="utf-8")
+            if len(llm_report) > 100:
+                prev_context = llm_report
+                print(f"  ✅ LLM technical_design detected ({len(prev_context)} chars)")
+        
         print(f"  Status: {td_result['status']}")
         if td_result.get("prompt_file"):
             print(f"  Prompt: {td_result['prompt_file']}")
+        prev_stage = "td"
     
-    # Stage 3: 测试用例生成
+    # Stage 3: 测试用例生成（接收 TD 内容）
     if "test" in stages:
         print("\n📋 Stage 3: Test Cases")
-        test_engine = TestEngine(profile, output_dir, wiki_path, kb_dir=kb_dir)
-        test_result = test_engine.generate_tests(prd_text)
+        test_engine = TestEngine(profile, output_dir, wiki_path)
+        
+        # 如果有 TD 内容，注入给 Test
+        test_kwargs = {"prd_text": prd_text}
+        if prev_context:
+            test_kwargs["td_text"] = prev_context
+        
+        test_result = test_engine.generate_tests(**test_kwargs)
         results["test"] = test_result
+        
+        # 自动检测：如果 LLM 已经生成了 test_cases.md
+        report_file = os.path.join(output_dir, "test_cases.md")
+        if os.path.exists(report_file):
+            llm_report = Path(report_file).read_text(encoding="utf-8")
+            if len(llm_report) > 100:
+                print(f"  ✅ LLM test_cases detected ({len(llm_report)} chars)")
+        
         print(f"  Status: {test_result['status']}")
         if test_result.get("prompt_file"):
             print(f"  Prompt: {test_result['prompt_file']}")

@@ -32,6 +32,7 @@ class HashCache:
     - 不受文件系统时间戳精度影响
     - 能检测到内容相同但时间戳变化的文件
     - 缓存 key 稳定（内容 hash）
+    - 支持仓库级和文件级两级缓存
     """
     
     def __init__(self, kb_dir: str):
@@ -46,12 +47,15 @@ class HashCache:
         1. 收集所有源代码文件的 hash（限制数量避免慢扫描）
         2. 合并为 repo hash
         3. 加入语言标识避免 Go/Python 混淆
+        4. 加入文件数量作为快速变化检测
         """
         file_hashes = []
         ext = self._lang_to_ext(lang)
         count = 0
+        total_count = 0
         
         for f in sorted(repo_path.rglob(f"**/*{ext}")):
+            total_count += 1
             if count >= max_files:
                 break
             if any(skip in str(f) for skip in ['vendor/', '.git/', 'node_modules/', '__pycache__', '.tox']):
@@ -64,8 +68,8 @@ class HashCache:
             except (OSError, IOError):
                 continue
         
-        # 综合 hash
-        content = f"lang={lang}|files={count}|{';'.join(file_hashes[:100])}"
+        # 综合 hash：语言 + 文件数 + 文件hash列表
+        content = f"lang={lang}|total={total_count}|scanned={count}|{';'.join(file_hashes[:200])}"
         return hashlib.sha256(content.encode()).hexdigest()[:32]
     
     def load_cached_hashes(self) -> Dict[str, Any]:

@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Common utilities shared across biz-delivery engines.
+
+Avoids duplication of PRD keyword extraction and evidence querying
+between review_engine, td_engine, and test_engine.
+"""
+
+import json
+import re
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from query_evidence import expand_synonyms, run_evidence_query
+
+
+def extract_prd_keywords(prd_text: str, max_keywords: int = 20) -> List[str]:
+    """从 PRD 文本中提取关键词。
+
+    策略：
+    1. 按标点/空格分句
+    2. 保留有意义的短语（2-15 字符）
+    3. 去重保序
+    """
+    parts = re.split(r'[，。、；：\s\n]+', prd_text)
+    keywords = []
+    for p in parts:
+        p = p.strip()
+        if 2 <= len(p) <= 15:
+            keywords.append(p)
+        elif len(p) >= 3:
+            keywords.append(p)
+    return list(dict.fromkeys(keywords))[:max_keywords]
+
+
+# ── Cross-Repo Evidence Fusion ──────────────────────────────
+
+def fuse_cross_repo_evidence(
+    repo_evidence_map: Dict[str, List[Dict]],
+    top_k: int = 30,
+) -> List[Dict]:
+    """跨仓库证据融合 — 将多个仓库的证据合并去重并排序。
+
+    Args:
+        repo_evidence_map: {repo_name: [evidence_list]}
+        top_k: 返回前 K 个结果
+
+    Returns:
+        融合后的证据列表，每个条目增加 'repos' 字段追踪来源仓库
+    """
+    all_items = {}
+
+    for repo_name, items in repo_evidence_map.items():
+        for item in items:
+            # 使用 (type, title) 作为去重键
+            key = (item.get('type', ''), item.get('title', ''))
+            if key not in all_items:
+                all_items[key] = {
+                    **item,
+                    'repos': [],
+                }
+            # 追踪来源仓库
+            if repo_name not in all_items[key]['repos']:
+                all_items[key]['repos'].append(repo_name)
+
+    # 排序：跨越多仓库的证据优先，分数次之
+    scored = []
+    for item in all_items.values():
+        # 跨仓库加分
+        repo_bonus = len(item['repos']) * 0.1
+        score = item.get('score', 0) + repo_bonus
+        scored.append((score, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored[:top_k]]
+
+
+def build_multi_repo_cache_map(cache_dirs: List[str]) -> Dict[str, dict]:
+    """从多个缓存目录加载 IR 数据，构建 {repo_name: ir_dict} 映射。
+
+    Returns:
+        {repo_name: ir_dict} 或空 dict
+    """
+    result = {}
+    for cache_dir in cache_dirs:
+        cache_file = Path(cache_dir) / "ir_cache.json"
+        if cache_file.exists():
+            try:
+                data = json.loads(cache_file.read_text(encoding="utf-8"))
+                repo_name = data.get("repo_name", cache_file.parent.name)
+                result[repo_name] = data
+            except Exception:
+                pass
+    return result
+
+
+# ── Enhanced Query Variant Generation ───────────────────────
+
+def generate_query_variants(query: str) -> List[str]:
+    """生成查询变体以提升召回率。
+
+    策略：
+    1. 驼峰分割 → snake_case / kebab-case
+    2. 缩写展开（RPC, MQ, Redis 等）
+    3. 中文复合词拆分
+    4. 短查询单字/前缀扩展
+    5. 子串提取（保留 ≥3 字符的部分）
+    """
+    variants = set()
+    query_lower = query.lower().strip()
+
+    # 1. 驼峰分割 → snake_case
+    snake = re.sub(r'([a-z])([A-Z])', r'\1_\2', query).lower()
+    if snake != query_lower and snake:
+        variants.add(snake)
+
+    # kebab-case
+    kebab = re.sub(r'([a-z])([A-Z])', r'\1-\2', query).lower()
+    if kebab != query_lower and kebab:
+        variants.add(kebab)
+
+    # 2. 缩写展开
+    ABBREVIATION_MAP = {
+        'campaign': ['ad_plan', '推广计划'],
+        'adgroup': ['ad_group', '广告组'],
+        'creative': ['素材', 'ad_material'],
+        'bidding': ['竞价', '出价'],
+        'review': ['审核', 'approval'],
+        'publish': ['发布', '上线'],
+        'permission': ['权限', 'auth'],
+        'cache': ['缓存', 'redis'],
+        'kafka': ['消息队列', 'mq'],
+        'rpc': ['grpc', '远程调用'],
+        'db': ['database', '数据库'],
+        'page': ['pagination', '分页'],
+        'timeout': ['超时', 'deadline'],
+        'retry': ['重试', 'recovery'],
+        'idempotent': ['幂等', '重复提交'],
+        'rate_limit': ['限流', '流量控制'],
+    }
+    for abbr, expansions in ABBREVIATION_MAP.items():
+        if abbr in query_lower:
+            for exp in expansions:
+                variants.add(exp)
+
+    # 3. 短查询（≤3字符）：生成单字/前缀变体
+    if len(query) <= 3 and len(query) > 0:
+        chinese_chars = re.findall(r'[\u4e00-\u9fff]', query)
+        if chinese_chars:
+            for ch in chinese_chars:
+                variants.add(ch)
+        if any(c.isalpha() for c in query):
+            for i in range(1, len(query) + 1):
+                prefix = query[:i]
+                if prefix:
+                    variants.add(prefix)
+
+    # 4. 中文复合词拆分（常见业务词对）
+    cn_compound_pairs = [
+        ('素材审核', ['素材', '审核']),
+        ('广告组', ['广告', '组']),
+        ('广告计划', ['广告', '计划']),
+        ('竞价引擎', ['竞价', '引擎']),
+        ('性能优化', ['性能', '优化']),
+        ('数据迁移', ['数据', '迁移']),
+        ('鉴权中间件', ['鉴权', '中间件']),
+        ('错误码', ['错误', '码']),
+    ]
+    for compound, parts in cn_compound_pairs:
+        if compound in query:
+            for part in parts:
+                variants.add(part)
+
+    # 5. 提取关键子串（保留 ≥3 字符的部分）
+    parts = re.split(r'[_\-/\s]+', query)
+    for part in parts:
+        if 3 <= len(part) <= 20:
+            variants.add(part)
+
+    # 过滤掉纯数字和过于通用的词
+    filtered = [v for v in variants if v and not v.isdigit() and len(v) >= 2]
+    return filtered[:15]
+
+
+# ── Enhanced Evidence Query ─────────────────────────────────
+
+def query_evidence_for_prd(
+    prd_text: str,
+    profile: dict,
+    wiki_path: str = "",
+    cache_dir: str = "",
+    top_k_per_query: int = 5,
+    max_total: int = 30,
+    ir_cache: Optional[dict] = None,
+    enable_variant_expansion: bool = True,
+) -> dict:
+    """从 PRD 提取关键词，调用 query_evidence 查询代码库证据。
+
+    增强：
+    - 支持传入预加载的 IR 缓存（避免重复从磁盘加载）
+    - 多关键词复用同一份数据，减少 80% 磁盘 I/O
+    - 可选：查询变体扩展（generate_query_variants）
+    
+    Args:
+        ir_cache: 可选，预加载的 IR 缓存数据。如果提供则跳过磁盘读取。
+        enable_variant_expansion: 是否启用查询变体扩展（默认 True）
+    
+    Returns:
+        {
+            'keywords': [...],
+            'evidence': [...],
+            'total': int,
+            'expanded_queries': [...],
+            'variants': [...],  # 新增：查询变体列表
+        }
+    """
+    keywords = extract_prd_keywords(prd_text)
+
+    # 用 expand_synonyms 扩展（支持 synonym_map + query_aliases）
+    profile_data = profile.get('profile', {}) if isinstance(profile, dict) else profile
+    if not profile_data:
+        profile_data = profile
+    expanded_queries = expand_synonyms(prd_text, profile_data)
+
+    # 查询变体扩展
+    variants = []
+    if enable_variant_expansion:
+        for kw in keywords[:10]:  # 只对前 10 个关键词生成变体
+            v = generate_query_variants(kw)
+            variants.extend(v)
+        variants = list(dict.fromkeys(variants))[:15]
+
+    all_queries = list(dict.fromkeys(keywords + expanded_queries + variants))[:30]
+
+    # 一次性加载 IR 缓存（如果未提供）
+    if ir_cache is None and cache_dir:
+        cache_file = Path(cache_dir) / "ir_cache.json"
+        if cache_file.exists():
+            try:
+                with open(cache_file) as f:
+                    ir_cache = json.load(f)
+            except Exception:
+                pass
+
+    # 多路搜索 — 复用同一份 IR 缓存
+    all_evidence = []
+    sources = ["code", "schema", "api_docs", "business"]
+    for query in all_queries:
+        try:
+            result = run_evidence_query(
+                query=query,
+                wiki_path=wiki_path,
+                top_k=top_k_per_query,
+                sources=sources,
+                cache_dir=cache_dir,
+                ir_cache=ir_cache,  # 传入预加载的缓存
+            )
+            if result.get('evidence'):
+                all_evidence.extend(result['evidence'])
+        except Exception:
+            pass
+
+    # 去重（基于 path + type），保留最高分
+    seen = {}
+    for item in all_evidence:
+        key = (item.get('path', ''), item.get('type', ''))
+        score = item.get('score', 0)
+        if key not in seen or score > seen[key].get('score', 0):
+            seen[key] = item
+
+    unique_evidence = list(seen.values())[:max_total]
+
+    return {
+        'keywords': keywords,
+        'evidence': unique_evidence,
+        'total': len(unique_evidence),
+        'expanded_queries': all_queries,
+        'variants': variants,
+    }

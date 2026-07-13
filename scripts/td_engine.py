@@ -19,100 +19,16 @@ from typing import Optional
 
 # 导入证据查询和 learn_repo
 sys.path.insert(0, str(Path(__file__).parent))
-from query_evidence import run_evidence_query
+from _common import extract_prd_keywords
 from learn_repo import GoScanner, IRDocument
+from base_engine import EngineBase
 
 
-class TDEngine:
+class TDEngine(EngineBase):
     """技术方案生成引擎"""
     
-    def _scan_codebase(self) -> IRDocument:
-        """扫描代码库获取 IR"""
-        if not self.repos:
-            print("⚠️  No repositories configured, skipping scan")
-            return IRDocument(
-                repo_name="none",
-                repo_path="",
-                language="unknown",
-            )
-        
-        repo = self.repos[0]
-        repo_path = Path(repo["path"])
-        language = repo.get("language", "go")
-        
-        if language == "go":
-            scanner = GoScanner()
-        else:
-            print(f"⚠️  Unsupported language: {language}")
-            return IRDocument(
-                repo_name=repo["name"],
-                repo_path=str(repo_path),
-                language=language,
-            )
-        
-        ir = scanner.scan_directory(repo_path)
-        ir.repo_name = repo["name"]
-        ir.repo_path = str(repo_path)
-        
-        # 清理 route handler
-        for route in ir.routes:
-            if hasattr(route, 'handler'):
-                route.handler = re.sub(r'\s*\([^)]*$', '', route.handler)
-                route.handler = re.sub(r'\s*\([^)]*\).*', '', route.handler)
-                if '.' in route.handler:
-                    route.handler = route.handler.split('.')[-1]
-                route.handler = route.handler.strip()
-        
-        print(f"  Found: {len(ir.structs)} structs, {len(ir.functions)} functions, {len(ir.routes)} routes")
-        
-        return ir
-    
-    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None, kb_dir: str = None):
-        self.profile = profile
-        self.output_dir = Path(output_dir)
-        self.wiki_path = wiki_path
-        self.business_domain = profile.get("business_domain", "unknown")
-        self.repos = profile.get("repositories", [])
-        self.kb_dir = kb_dir
-        
-    def _query_evidence_for_prd(self, ir, prd_text: str, cache_dir: str = None) -> dict:
-        """从 PRD 提取关键词，调用 query_evidence 查询代码库证据"""
-        import re
-        # 智能关键词提取：先按标点/空格分句，再提取有意义的短语
-        sentences = re.split(r'[，。、；：\s\n]+', prd_text)
-        keywords = []
-        for s in sentences:
-            s = s.strip()
-            if 2 <= len(s) <= 12:  # 合理长度的中文短语
-                keywords.append(s)
-            elif len(s) >= 3:  # 英文单词
-                keywords.append(s)
-        # 去重，保留前 10 个
-        keywords = list(dict.fromkeys(keywords))[:10]
-        
-        all_evidence = []
-        for kw in keywords:
-            try:
-                result = run_evidence_query(query=kw, wiki_path=self.wiki_path, top_k=5, sources=["code", "schema", "api_docs"])
-                if result.get('evidence'):
-                    all_evidence.extend(result['evidence'])
-            except:
-                pass
-        
-        # 去重
-        seen = set()
-        unique = []
-        for item in all_evidence:
-            path = item.get('path', item.get('file_path', ''))
-            if path and path not in seen:
-                seen.add(path)
-                unique.append(item)
-        
-        return {
-            'keywords': keywords,
-            'evidence': unique,
-            'total': len(unique),
-        }
+    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None):
+        super().__init__(profile, output_dir, wiki_path)
 
     def generate_td(self, prd_text: str, review_report: Optional[str] = None) -> dict:
         """生成技术方案
@@ -131,7 +47,7 @@ class TDEngine:
         # Step 1: 查询代码库证据
         print("🔍 Step 1: Querying evidence from codebase...")
         cache_dir = str(self.output_dir)
-        filtered = self._query_evidence_for_prd(ir, prd_text, cache_dir)
+        filtered = self._query_evidence_for_prd(prd_text, cache_dir)
         print(f"  Found {filtered.get('total', 0)} evidence items")
         
         # Step 2: 构建 TD prompt
@@ -148,45 +64,6 @@ class TDEngine:
             "message": "TD prompt generated. Send to LLM, then call generate_with_response().",
             "prompt_file": str(prompt_file),
             "prd_length": len(prd_text),
-        }
-    
-    def _query_evidence_for_prd(self, ir, prd_text: str, cache_dir: str = None) -> dict:
-        """从 PRD 提取关键词，调用 query_evidence 查询代码库证据"""
-        import re
-        # 智能关键词提取：先按标点/空格分句，再提取有意义的短语
-        sentences = re.split(r'[，。、；：\s\n]+', prd_text)
-        keywords = []
-        for s in sentences:
-            s = s.strip()
-            if 2 <= len(s) <= 12:  # 合理长度的中文短语
-                keywords.append(s)
-            elif len(s) >= 3:  # 英文单词
-                keywords.append(s)
-        # 去重，保留前 10 个
-        keywords = list(dict.fromkeys(keywords))[:10]
-        
-        all_evidence = []
-        for kw in keywords:
-            try:
-                result = run_evidence_query(query=kw, wiki_path=self.wiki_path, top_k=5, sources=["code", "schema", "api_docs"])
-                if result.get('evidence'):
-                    all_evidence.extend(result['evidence'])
-            except:
-                pass
-        
-        # 去重
-        seen = set()
-        unique = []
-        for item in all_evidence:
-            path = item.get('path', item.get('file_path', ''))
-            if path and path not in seen:
-                seen.add(path)
-                unique.append(item)
-        
-        return {
-            'keywords': keywords,
-            'evidence': unique,
-            'total': len(unique),
         }
 
     def generate_with_response(self, llm_response: str) -> dict:
@@ -205,44 +82,6 @@ class TDEngine:
             "status": "completed",
             "report_file": str(report_file),
             "sections": ["架构设计", "接口设计", "数据库设计", "数据迁移", "流程图"],
-        }
-    
-    def _query_evidence(self, prd_text: str) -> list:
-        """从 PRD 提取关键词，查询代码库证据"""
-        import re
-        # 智能关键词提取：先按标点/空格分句，再提取有意义的短语
-        sentences = re.split(r'[，。、；：\s\n]+', prd_text)
-        keywords = []
-        for s in sentences:
-            s = s.strip()
-            if 2 <= len(s) <= 12:  # 合理长度的中文短语
-                keywords.append(s)
-            elif len(s) >= 3:  # 英文单词
-                keywords.append(s)
-        # 去重，保留前 10 个
-        keywords = list(dict.fromkeys(keywords))[:10]
-        
-        all_evidence = []
-        for kw in keywords:
-            try:
-                result = run_evidence_query(query=kw, wiki_path=self.wiki_path, top_k=5, sources=["code", "schema", "api_docs"])
-                if result.get('evidence'):
-                    all_evidence.extend(result['evidence'])
-            except:
-                pass
-        
-        # 去重
-        seen = set()
-        unique = []
-        for item in all_evidence:
-            path = item.get('path', item.get('file_path', ''))
-            if path and path not in seen:
-                seen.add(path)
-                unique.append(item)
-        return {
-            'keywords': keywords,
-            'evidence': unique,
-            'total': len(unique),
         }
     
     def _build_td_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, review_report: Optional[str] = None, cache_dir: str = None) -> str:
@@ -364,6 +203,78 @@ class TDEngine:
                 prompt_parts.append(f"  调用: {', '.join(cf.get('call_chain', [])[:5])}")
             prompt_parts.append("")
         
+        # 注入包结构（用于架构图生成）
+        if hasattr(ir, 'packages') and ir.packages:
+            prompt_parts.append("## 包结构（用于架构图生成）")
+            for pkg_name, pkg_data in list(ir.packages.items())[:15]:
+                files = pkg_data.get('files', []) if isinstance(pkg_data, dict) else []
+                funcs = pkg_data.get('functions', []) if isinstance(pkg_data, dict) else []
+                structs = pkg_data.get('structs', {}) if isinstance(pkg_data, dict) else {}
+                prompt_parts.append(f"### `{pkg_name}`")
+                prompt_parts.append(f"- Files: {len(files)}")
+                if funcs:
+                    prompt_parts.append(f"- Functions: {', '.join(funcs[:5])}")
+                if structs:
+                    prompt_parts.append(f"- Structs: {', '.join(structs.keys() if isinstance(structs, dict) else structs[:5])}")
+            prompt_parts.append("")
+        
+        # 注入调用图（用于服务关系图）
+        if hasattr(ir, 'call_graph') and ir.call_graph:
+            prompt_parts.append("## 调用关系（用于服务关系图）")
+            for edge in ir.call_graph[:20]:
+                if isinstance(edge, dict):
+                    caller = edge.get('caller', '?')
+                    callee = edge.get('callee', '?')
+                    prompt_parts.append(f"- `{caller}` → `{callee}`")
+                elif hasattr(edge, 'caller'):
+                    prompt_parts.append(f"- `{edge.caller}` → `{edge.callee}`")
+            prompt_parts.append("")
+        
+        # 注入实际生成的 Mermaid 图表（基于 IR 数据）
+        try:
+            from .mermaid_generator import MermaidGenerator
+            generator = MermaidGenerator({
+                'packages': ir.packages if hasattr(ir, 'packages') else {},
+                'call_graph': ir.call_graph if hasattr(ir, 'call_graph') else [],
+                'entity_tables': ir.entity_tables if hasattr(ir, 'entity_tables') else [],
+                'routes': ir.routes if hasattr(ir, 'routes') else [],
+                'functions': ir.functions if hasattr(ir, 'functions') else [],
+                'services': ir.services if hasattr(ir, 'services') else [],
+                'core_flows': ir.core_flows if hasattr(ir, 'core_flows') else [],
+                'structs': ir.structs if hasattr(ir, 'structs') else [],
+                'sql_operations': ir.sql_operations if hasattr(ir, 'sql_operations') else [],
+                'error_codes': ir.error_codes if hasattr(ir, 'error_codes') else [],
+                'auth_models': ir.auth_models if hasattr(ir, 'auth_models') else [],
+                'configs': ir.configs if hasattr(ir, 'configs') else [],
+            })
+            diagrams = generator.generate_all_diagrams()
+            
+            if diagrams.get('architecture') != '':
+                prompt_parts.append("## 📐 架构图（基于实际包结构自动生成）")
+                prompt_parts.append(diagrams['architecture'])
+                prompt_parts.append("")
+            
+            if diagrams.get('data_model') != '':
+                prompt_parts.append("## 📊 数据模型图（基于实际表结构自动生成）")
+                prompt_parts.append(diagrams['data_model'])
+                prompt_parts.append("")
+            
+            if diagrams.get('deployment') != '':
+                prompt_parts.append("## 🏗️ 部署架构图（基于服务拓扑自动生成）")
+                prompt_parts.append(diagrams['deployment'])
+                prompt_parts.append("")
+            
+            # Generate sequence diagram for top flow
+            if ir.core_flows:
+                top_flow = ir.core_flows[0] if isinstance(ir.core_flows[0], dict) else {}
+                seq_diagram = generator.generate_sequence_diagram(top_flow)
+                prompt_parts.append("## 🔄 核心流程时序图（基于实际调用链自动生成）")
+                prompt_parts.append(seq_diagram)
+                prompt_parts.append("")
+        except Exception as e:
+            prompt_parts.append(f"⚠️  Mermaid diagram generation skipped: {e}")
+            prompt_parts.append("")
+        
         # 证据查询结果
         if filtered.get('evidence'):
             prompt_parts.append("## 代码库证据（基于 PRD 关键词查询）")
@@ -446,10 +357,39 @@ class TDEngine:
         prompt_parts.append("5. **数据库设计** — 新增/修改的表结构（含字段、索引、注释）")
         prompt_parts.append("6. **数据迁移** — 旧数据处理方案（如有）")
         prompt_parts.append("7. **流程图** — Mermaid 流程图描述核心流程")
-        prompt_parts.append("8. **架构图** — Mermaid graph 展示模块/服务关系")
-        prompt_parts.append("9. **数据模型图** — ER 图展示表关系")
+        prompt_parts.append("8. **架构图** — Mermaid graph 展示模块/服务关系（基于实际包结构）")
+        prompt_parts.append("9. **数据模型图** — ER 图展示表关系（基于实际 entity_tables）")
         prompt_parts.append("10. **部署架构** — Mermaid 展示服务部署拓扑")
         prompt_parts.append("11. **风险评估** — 实现难度、依赖风险、回滚方案")
+        prompt_parts.append("")
+        
+        # 新增：基于实际代码结构的图表生成指导
+        prompt_parts.append("### 图表生成规则（重要）")
+        prompt_parts.append("")
+        prompt_parts.append("**架构图必须基于实际代码包结构生成**：")
+        prompt_parts.append("- 从 IR 的 `packages` 字段提取实际包名")
+        prompt_parts.append("- 从 IR 的 `call_graph` 字段提取实际调用关系")
+        prompt_parts.append("- 每个包用 subgraph 分组，包含实际的 handler/service/dao 层")
+        prompt_parts.append("- 标注实际的外部依赖（RPC/HTTP/MQ）")
+        prompt_parts.append("- 使用 `graph TB` 方向（从上到下）")
+        prompt_parts.append("")
+        prompt_parts.append("**数据模型图必须基于实际表结构生成**：")
+        prompt_parts.append("- 从 IR 的 `entity_tables` 字段提取实际表名和字段")
+        prompt_parts.append("- 标注主键（PK）、外键（FK）、唯一索引（UK）")
+        prompt_parts.append("- 标注表之间的关系（一对一、一对多、多对多）")
+        prompt_parts.append("- 使用 `erDiagram` 语法")
+        prompt_parts.append("")
+        prompt_parts.append("**部署架构图必须基于实际服务拓扑生成**：")
+        prompt_parts.append("- 从 IR 的 `service_topology` 字段提取实际服务")
+        prompt_parts.append("- 标注负载均衡、缓存、数据库、消息队列")
+        prompt_parts.append("- 标注服务间的通信协议（HTTP/gRPC/MQ）")
+        prompt_parts.append("- 使用 `graph LR` 方向（从左到右）")
+        prompt_parts.append("")
+        prompt_parts.append("**流程图必须基于实际调用链生成**：")
+        prompt_parts.append("- 从 IR 的 `core_flows` 字段提取实际调用链")
+        prompt_parts.append("- 从 IR 的 `business_logic` 字段提取实际 handler → service → dao 调用")
+        prompt_parts.append("- 使用 `sequenceDiagram` 或 `flowchart TD` 语法")
+        prompt_parts.append("- 标注每个节点的类型（HTTP Handler / Service / DAO / DB）")
         prompt_parts.append("")
         
         # 输出格式

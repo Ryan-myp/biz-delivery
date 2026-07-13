@@ -662,8 +662,8 @@ class GoScanner:
         # 构建调用图和入口点（测试扫描和 API 文档提取在 scan_directory 中统一调用）
         self._extract_business_logic(ir, dir_path, max_entries=100)
         self._build_call_graph_from_signatures(ir)
-        # 推断核心业务流程（从 business_logic 聚类）
-        ir.core_flows = self._infer_core_business_flow(ir)
+        # 推断核心业务流程（增强版：多策略融合）
+        ir.core_flows = self._infer_core_business_flow_v2(ir)
         
         # 提取 SQL/GORM 操作
         self._extract_sql_operations(ir, dir_path, max_files)
@@ -1540,7 +1540,110 @@ class GoScanner:
         deduped = self._deduplicate_flows(grouped)
         
         return deduped
-    
+
+    def _infer_core_business_flow_v2(self, ir: IRDocument) -> List[Dict]:
+        """增强版核心业务流程推断 — 多策略融合
+        
+        相比 _infer_core_business_flow 的改进：
+        1. 从 IR 数据构建结构化输入（避免重复解析）
+        2. 新增状态机流推断（从 status 字段 + 状态转换方法）
+        3. 新增异步事件流推断（MQ publish/consume 配对）
+        4. 新增 CRUD 流推断（从路由分组）
+        5. 统一评分和排序（不再只按深度）
+        6. 跨策略去重（同一业务入口可能被多种策略捕获）
+        """
+        # Import CoreFlowAnalyzer — use sys.path to avoid relative import issues
+        import importlib.util
+        analyzer_path = str(Path(__file__).parent / "core_flow_analyzer.py")
+        spec = importlib.util.spec_from_file_location("core_flow_analyzer", analyzer_path)
+        if spec and spec.loader:
+            cfa_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cfa_module)
+            CoreFlowAnalyzer = cfa_module.CoreFlowAnalyzer
+        else:
+            # Fallback: use the original method
+            return self._infer_core_business_flow(ir)
+        
+        # Convert IRDocument to dict-friendly format for CoreFlowAnalyzer
+        ir_dict = {
+            'call_graph': [],
+            'business_logic': [],
+            'routes': [],
+            'functions': [],
+            'structs': [],
+            'entity_tables': [],
+            'core_flows': [],
+            'services': [],
+        }
+        
+        # Serialize call_graph
+        for edge in getattr(ir, 'call_graph', []):
+            if isinstance(edge, dict):
+                ir_dict['call_graph'].append(edge)
+            elif hasattr(edge, '__dict__'):
+                ir_dict['call_graph'].append({
+                    'caller': edge.caller,
+                    'callee': edge.callee,
+                    'caller_pkg': getattr(edge, 'caller_pkg', ''),
+                    'callee_pkg': getattr(edge, 'callee_pkg', ''),
+                })
+        
+        # Serialize business_logic
+        for bl in getattr(ir, 'business_logic', []):
+            if isinstance(bl, dict):
+                ir_dict['business_logic'].append(bl)
+        
+        # Serialize routes
+        for route in getattr(ir, 'routes', []):
+            if isinstance(route, dict):
+                ir_dict['routes'].append(route)
+            elif hasattr(route, '__dict__'):
+                ir_dict['routes'].append({
+                    'path': route.path,
+                    'method': route.method,
+                    'handler': route.handler,
+                    'file': route.file,
+                })
+        
+        # Serialize functions
+        for func in getattr(ir, 'functions', []):
+            if isinstance(func, dict):
+                ir_dict['functions'].append(func)
+            elif hasattr(func, '__dict__'):
+                ir_dict['functions'].append({
+                    'name': func.name,
+                    'file': func.file,
+                    'params': getattr(func, 'params', []),
+                    'returns': getattr(func, 'returns', None),
+                })
+        
+        # Serialize structs
+        for struct in getattr(ir, 'structs', []):
+            if isinstance(struct, dict):
+                ir_dict['structs'].append(struct)
+            elif hasattr(struct, '__dict__'):
+                ir_dict['structs'].append({
+                    'name': struct.name,
+                    'file': struct.file,
+                    'fields': getattr(struct, 'fields', []),
+                    'table_name': getattr(struct, 'table_name', None),
+                })
+        
+        # Serialize entity_tables
+        for et in getattr(ir, 'entity_tables', []):
+            if isinstance(et, dict):
+                ir_dict['entity_tables'].append(et)
+        
+        # Run enhanced analyzer
+        analyzer = CoreFlowAnalyzer(ir_dict)
+        flows = analyzer.infer_flows()
+        
+        # Add metadata from original IR
+        for flow in flows:
+            flow['source'] = 'enhanced_analyzer'
+        
+        return flows
+
     def _calc_max_depth(self, call_tree: list, current: int = 0) -> int:
         if not call_tree:
             return current

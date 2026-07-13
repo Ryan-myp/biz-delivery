@@ -9,16 +9,48 @@ from .smart_routing import SmartRouter, extract_intent
 RRF_K = 60
 
 
-def rrf_ranks(candidates: List[Dict[str, Any]], k: int = RRF_K) -> List[Dict[str, Any]]:
-    """Reciprocal Rank Fusion 融合多个排序结果"""
+# Source type weights — code matches should rank higher than schema/business
+SOURCE_TYPE_WEIGHTS = {
+    "code": 1.5,       # function/route/handler — strongest signal
+    "api_docs": 1.2,   # API documentation
+    "schema": 1.0,     # struct/table/schema — neutral weight
+    "business": 0.8,   # business rules/knowledge — lighter weight
+}
+
+
+def _source_weight(item: Dict[str, Any]) -> float:
+    """Get weight based on evidence source type."""
+    if not isinstance(item, dict):
+        return 1.0
+    stype = item.get("source_type", "") or item.get("type", "")
+    for key, weight in SOURCE_TYPE_WEIGHTS.items():
+        if key in str(stype).lower():
+            return weight
+    return 1.0
+
+
+def rrf_ranks(
+    candidates: List[Dict[str, Any]],
+    k: int = RRF_K,
+    weighted: bool = True,
+) -> List[Dict[str, Any]]:
+    """Reciprocal Rank Fusion 融合多个排序结果，支持 source_type 加权。
+
+    增强：
+    - code 匹配（function/route）权重 1.5x
+    - API docs 权重 1.2x
+    - schema 权重 1.0x
+    - business 权重 0.8x
+    """
     rank_scores = {}
-    
+
     for result_list in candidates:
         for rank, item in enumerate(result_list):
             item_id = item.get("id") or str(item)
+            w = _source_weight(item) if weighted else 1.0
             if item_id not in rank_scores:
                 rank_scores[item_id] = {"score": 0, "item": item, "sources": []}
-            rank_scores[item_id]["score"] += 1.0 / (k + rank + 1)
+            rank_scores[item_id]["score"] += w * 1.0 / (k + rank + 1)
             rank_scores[item_id]["sources"].append("query")
     
     # 排序
