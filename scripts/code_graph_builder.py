@@ -568,7 +568,7 @@ class CodeGraphBuilder:
                 source = go_file.read_text(encoding='utf-8', errors='ignore')
                 rel_path = str(go_file.relative_to(self.repo_path.parent))
                 defs_pass.run(rel_path, source, lang)
-            except:
+            except Exception:
                 continue
 
         # Pass 2: 解析调用
@@ -578,7 +578,7 @@ class CodeGraphBuilder:
                 source = go_file.read_text(encoding='utf-8', errors='ignore')
                 rel_path = str(go_file.relative_to(self.repo_path.parent))
                 calls_pass.run(rel_path, source, lang)
-            except:
+            except Exception:
                 continue
 
         # Pass 3: 解析 import
@@ -588,7 +588,7 @@ class CodeGraphBuilder:
                 source = go_file.read_text(encoding='utf-8', errors='ignore')
                 rel_path = str(go_file.relative_to(self.repo_path.parent))
                 imports_pass.run(rel_path, source, lang)
-            except:
+            except Exception:
                 continue
 
         # Pass 4: 提取路由
@@ -598,7 +598,7 @@ class CodeGraphBuilder:
                 source = go_file.read_text(encoding='utf-8', errors='ignore')
                 rel_path = str(go_file.relative_to(self.repo_path.parent))
                 routes_pass.run(rel_path, source, lang)
-            except:
+            except Exception:
                 continue
 
         return self.graph

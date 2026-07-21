@@ -2,7 +2,10 @@
 """RRF 融合查询引擎 - 多路查询 + 结果融合"""
 
 from typing import Any, Dict, List, Tuple
-from .smart_routing import SmartRouter, extract_intent
+try:
+    from smart_routing import SmartRouter, extract_intent
+except ImportError:
+    from .smart_routing import SmartRouter, extract_intent
 
 
 # RRF 融合参数

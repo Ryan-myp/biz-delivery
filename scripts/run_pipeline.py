@@ -1,26 +1,21 @@
 #!/usr/bin/env python3
-"""端到端流水线 — 支持 learn 和 prdtdd 双模式
+"""端到端流水线 — 支持 learn、prdtdd、auto 和 eval 四种模式
 
 Usage:
-    # learn 模式：代码 → 知识库
-    python3 run_pipeline.py \
-      --profile profiles/my-service.json \
-      --mode learn \
-      --output-dir knowledge/my-service
+    # learn 模式：代码 -> 知识库
+    python3 run_pipeline.py --profile profiles/my-service.json --mode learn --output-dir knowledge/my-service
 
-    # prdtdd 模式：PRD → 评审 → TD → 测试
-    python3 run_pipeline.py \
-      --profile profiles/my-service.json \
-      --mode prdtdd \
-      --text "<PRD内容或URL>" \
-      --output-dir delivery/my-feature
+    # prdtdd 模式：PRD -> 评审 -> TD -> 测试（生成 prompt 文件，需手动调用 LLM）
+    python3 run_pipeline.py --profile profiles/my-service.json --mode prdtdd --text "<PRD内容>" --output-dir delivery/my-feature
 
     # 串联模式：先 learn 再 prdtdd
-    python3 run_pipeline.py \
-      --profile profiles/my-service.json \
-      --mode learn,prdtdd \
-      --text "<PRD内容或URL>" \
-      --output-dir delivery/my-feature
+    python3 run_pipeline.py --profile profiles/my-service.json --mode learn,prdtdd --text "<PRD内容>" --output-dir delivery/my-feature
+
+    # auto 模式：PRD -> LLM 自动审查 -> TD -> 测试（全自动，无需手动调用 LLM）
+    python3 run_pipeline.py --profile profiles/my-service.json --mode auto --text "<PRD内容>" --output-dir delivery/my-feature
+
+    # eval 模式：评估审查准确性
+    python3 run_pipeline.py --profile profiles/my-service.json --mode eval --output-dir evaluation/results
 """
 
 import argparse
@@ -28,6 +23,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 def load_profile(profile_path: str) -> dict:
@@ -36,16 +32,214 @@ def load_profile(profile_path: str) -> dict:
         return json.load(f)
 
 
-def run_learn_mode(profile_path: str, output_dir: str, wiki_path: str = None) -> dict:
-    """执行 learn 模式"""
-    from learn_repo import learn_from_repos
-
+def run_learn_mode(profile_path: str, output_dir: str, wiki_path: Optional[str] = None, incremental: bool = False) -> dict:
+    """执行 learn 模式
+    
+    Args:
+        incremental: 如果为 True，使用 FileCache 只做增量扫描（跳过未变更文件）
+    """
+    
     result = learn_from_repos(
         profile_path=profile_path,
         output_dir=output_dir,
         wiki_path=wiki_path,
+        incremental=incremental,
     )
     return result
+
+
+def run_auto_mode(profile: dict, prd_text: str, output_dir: str, wiki_path: Optional[str] = None) -> dict:
+    """执行 auto 模式 — PRD -> LLM 自动审查 -> TD -> 测试（全自动）
+    
+    与 prdtdd 模式不同，auto 模式会直接调用 LLM API 完成每个阶段，
+    而不是只生成 prompt 文件。
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    sys.path.insert(0, str(Path(__file__).parent))
+    
+    
+    # 推断 kb_dir（所有引擎共享同一个知识库目录）
+    kb_dir = None
+    for repo in profile.get("repositories", []):
+        rp = Path(repo.get("path", ""))
+        if rp.exists():
+            kb = Path(rp.parent) / "knowledge" / profile.get("business_domain", "unknown")
+            if kb.exists():
+                kb_dir = str(kb)
+                break
+    
+    results = {}
+    
+    # Initialize LLM client
+    try:
+        llm_client = LLMClient()
+        print(f"✅ LLM client initialized (model={llm_client.model})")
+    except ValueError as e:
+        print(f"❌ Failed to initialize LLM client: {e}")
+        print("   Set AGNES_API_KEY environment variable or configure in profile")
+        return {"status": "error", "message": str(e)}
+    
+    # Stage 1: PRD 审查（自动调用 LLM）
+    print("\n📋 Stage 1: PRD Review (Auto)")
+    review_engine = ReviewEngine(profile, output_dir, wiki_path)
+    review_result = review_engine.review(prd_text)
+    
+    # 检查是否已有 LLM 生成的报告
+    report_file = os.path.join(output_dir, "review_report.md")
+    if os.path.exists(report_file):
+        llm_report = Path(report_file).read_text(encoding="utf-8")
+        if len(llm_report) > 100:
+            parsed = review_engine._parse_review_report(llm_report)
+            results["review"] = {
+                "status": "completed",
+                "report_file": report_file,
+                "parsed": parsed,
+                "source": "existing_report",
+            }
+            print(f"  ✅ Using existing review report ({len(llm_report)} chars)")
+        else:
+            review_engine.review_with_response(review_result.get("prompt_file", ""))
+    else:
+        # 调用 LLM 自动审查
+        prompt_file = review_result.get("prompt_file")
+        if not prompt_file or not Path(prompt_file).exists():
+            print("  ⚠️  No prompt file generated, skipping LLM call")
+            results["review"] = {"status": "skipped", "message": "No prompt available"}
+        else:
+            prompt_content = Path(prompt_file).read_text(encoding="utf-8")
+            print(f"  🤖 Calling LLM for review ({len(prompt_content)} chars)...")
+            
+            system_prompt = """You are a senior software architect reviewing a Product Requirements Document (PRD) against the existing codebase.
+Focus on: correctness, completeness, feasibility, risk, compatibility, performance, security.
+Output your review in Markdown format with P0/P1/P2 priority levels."""
+            
+            try:
+                llm_response = llm_client.chat(prompt_content, system=system_prompt)
+                llm_content = llm_response.get("content", "")
+                
+                if llm_content:
+                    review_engine.review_with_response(llm_content, prompt_file)
+                    parsed = review_engine._parse_review_report(llm_content)
+                    results["review"] = {
+                        "status": "completed",
+                        "report_file": report_file,
+                        "parsed": parsed,
+                        "source": "llm_auto",
+                        "tokens_used": llm_response.get("usage", {}).get("total_tokens", 0),
+                    }
+                    print(f"  ✅ Review completed ({len(llm_content)} chars, {parsed.get('p0_issues', [])} P0 issues)")
+                else:
+                    results["review"] = {"status": "error", "message": "Empty LLM response"}
+                    print("  ❌ Empty LLM response")
+            except Exception as e:
+                results["review"] = {"status": "error", "message": str(e)}
+                print(f"  ❌ LLM call failed: {e}")
+    
+    # Stage 2: 技术方案生成（自动调用 LLM）
+    print("\n📋 Stage 2: Technical Design (Auto)")
+    td_engine = TDEngine(profile, output_dir, wiki_path)
+    td_result = td_engine.generate_td(prd_text=prd_text)
+    
+    # Check for existing TD
+    td_report_file = os.path.join(output_dir, "technical_design.md")
+    if os.path.exists(td_report_file):
+        td_content = Path(td_report_file).read_text(encoding="utf-8")
+        if len(td_content) > 100:
+            results["td"] = {"status": "completed", "report_file": td_report_file, "source": "existing"}
+            print(f"  ✅ Using existing technical design ({len(td_content)} chars)")
+        else:
+            _call_llm_for_td(td_engine, llm_client, prd_text, results)
+    else:
+        _call_llm_for_td(td_engine, llm_client, prd_text, results)
+    
+    # Stage 3: 测试用例生成（自动调用 LLM）
+    print("\n📋 Stage 3: Test Cases (Auto)")
+    test_engine = TestEngine(profile, output_dir, wiki_path)
+    test_result = test_engine.generate_tests(prd_text=prd_text)
+    
+    # Check for existing test cases
+    test_report_file = os.path.join(output_dir, "test_cases.md")
+    if os.path.exists(test_report_file):
+        test_content = Path(test_report_file).read_text(encoding="utf-8")
+        if len(test_content) > 100:
+            results["test"] = {"status": "completed", "report_file": test_report_file, "source": "existing"}
+            print(f"  ✅ Using existing test cases ({len(test_content)} chars)")
+        else:
+            _call_llm_for_tests(test_engine, llm_client, prd_text, results)
+    else:
+        _call_llm_for_tests(test_engine, llm_client, prd_text, results)
+    
+    return {
+        "status": "completed",
+        "results": results,
+        "stages_executed": ["review", "td", "test"],
+    }
+
+
+def _call_llm_for_td(td_engine, llm_client, prd_text, results):
+    """调用 LLM 生成技术方案"""
+    prompt_file = td_engine.output_dir / "td_prompt.md"
+    if not prompt_file.exists():
+        results["td"] = {"status": "skipped", "message": "No TD prompt available"}
+        return
+    
+    prompt_content = prompt_file.read_text(encoding="utf-8")
+    print(f"  🤖 Calling LLM for TD ({len(prompt_content)} chars)...")
+    
+    system_prompt = """You are a senior software architect. Generate a comprehensive Technical Design Document based on the PRD and codebase structure.
+Include: architecture design, interface design, database design, data migration plan, mermaid diagrams."""
+    
+    try:
+        llm_response = llm_client.chat(prompt_content, system=system_prompt)
+        llm_content = llm_response.get("content", "")
+        
+        if llm_content:
+            td_engine.generate_with_response(llm_content)
+            results["td"] = {
+                "status": "completed",
+                "report_file": str(td_engine.output_dir / "technical_design.md"),
+                "source": "llm_auto",
+                "tokens_used": llm_response.get("usage", {}).get("total_tokens", 0),
+            }
+            print(f"  ✅ TD generated ({len(llm_content)} chars)")
+        else:
+            results["td"] = {"status": "error", "message": "Empty LLM response"}
+    except Exception as e:
+        results["td"] = {"status": "error", "message": str(e)}
+        print(f"  ❌ TD generation failed: {e}")
+
+
+def _call_llm_for_tests(test_engine, llm_client, prd_text, results):
+    """调用 LLM 生成测试用例"""
+    prompt_file = test_engine.output_dir / "test_prompt.md"
+    if not prompt_file.exists():
+        results["test"] = {"status": "skipped", "message": "No test prompt available"}
+        return
+    
+    prompt_content = prompt_file.read_text(encoding="utf-8")
+    print(f"  🤖 Calling LLM for tests ({len(prompt_content)} chars)...")
+    
+    system_prompt = """You are a senior QA engineer. Generate comprehensive test cases based on the PRD and technical design.
+Include: positive flows, exception handling, boundary conditions, state transitions, security tests."""
+    
+    try:
+        llm_response = llm_client.chat(prompt_content, system=system_prompt)
+        llm_content = llm_response.get("content", "")
+        
+        if llm_content:
+            test_engine.generate_with_response(llm_content)
+            results["test"] = {
+                "status": "completed",
+                "report_file": str(test_engine.output_dir / "test_cases.md"),
+                "source": "llm_auto",
+                "tokens_used": llm_response.get("usage", {}).get("total_tokens", 0),
+            }
+            print(f"  ✅ Test cases generated ({len(llm_content)} chars)")
+        else:
+            results["test"] = {"status": "error", "message": "Empty LLM response"}
+    except Exception as e:
+        results["test"] = {"status": "error", "message": str(e)}
+        print(f"  ❌ Test generation failed: {e}")
 
 
 
@@ -59,14 +253,8 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     - 自动检测 LLM 响应文件（review_report.md / technical_design.md / test_cases.md）
       如果存在，自动读取并传递给下一阶段
     """
-    import os
     os.makedirs(output_dir, exist_ok=True)
-    import sys
-    from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
-    from review_engine import ReviewEngine
-    from td_engine import TDEngine
-    from test_engine import TestEngine
     
     # 推断 kb_dir（所有引擎共享同一个知识库目录）
     kb_dir = None
@@ -176,11 +364,13 @@ def main():
     parser = argparse.ArgumentParser(description="Biz Delivery Pipeline")
     parser.add_argument("--profile", required=True, help="Profile JSON path")
     parser.add_argument("--mode", default="learn", 
-                       help="Mode: learn, prdtdd, or learn,prdtdd (comma-separated)")
-    parser.add_argument("--text", help="PRD content or URL (for prdtdd mode)")
+                       help="Mode: learn, prdtdd, auto, or eval")
+    parser.add_argument("--text", help="PRD content or URL (for prdtdd/auto mode)")
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument("--wiki-path", help="Wiki engine path")
     parser.add_argument("--stages", help="Stages for prdtdd: review,td,plan,test,automation")
+    parser.add_argument("--incremental", action="store_true", help="Enable incremental scanning (skip unchanged files)")
+    parser.add_argument("--prd-key", help="Specific PRD key for evaluation: new_feature/enhancement/high_risk_change")
     args = parser.parse_args()
     
     # 加载 Profile
@@ -191,6 +381,22 @@ def main():
     modes = [m.strip() for m in args.mode.split(",")]
     stages = [s.strip() for s in args.stages.split(",")] if args.stages else None
     
+    # Evaluation mode
+    if "eval" in modes:
+        from evaluate import run_evaluation
+        eval_prd = args.prd_key or None
+        results = run_evaluation("full", args.profile, args.output_dir, eval_prd)
+        print(f"\n{'='*60}")
+        print("EVALUATION COMPLETE")
+        print(f"{'='*60}")
+        for mode, result in results.items():
+            passed = result.get("passed", 0)
+            total = result.get("total", 0)
+            pct = (passed / total * 100) if total > 0 else 0
+            status = "✅" if pct == 100 else ("⚠️" if pct >= 50 else "❌")
+            print(f"  {status} {mode}: {passed}/{total} ({pct:.0f}%)")
+        return
+    
     # 按顺序执行各模式
     results = {}
     for mode in modes:
@@ -200,7 +406,7 @@ def main():
         
         if mode == "learn":
             output = os.path.join(args.output_dir, "knowledge")
-            result = run_learn_mode(profile_path, output, args.wiki_path)
+            result = run_learn_mode(profile_path, output, args.wiki_path, incremental=args.incremental)
             results["learn"] = result
             
         elif mode == "prdtdd":
@@ -210,6 +416,14 @@ def main():
                 sys.exit(1)
             result = run_prdtdd_mode(profile, args.text, output, stages)
             results["prdtdd"] = result
+            
+        elif mode == "auto":
+            output = os.path.join(args.output_dir, "delivery")
+            if not args.text:
+                print("ERROR: --text is required for auto mode")
+                sys.exit(1)
+            result = run_auto_mode(profile, args.text, output, args.wiki_path)
+            results["auto"] = result
             
         else:
             print(f"WARNING: Unknown mode '{mode}', skipping")

@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import extract_prd_keywords
 from learn_repo import GoScanner, IRDocument
 from base_engine import EngineBase
+from query_evidence import fuzzy_score as _fuzzy_score
 
 
 class ReviewEngine(EngineBase):
@@ -80,52 +81,94 @@ class ReviewEngine(EngineBase):
         report_file = self.output_dir / "review_report.md"
         report_file.write_text(llm_response, encoding="utf-8")
         
+        # 解析 LLM 输出，提取结构化数据
+        parsed = self._parse_review_report(llm_response)
+        
         return {
             "status": "completed",
             "report_file": str(report_file),
             "sections": ["合理性检查", "场景遗漏", "前后一致性", "风险评估"],
+            "parsed": parsed,
         }
     
-    def _scan_codebase(self) -> IRDocument:
-        """扫描代码库获取 IR"""
-        if not self.repos:
-            print("⚠️  No repositories configured, skipping scan")
-            return IRDocument(
-                repo_name="none",
-                repo_path="",
-                language="unknown",
-            )
+    def _parse_review_report(self, llm_response: str) -> dict:
+        """解析 LLM 审查报告，提取结构化数据。
         
-        repo = self.repos[0]
-        repo_path = Path(repo["path"])
-        language = repo.get("language", "go")
+        从 Markdown 格式的审查报告中提取：
+        - P0/P1/P2 问题清单
+        - 总体评价
+        - 各项检查的结论
+        """
+        result = {
+            'overall_status': 'unknown',
+            'p0_issues': [],
+            'p1_issues': [],
+            'p2_issues': [],
+            'sections': {},
+        }
         
-        if language == "go":
-            scanner = GoScanner()
-        else:
-            print(f"⚠️  Unsupported language: {language}")
-            return IRDocument(
-                repo_name=repo["name"],
-                repo_path=str(repo_path),
-                language=language,
-            )
+        # 提取总体评价
+        status_match = re.search(r'(通过|需修订|阻塞|Approved|Needs Revision|Blocked)', llm_response)
+        if status_match:
+            result['overall_status'] = status_match.group(1)
         
-        ir = scanner.scan_directory(repo_path)
-        ir.repo_name = repo["name"]
-        ir.repo_path = str(repo_path)
+        # 提取 P0 问题
+        p0_section = self._extract_section(llm_response, 'P0')
+        if p0_section:
+            result['p0_issues'] = self._parse_issue_list(p0_section)
         
-        # 清理 route handler（去掉括号等脏数据）
-        for route in ir.routes:
-            if hasattr(route, 'handler'):
-                route.handler = re.sub(r'\s*\([^)]*$', '', route.handler)
-                route.handler = re.sub(r'\s*\([^)]*\).*', '', route.handler)
-                if '.' in route.handler:
-                    route.handler = route.handler.split('.')[-1]
-                route.handler = route.handler.strip()
+        # 提取 P1 问题
+        p1_section = self._extract_section(llm_response, 'P1')
+        if p1_section:
+            result['p1_issues'] = self._parse_issue_list(p1_section)
         
-        print(f"  Found: {len(ir.structs)} structs, {len(ir.functions)} functions, {len(ir.routes)} routes")
+        # 提取 P2 问题
+        p2_section = self._extract_section(llm_response, 'P2')
+        if p2_section:
+            result['p2_issues'] = self._parse_issue_list(p2_section)
         
-        return ir
+        # 提取各 section 内容
+        for section_name in ['合理性检查', '场景遗漏', '前后不一致', '风险评估', 
+                            '兼容性检查', '性能风险评估', '安全检查', '可观测性检查',
+                            '数据合规检查', '发布策略检查', '结论与建议']:
+            content = self._extract_section(llm_response, section_name)
+            if content:
+                result['sections'][section_name] = content.strip()
+        
+        return result
+    
+    def _extract_section(self, text: str, heading: str) -> Optional[str]:
+        """从 Markdown 文本中提取指定 section 的内容。"""
+        # 匹配 ### heading 或 ## heading 后面的内容
+        pattern = rf'(?:#{1,2}\s+)?{re.escape(heading)}.*?\n((?:[^\n]*\n?)*)'
+        match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+        if match:
+            content = match.group(1).strip()
+            # 截断到下一个 ### 或 ## heading
+            next_heading = re.search(r'\n###?\s+\w', content)
+            if next_heading:
+                content = content[:next_heading.start()]
+            return content
+        return None
+    
+    def _parse_issue_list(self, section_text: str) -> List[Dict]:
+        """从 section 文本中解析问题列表。"""
+        issues = []
+        for line in section_text.split('\n'):
+            line = line.strip()
+            if not line or not line.startswith('-'):
+                continue
+            # 提取 [P0]/[P1]/[P2] 标记
+            issue_match = re.match(r'-\s*\[?(P\d)\]?\s+(.+)', line)
+            if issue_match:
+                priority = issue_match.group(1)
+                content = issue_match.group(2).strip()
+                issues.append({
+                    'priority': priority,
+                    'title': content.split(' ')[0] if ' ' in content else content[:30],
+                    'description': content,
+                })
+        return issues
     
     def _query_and_validate(self, ir: IRDocument, prd_text: str, cache_dir: str) -> dict:
         """从 PRD 提取关键词，调用 query_evidence 查询代码库证据。
@@ -162,9 +205,8 @@ class ReviewEngine(EngineBase):
         # 1. PRD 提到的业务实体是否在代码中存在
         prd_entities = set()
         # 从 PRD 提取可能的实体名（大写驼峰、中文业务词）
-        import re as re_mod
-        camel_entities = re_mod.findall(r'[A-Z][a-z]+[A-Z]\w*', prd_text)
-        chinese_entities = re_mod.findall(r'[\u4e00-\u9fff]{2,6}', prd_text)
+        camel_entities = re.findall(r'[A-Z][a-z]+[A-Z]\\w*', prd_text)
+        chinese_entities = re.findall(r'[\\u4e00-\\u9fff]{2,6}', prd_text)
         
         code_entities = set()
         for s in ir.structs:
@@ -188,11 +230,10 @@ class ReviewEngine(EngineBase):
                 })
             else:
                 # 检查 fuzzy 匹配
-                from query_evidence import fuzzy_score
                 best_match = None
                 best_score = 0
                 for ce in code_entities:
-                    score = fuzzy_score(entity.lower(), ce.lower())
+                    score = _fuzzy_score(entity.lower(), ce.lower())
                     if score > best_score:
                         best_score = score
                         best_match = ce
@@ -205,7 +246,7 @@ class ReviewEngine(EngineBase):
                     })
         
         # 2. PRD 提到的路由是否在代码中存在
-        prd_routes = re_mod.findall(r'/api/\w+/\w+', prd_text)
+        prd_routes = re.findall(r'/api/\w+/\w+', prd_text)
         code_routes = set()
         for r in ir.routes:
             if hasattr(r, 'path'):
@@ -216,11 +257,10 @@ class ReviewEngine(EngineBase):
         for route in prd_routes:
             if route not in code_routes:
                 # fuzzy match
-                from query_evidence import fuzzy_score
                 best_route = None
                 best_score = 0
                 for cr in code_routes:
-                    score = fuzzy_score(route.lower(), cr.lower())
+                    score = _fuzzy_score(route.lower(), cr.lower())
                     if score > best_score:
                         best_score = score
                         best_route = cr
@@ -247,6 +287,101 @@ class ReviewEngine(EngineBase):
         api_impact = self._analyze_api_impact(ir, prd_text)
         if api_impact:
             checks.extend(api_impact)
+        
+        # 5. 跨仓库依赖分析（多仓库场景）
+        cross_repo_checks = self._analyze_cross_repo_deps(ir, prd_text)
+        if cross_repo_checks:
+            checks.extend(cross_repo_checks)
+        
+        return checks
+    
+    def _analyze_cross_repo_deps(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """跨仓库依赖分析 — 检测 PRD 对多仓库架构的影响
+        
+        检查项：
+        1. PRD 涉及的服务是否在多个仓库中存在
+        2. 跨仓库调用链的风险（RPC/MQ/HTTP）
+        3. 共享实体（struct/table）的变更传播
+        4. 服务拓扑中的单点故障
+        """
+        checks = []
+        
+        # 1. 检测 PRD 是否涉及多服务/多仓库
+        multi_service_keywords = ['跨服务', '跨仓库', '微服务', 'rpc', 'grpc', 
+                                   'service-to-service', '分布式', 'dubbo', 'feign']
+        has_cross_service = any(kw in prd_text.lower() for kw in multi_service_keywords)
+        
+        # 2. 检测外部服务调用
+        external_service_keywords = ['调用', '依赖', '对接', '集成', 'consumer', 'producer',
+                                      '消息队列', 'mq', 'kafka', 'rabbitmq', 'redis']
+        has_external_deps = any(kw in prd_text for kw in external_service_keywords)
+        
+        # 3. 如果有跨服务/外部依赖，检查代码中是否有对应的服务定义
+        if has_cross_service or has_external_deps:
+            # 检查 services 字段
+            services = getattr(ir, 'services', [])
+            if services:
+                service_names = []
+                for svc in services:
+                    if isinstance(svc, dict):
+                        name = svc.get('name', svc.get('service_name', ''))
+                    else:
+                        name = getattr(svc, 'name', getattr(svc, 'service_name', ''))
+                    if name:
+                        service_names.append(name)
+                
+                if len(service_names) > 1:
+                    checks.append({
+                        'rule': 'multi_service_detected',
+                        'severity': 'info',
+                        'description': f'代码库检测到 {len(service_names)} 个服务: {", ".join(service_names[:5])}',
+                        'suggestion': '多服务架构需要注意：1) 服务间契约版本管理 2) 跨服务事务一致性 3) 降级策略',
+                    })
+            
+            # 检查 call_graph 中的跨服务调用
+            call_graph = getattr(ir, 'call_graph', [])
+            if call_graph:
+                # 检测是否有跨包/跨服务的调用
+                cross_package_calls = 0
+                for edge in call_graph:
+                    if isinstance(edge, dict):
+                        caller_pkg = edge.get('caller', '')
+                        callee_pkg = edge.get('callee', '')
+                        # 如果 caller 和 callee 在不同 package，视为跨包调用
+                        if caller_pkg and callee_pkg:
+                            caller_base = caller_pkg.split('/')[0] if '/' in caller_pkg else caller_pkg
+                            callee_base = callee_pkg.split('/')[0] if '/' in callee_pkg else callee_pkg
+                            if caller_base != callee_base:
+                                cross_package_calls += 1
+                
+                if cross_package_calls > 10:
+                    checks.append({
+                        'rule': 'high_cross_package_coupling',
+                        'severity': 'warn',
+                        'description': f'检测到 {cross_package_calls} 个跨包调用，耦合度较高',
+                        'suggestion': '建议：1) 引入接口抽象层 2) 使用依赖注入 3) 限制跨包直接调用',
+                    })
+        
+        # 4. 检测共享实体变更风险
+        shared_entity_keywords = ['公共', '共享', 'common', 'shared', 'base', '基类', '父类']
+        has_shared_entity = any(kw in prd_text for kw in shared_entity_keywords)
+        
+        if has_shared_entity:
+            # 检查是否有 common/shared 包
+            has_common_pkg = False
+            for pkg in getattr(ir, 'packages', {}):
+                pkg_str = str(pkg).lower()
+                if any(kw in pkg_str for kw in ['common', 'shared', 'base', 'internal']):
+                    has_common_pkg = True
+                    break
+            
+            if has_common_pkg:
+                checks.append({
+                    'rule': 'shared_entity_change_risk',
+                    'severity': 'high',
+                    'description': 'PRD 涉及共享实体变更，可能影响所有下游服务',
+                    'suggestion': '共享实体变更需要：1) 向后兼容 2) 通知所有调用方 3) 灰度发布 4) 版本管理',
+                })
         
         return checks
     
@@ -317,8 +452,7 @@ class ReviewEngine(EngineBase):
                 existing_structs.add(s.get('name', '').lower())
         
         # 从 PRD 提取可能的 struct 名
-        import re as re_mod
-        prd_struct_candidates = re_mod.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*', prd_text)
+        prd_struct_candidates = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*', prd_text)
         missing_structs = [s for s in prd_struct_candidates if s.lower() not in existing_structs]
         
         # 过滤掉常见非业务 struct（如 Request, Response, Context 等）
@@ -405,6 +539,12 @@ class ReviewEngine(EngineBase):
         
         # 14. 数据一致性校验（事务/ACID）
         checks.extend(self._check_data_consistency(ir, prd_text))
+        
+        # 15. 数据保留与合规检查
+        checks.extend(self._check_data_retention_compliance(ir, prd_text))
+        
+        # 16. 灰度发布与回滚检查
+        checks.extend(self._check_gradual_release_strategy(ir, prd_text))
         
         return checks
     
@@ -502,7 +642,6 @@ class ReviewEngine(EngineBase):
         3. 字段类型变更导致的数据不兼容
         4. 缺少 backfill 策略
         """
-        import re as re_mod
         checks = []
         
         # 检测 PRD 中的 schema 变更需求
@@ -696,9 +835,121 @@ class ReviewEngine(EngineBase):
         
         return checks
     
+    def _check_data_retention_compliance(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """数据保留与合规检查 — GDPR/PIPL 数据隐私合规
+        
+        检查项：
+        1. PRD 涉及个人数据处理但未发现脱敏/加密实现
+        2. 数据保留期限未定义
+        3. 用户数据删除/导出权利未实现
+        4. 跨境数据传输未声明
+        """
+        checks = []
+        
+        # 检测个人数据处理
+        pdp_keywords = ['个人信息', 'personal data', '用户数据', '用户信息', 
+                       '隐私', 'privacy', 'GDPR', 'PIPL', '数据出境', 
+                       '数据删除', '数据导出', '用户同意', 'consent',
+                       'cookie', 'tracking', '画像', 'profile', '用户行为']
+        has_pdp = any(kw in prd_text for kw in pdp_keywords)
+        
+        if not has_pdp:
+            return checks
+        
+        # 检查是否有数据脱敏实现
+        has_masking = any(
+            'mask' in str(f).lower() or 'desensit' in str(f).lower() or
+            'anonym' in str(f).lower() or 'pseudonym' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        
+        # 检查是否有数据删除实现
+        has_deletion = any(
+            'delete' in str(f).lower() or 'remove' in str(f).lower() or
+            'soft_delete' in str(f).lower() or 'hard_delete' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        
+        if has_pdp and not has_masking:
+            checks.append({
+                'rule': 'pdp_no_masking',
+                'severity': 'high',
+                'description': 'PRD 涉及个人数据处理但代码中未发现数据脱敏实现',
+                'suggestion': '个人敏感数据（手机号/身份证/邮箱）必须脱敏展示，日志中不得明文存储',
+            })
+        
+        if has_pdp and not has_deletion:
+            checks.append({
+                'rule': 'pdp_no_deletion',
+                'severity': 'medium',
+                'description': 'PRD 涉及个人数据但未发现数据删除实现',
+                'suggestion': '需要实现用户数据删除/导出接口，满足 GDPR/PIPL 合规要求',
+            })
+        
+        # 检查数据保留期限
+        retention_keywords = ['保留', 'retention', '过期', 'expire', '清理', 'cleanup', '归档', 'archive']
+        has_retention = any(kw in prd_text for kw in retention_keywords)
+        if has_pdp and not has_retention:
+            checks.append({
+                'rule': 'no_data_retention_policy',
+                'severity': 'medium',
+                'description': 'PRD 涉及个人数据但未定义数据保留期限',
+                'suggestion': '需要明确数据保留策略（如：用户数据保留 2 年，日志保留 6 个月）',
+            })
+        
+        return checks
+    
+    def _check_gradual_release_strategy(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """灰度发布与回滚检查 — 变更风险控制
+        
+        检查项：
+        1. PRD 涉及核心功能变更但未提灰度发布
+        2. 回滚方案缺失
+        3. Feature Flag 策略缺失
+        """
+        checks = []
+        
+        # 检测高风险变更
+        high_risk_keywords = ['核心', '核心功能', '主流程', 'main flow', 
+                             '重大变更', 'breaking change', '重构', 'refactor',
+                             '架构调整', '架构升级', '大规模', 'massive change']
+        has_high_risk = any(kw in prd_text for kw in high_risk_keywords)
+        
+        if not has_high_risk:
+            return checks
+        
+        # 检查是否有 feature flag 实现
+        has_feature_flag = any(
+            'feature' in str(f).lower() and 'flag' in str(f).lower() or
+            'toggle' in str(f).lower() or '开关' in str(f).lower() or
+            'enable_' in str(f).lower() or 'disable_' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        
+        # 检查是否有灰度/金丝雀发布相关
+        gradual_keywords = ['gradual', '灰度', 'canary', '金丝雀', 'rollout', '回滚', 'rollback']
+        has_gradual = any(kw in prd_text.lower() for kw in gradual_keywords)
+        
+        if has_high_risk and not has_gradual:
+            checks.append({
+                'rule': 'no_gradual_release',
+                'severity': 'high',
+                'description': 'PRD 涉及高风险变更但未提及灰度发布或回滚方案',
+                'suggestion': '高风险变更必须：1) 使用 Feature Flag 控制 2) 灰度发布（1% → 10% → 50% → 100%）3) 准备回滚方案',
+            })
+        
+        if has_high_risk and not has_feature_flag:
+            checks.append({
+                'rule': 'no_feature_flag',
+                'severity': 'medium',
+                'description': '高风险变更未使用 Feature Flag 控制',
+                'suggestion': '建议引入 Feature Flag 系统（如 LaunchDarkly/自建），支持运行时开关功能',
+            })
+        
+        return checks
+    
     def _check_compatibility(self, ir: IRDocument, prd_text: str, profile_data: dict) -> List[Dict]:
         """兼容性检查 — 新旧接口兼容、数据迁移风险"""
-        import re as re_mod
         checks = []
         
         # 检查 PRD 是否修改了现有接口
@@ -710,8 +961,8 @@ class ReviewEngine(EngineBase):
                 existing_routes.add(r.get('path', ''))
         
         # 从 PRD 提取可能的路由修改
-        prd_routes = re_mod.findall(r'/api/\w+/\w+', prd_text)
-        prd_routes.extend(re_mod.findall(r'/v\d+/\w+', prd_text))
+        prd_routes = re.findall(r'/api/\w+/\w+', prd_text)
+        prd_routes.extend(re.findall(r'/v\d+/\w+', prd_text))
         
         modified_routes = [r for r in prd_routes if r in existing_routes]
         if modified_routes:
@@ -810,6 +1061,93 @@ class ReviewEngine(EngineBase):
                     'suggestion': '建议使用 Redis + Lua 或令牌桶算法实现限流',
                 })
         
+        # ── 增强：API Versioning 策略检查 ──────────────────────────
+        # 检测 PRD 是否要求破坏性变更（Breaking Change）
+        breaking_keywords = ['删除字段', '修改字段类型', '重命名接口', '改变请求结构', 
+                             'breaking change', 'remove field', 'rename endpoint',
+                             '改变响应格式', '不兼容变更']
+        has_breaking_change = any(kw in prd_text for kw in breaking_keywords)
+        
+        if has_breaking_change:
+            # 检查是否有 deprecation header / 废弃标记
+            has_deprecation = any(
+                'deprecat' in str(f).lower() or 'deprecated' in str(r).lower() or
+                'X-Deprecated' in str(r).lower() or 'Deprecation-Until' in str(r).lower()
+                for r in getattr(ir, 'routes', [])
+                for f in getattr(ir, 'functions', [])
+            )
+            if not has_deprecation:
+                checks.append({
+                    'rule': 'no_deprecation_strategy',
+                    'severity': 'critical',
+                    'description': 'PRD 涉及破坏性变更但未发现废弃策略',
+                    'suggestion': '破坏性变更必须：1) 添加 X-Deprecated header 2) 保留旧接口 N 个版本 3) 提供迁移指南 4) 通知所有调用方',
+                })
+            
+            # 检查是否有新旧接口共存方案
+            has_dual_api = any('v1' in str(r) and 'v2' in str(r) for r in existing_routes)
+            if not has_dual_api:
+                checks.append({
+                    'rule': 'no_dual_api_strategy',
+                    'severity': 'high',
+                    'description': '破坏性变更需要新旧接口共存，但未发现多版本路由',
+                    'suggestion': '建议采用 /api/v1/ (deprecated) + /api/v2/ (new) 双版本共存方案',
+                })
+        
+        # ── 增强：前端适配成本评估 ──────────────────────────
+        frontend_keywords = ['前端', 'frontend', 'H5', '小程序', 'App', 'client', '移动端', 'web']
+        has_frontend = any(kw in prd_text for kw in frontend_keywords)
+        
+        if has_frontend and modified_routes:
+            # 检测路由变更是否影响前端
+            path_change_keywords = ['路径调整', '路由变更', 'path change', 'endpoint rename']
+            has_path_rename = any(kw in prd_text for kw in path_change_keywords)
+            if has_path_rename:
+                checks.append({
+                    'rule': 'frontend_impact',
+                    'severity': 'high',
+                    'description': f'路由变更将影响 {len(frontend_keywords)} 个前端端，需要前端适配',
+                    'suggestion': '需要：1) 前端适配计划 2) 灰度发布 3) 兼容性代理层 4) 前端联调时间评估',
+                })
+        
+        # ── 增强：第三方 API 变更影响 ──────────────────────────
+        third_party_keywords = ['第三方', 'external', 'third party', 'partner', '合作方', '外部系统']
+        has_third_party = any(kw in prd_text for kw in third_party_keywords)
+        
+        if has_third_party and modified_routes:
+            # 检查是否有 webhook/callback 机制
+            has_webhook = any(
+                'webhook' in str(f).lower() or 'callback' in str(f).lower() or
+                'notify' in str(f).lower() or 'push' in str(f).lower()
+                for f in getattr(ir, 'functions', [])
+            )
+            if not has_webhook:
+                checks.append({
+                    'rule': 'third_party_no_callback',
+                    'severity': 'medium',
+                    'description': '涉及第三方交互但未发现 webhook/callback 机制',
+                    'suggestion': '第三方集成建议实现 webhook 回调机制，避免轮询开销',
+                })
+        
+        # ── 增强：数据向后兼容检查 ──────────────────────────
+        # 检测 PRD 是否要求新增可选字段 vs 必填字段
+        optional_keywords = ['可选', 'optional', 'nullable', '可以为空']
+        required_keywords = ['必填', 'required', 'not null', '不能为空']
+        
+        has_optional = any(kw in prd_text for kw in optional_keywords)
+        has_required = any(kw in prd_text for kw in required_keywords)
+        
+        if has_required and has_db_changes:
+            # 检查默认值策略
+            has_default = 'default' in prd_text.lower() or '默认值' in prd_text or 'DEFAULT' in prd_text
+            if not has_default:
+                checks.append({
+                    'rule': 'no_default_for_required_field',
+                    'severity': 'high',
+                    'description': '新增必填字段但未指定默认值策略',
+                    'suggestion': 'DDL 变更时必填字段必须有 DEFAULT 值，否则历史数据插入会失败',
+                })
+        
         return checks
     
     def _analyze_api_impact(self, ir: IRDocument, prd_text: str) -> List[Dict]:
@@ -821,7 +1159,6 @@ class ReviewEngine(EngineBase):
         3. 新增/删除的接口对上游调用方的影响
         4. 路由路径变更对前端/客户端的影响
         """
-        import re as re_mod
         checks = []
         
         # 1. 检测路由变更
@@ -833,7 +1170,7 @@ class ReviewEngine(EngineBase):
             r'/v\d+/\w+',
         ]
         for pattern in route_patterns:
-            matches = re_mod.findall(pattern, prd_text)
+            matches = re.findall(pattern, prd_text)
             prd_route_changes.extend(matches)
         
         # 2. 检测 struct 变更
@@ -985,7 +1322,6 @@ class ReviewEngine(EngineBase):
     
     def _detect_security_risks(self, ir: IRDocument, prd_text: str) -> List[Dict]:
         """安全漏洞检测 — 从 PRD 中识别安全风险"""
-        import re as re_mod
         checks = []
         
         # 1. 敏感数据处理
@@ -1050,7 +1386,6 @@ class ReviewEngine(EngineBase):
     
     def _check_observability(self, ir: IRDocument, prd_text: str) -> List[Dict]:
         """可观测性检查 — 日志、监控、告警"""
-        import re as re_mod
         checks = []
         
         # 1. 日志需求
@@ -1113,7 +1448,6 @@ class ReviewEngine(EngineBase):
     
     def _validate_core_flows(self, ir: IRDocument, prd_text: str) -> List[Dict]:
         """核心流程校验 — 比对 PRD 流程与 IR 推断的 core_flows"""
-        import re as re_mod
         checks = []
         
         if not hasattr(ir, 'core_flows') or not ir.core_flows:
@@ -1125,10 +1459,9 @@ class ReviewEngine(EngineBase):
         if not has_flow_desc:
             return checks
         
-        # 检查 PRD 中提到的核心实体是否在现有流程中
-        prd_entities = set()
-        camel_entities = re_mod.findall(r'[A-Z][a-z]+[A-Z]\w*', prd_text)
-        chinese_entities = re_mod.findall(r'[\u4e00-\u9fff]{2,6}', prd_text)
+        # 从 PRD 提取可能的实体名（大写驼峰、中文业务词）
+        camel_entities = re.findall(r'[A-Z][a-z]+[A-Z]\\w*', prd_text)
+        chinese_entities = re.findall(r'[\\u4e00-\\u9fff]{2,6}', prd_text)
         prd_entities.update(camel_entities)
         prd_entities.update(chinese_entities)
         
@@ -1242,14 +1575,48 @@ class ReviewEngine(EngineBase):
 
         prompt_parts.append(self._build_test_coverage_section(ir))
         
-        # 证据查询结果
+        # 证据查询结果（按类型加权排序：function/route > struct > business_logic > schema）
         if filtered.get('evidence'):
-            prompt_parts.append("## 代码库证据（基于 PRD 关键词查询）")
-            for i, item in enumerate(filtered.get('evidence', [])[:20], 1):
+            prompt_parts.append("## 代码库证据（基于 PRD 关键词查询，按相关度加权）")
+            prompt_parts.append("")
+            prompt_parts.append("**权重规则**: function/route = 1.5x | struct = 1.2x | entity_table = 1.0x | business_logic = 0.8x")
+            
+            # 计算加权分数
+            weighted_evidence = []
+            for item in filtered.get('evidence', [])[:25]:
+                item_type = item.get('type', '')
+                raw_score = item.get('score', 0)
+                
+                # 类型权重
+                type_weights = {
+                    'function': 1.5,
+                    'route': 1.5,
+                    'struct': 1.2,
+                    'entity_table': 1.0,
+                    'business_logic': 0.8,
+                    'api': 1.3,
+                    'schema': 0.7,
+                }
+                weight = type_weights.get(item_type, 1.0)
+                weighted_score = raw_score * weight
+                
+                weighted_evidence.append({
+                    **item,
+                    'weighted_score': weighted_score,
+                    'type_weight': weight,
+                })
+            
+            # 按加权分数排序
+            weighted_evidence.sort(key=lambda x: x['weighted_score'], reverse=True)
+            
+            # 展示 Top 20
+            for i, item in enumerate(weighted_evidence[:20], 1):
                 title = item.get('title', item.get('path', 'unknown'))
                 score = item.get('score', 0)
+                weighted = item.get('weighted_score', 0)
                 content_text = item.get('content', item.get('text', ''))
-                prompt_parts.append(f"- **证据{i}** (score={score:.3f}): {title}")
+                item_type = item.get('type', '?')
+                prompt_parts.append(f"- **证据{i}** [type={item_type}] (raw={score:.3f}, weighted={weighted:.3f}): {title}")
                 if content_text:
                     ct = content_text[:200].replace('\n', '\\n')
                     prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
@@ -1577,6 +1944,17 @@ class ReviewEngine(EngineBase):
         prompt_parts.append("- **健康检查**: /health (liveness) 和 /ready (readiness) 端点是否存在？")
         prompt_parts.append("- **告警规则**: 关键指标是否有告警阈值配置？")
         prompt_parts.append("")
+        prompt_parts.append("## 数据合规检查")
+        prompt_parts.append("- **个人数据处理**: 是否涉及个人信息？是否有脱敏/加密？")
+        prompt_parts.append("- **数据保留**: 是否定义了数据保留期限？")
+        prompt_parts.append("- **用户权利**: 是否支持用户数据删除/导出？")
+        prompt_parts.append("- **跨境传输**: 是否涉及数据出境？是否需要合规审批？")
+        prompt_parts.append("")
+        prompt_parts.append("## 发布策略检查")
+        prompt_parts.append("- **灰度发布**: 高风险变更是否制定了灰度发布方案？")
+        prompt_parts.append("- **Feature Flag**: 是否使用 Feature Flag 控制功能开关？")
+        prompt_parts.append("- **回滚方案**: 是否有明确的回滚步骤和时间窗口？")
+        prompt_parts.append("")
         prompt_parts.append("## 结论与建议")
         prompt_parts.append("[总结性建议]")
         prompt_parts.append("```")
@@ -1589,9 +1967,18 @@ class ReviewEngine(EngineBase):
         """根据 PRD 内容，从知识库选择相关知识 — 增强版"""
         references = []
         
-        # 知识库路径
-        kb_base = Path('/Users/yanping.ma/ryan-personal-knowledge/knowledge')
-        if not kb_base.exists():
+        # 知识库路径 — 优先使用 EngineBase 推断的 kb_dir，回退到默认路径
+        kb_base = None
+        if self.kb_dir:
+            kb_base = Path(self.kb_dir)
+            if not kb_base.exists():
+                kb_base = None
+        if not kb_base:
+            default_kb = Path.home() / 'ryan-personal-knowledge' / 'knowledge'
+            if default_kb.exists():
+                kb_base = default_kb
+        
+        if not kb_base or not kb_base.exists():
             return references
         
         # PRD 关键词（按权重排序）
@@ -1621,7 +2008,7 @@ class ReviewEngine(EngineBase):
                             references.append(f"### {md_file.relative_to(kb_base)}")
                             references.append('\n'.join(lines))
                             references.append("")
-                        except:
+                        except Exception:
                             pass
                     break  # 只取最高优先级
         
@@ -1640,7 +2027,7 @@ class ReviewEngine(EngineBase):
                                 references.append(f"### {md_file.relative_to(kb_base)}")
                                 references.append('\n'.join(lines))
                                 references.append("")
-                            except:
+                            except Exception:
                                 pass
                         break
         
@@ -1659,7 +2046,7 @@ class ReviewEngine(EngineBase):
                                 references.append(f"### {md_file.relative_to(kb_base)}")
                                 references.append('\n'.join(lines))
                                 references.append("")
-                            except:
+                            except Exception:
                                 pass
                         break
         
@@ -1696,9 +2083,13 @@ def main():
             prd_text = args.prd
     elif args.prd_url:
         print(f"Fetching PRD from URL: {args.prd_url}")
-        # TODO: 实现 URL 抓取
-        print("⚠️  URL fetching not implemented yet")
-        sys.exit(1)
+        try:
+            import urllib.request
+            req = urllib.request.Request(args.prd_url, headers={'User-Agent': 'Mozilla/5.0'})
+            prd_text = urllib.request.urlopen(req, timeout=10).read().decode('utf-8', errors='ignore')
+        except Exception as e:
+            print(f"❌ Failed to fetch PRD from URL: {e}")
+            sys.exit(1)
     else:
         print("ERROR: --prd or --prd-url is required")
         sys.exit(1)

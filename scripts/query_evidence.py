@@ -31,11 +31,13 @@ INTENT_PATTERNS = {
     "callchain": ["谁调用了", "调用链", "caller", "callee", "depends"],
     "dataflow": ["从哪来", "数据来源", "流向", "source", "sink", "data flow"],
     "impact": ["改了影响", "影响分析", "impact", "side effect", "what breaks"],
+    "relationship": ["关联", "关系", "relation", "关联到", "依赖于", "dependency"],
+    "coverage": ["覆盖", "覆盖范围", "coverage", "包括哪些", "all cases"],
 }
 
 
 def extract_intent(query: str) -> Tuple[str, float]:
-    """意图识别"""
+    """意图识别 — 增强版，支持 relationship 和 coverage 意图"""
     query_lower = query.lower()
     scores = {}
     for intent, patterns in INTENT_PATTERNS.items():
@@ -251,8 +253,55 @@ def fuzzy_score(query: str, target: str, threshold: Optional[float] = None) -> f
     return 0.7 * jaccard + 0.3 * edit_score
 
 
+# ── Common Chinese Compound Words for Word-Level Segmentation ──
+_CN_COMPOUNDS = frozenset([
+    '素材审核', '广告组', '广告计划', '竞价引擎', '投放管理', '报表统计',
+    '权限控制', '缓存策略', '消息队列', '定时任务', '数据迁移', '监控告警',
+    '日志收集', '限流降级', '幂等设计', '加密解密', '搜索索引', '推送通知',
+    '对账结算', '风控系统', '错误码', '鉴权中间件', '健康检查', '回滚方案',
+    '灰度发布', 'Feature Flag', '金丝雀发布', '分布式锁', '事务管理',
+    '补偿机制', '重试策略', '异步处理', '批量处理', '实时计算', '离线分析',
+])
+
+
+def _chinese_word_segment(text: str) -> List[str]:
+    """中文分词 — 基于词典的最大匹配 + 双字切分。
+    
+    策略：
+    1. 优先匹配已知业务复合词（素材审核、竞价引擎等）
+    2. 剩余部分按双字切分
+    3. 保留单字作为兜底
+    """
+    words = []
+    remaining = text
+    
+    # 1. 最大正向匹配（从长到短）
+    matched_positions = set()
+    for compound in _CN_COMPOUNDS:
+        start = 0
+        while True:
+            idx = remaining.find(compound, start)
+            if idx < 0:
+                break
+            matched_positions.update(range(idx, idx + len(compound)))
+            words.append(compound)
+            start = idx + len(compound)
+    
+    # 2. 未匹配部分按双字切分
+    for i, ch in enumerate(remaining):
+        if i not in matched_positions and ch in _PINYIN_INITIALS:
+            # 双字组合
+            if i + 1 < len(remaining) and (i + 1) not in matched_positions:
+                bigram = remaining[i:i+2]
+                words.append(bigram)
+            else:
+                words.append(ch)
+    
+    return words
+
+
 def _chinese_ngram_similarity(s1: str, s2: str, n: int = 2) -> float:
-    """计算中文字符 n-gram 相似度"""
+    """计算中文字符 n-gram 相似度，增强版：支持词级别 n-gram"""
     if not s1 or not s2:
         return 0.0
     
@@ -263,16 +312,33 @@ def _chinese_ngram_similarity(s1: str, s2: str, n: int = 2) -> float:
     if not c1 or not c2:
         return 0.0
     
-    grams1 = {c1[i:i+n] for i in range(max(0, len(c1) - n + 1))}
-    grams2 = {c2[i:i+n] for i in range(max(0, len(c2) - n + 1))}
+    # 字符级 n-gram
+    char_grams1 = {c1[i:i+n] for i in range(max(0, len(c1) - n + 1))}
+    char_grams2 = {c2[i:i+n] for i in range(max(0, len(c2) - n + 1))}
     
-    if not grams1 or not grams2:
+    if not char_grams1 or not char_grams2:
         return 0.0
     
-    intersection = len(grams1 & grams2)
-    union = len(grams1 | grams2)
+    char_intersection = len(char_grams1 & char_grams2)
+    char_union = len(char_grams1 | char_grams2)
+    char_sim = char_intersection / char_union if char_union > 0 else 0.0
     
-    return intersection / union if union > 0 else 0.0
+    # 词级别 n-gram（使用分词结果）
+    words1 = _chinese_word_segment(c1)
+    words2 = _chinese_word_segment(c2)
+    
+    if words1 and words2:
+        word_grams1 = {tuple(words1[i:i+n]) for i in range(max(0, len(words1) - n + 1))}
+        word_grams2 = {tuple(words2[i:i+n]) for i in range(max(0, len(words2) - n + 1))}
+        
+        if word_grams1 and word_grams2:
+            word_intersection = len(word_grams1 & word_grams2)
+            word_union = len(word_grams1 | word_grams2)
+            word_sim = word_intersection / word_union if word_union > 0 else 0.0
+            # 加权融合：词级别权重更高（业务语义更准确）
+            return 0.4 * char_sim + 0.6 * word_sim
+    
+    return char_sim
 
 
 def _pinyin_similarity(s1: str, s2: str) -> float:
@@ -436,9 +502,227 @@ def expand_synonyms(query: str, profile: dict = None) -> List[str]:
     if variants:
         keywords.extend(variants)
     
+    # 7. Normalize query — 统一常见变体（adgroup→ad_group, review→审核, etc.）
+    try:
+        from enhanced_search import normalize_query
+        normalized = normalize_query(query)
+        if normalized != query and normalized not in keywords:
+            keywords.append(normalized)
+    except ImportError:
+        pass  # enhanced_search not available, skip
+    
     # 去重，保留顺序
     keywords = list(dict.fromkeys(keywords))
     return keywords[:30]  # 最多 30 个关键词
+
+
+# ──────────────────────────────────────────────
+# IR-Aware Synonym Expansion — 基于实际代码的同义词扩展
+# ──────────────────────────────────────────────
+
+# 从函数名/路由/struct 自动推断同义词
+_CODE_SYNONYM_MAP = {
+    # 素材相关
+    'creative': ['素材', 'creative_material', 'artwork', 'banner', 'video_ad'],
+    '素材': ['creative', 'ad_material', 'artwork'],
+    # 广告组相关
+    'adgroup': ['广告组', 'ad_group'],
+    '广告组': ['adgroup', 'ad_group'],
+    # 竞价相关
+    'bidding': ['竞价', 'bidding_engine', 'bid_price', 'pacing'],
+    '竞价': ['bidding', 'auction'],
+    # 审核相关
+    'review': ['审核', 'reviewer', 'audit', 'approval'],
+    '审核': ['review', 'audit', 'approve'],
+    # 投放相关
+    'campaign': ['广告计划', 'campaign_manager', 'ad_plan'],
+    '投放': ['delivery', 'campaign', 'pacing'],
+    # 报表相关
+    'report': ['报表', 'reporting', 'stats', 'analytics', 'dashboard'],
+    '报表': ['report', 'stats', 'analytics'],
+    # 权限相关
+    'permission': ['权限', 'permission_manager', 'auth'],
+    '权限': ['permission', 'auth', 'rbac'],
+    # 缓存相关
+    'cache': ['缓存', 'cache_manager', 'redis_client'],
+    '缓存': ['cache', 'redis'],
+    # 消息队列相关
+    'kafka': ['Kafka', '消息队列', 'mq_consumer', 'mq_producer'],
+    '消息队列': ['kafka', 'mq', 'rabbitmq'],
+    # 推送相关
+    'push': ['推送', 'push_notification', 'notify'],
+    '推送': ['push', 'notification'],
+    # 错误码相关
+    'error_code': ['错误码', 'error_codes', 'err_code'],
+    '错误码': ['error_code', 'err_code'],
+    # 鉴权相关
+    'auth': ['鉴权', 'auth_middleware', 'permission_check', 'token_verify'],
+    '鉴权': ['auth', 'permission', 'token'],
+    # 数据库相关
+    'dao': ['DAO', 'data_access', 'repository', 'db_layer'],
+    'service': ['Service', '业务层', 'business_logic'],
+    'handler': ['Handler', '处理器', 'router_handler'],
+}
+
+
+def expand_synonyms_with_ir(query: str, ir_data: Optional[dict], profile: dict = None) -> List[str]:
+    """IR-aware 同义词扩展 — 结合代码库实际数据扩展查询词
+    
+    策略：
+    1. 标准同义词扩展（builtin + profile）
+    2. IR 数据驱动的上下文扩展：从实际函数名/路由/struct 中推断相关术语
+    3. 语义相关的函数名提取（如 SetStatus → approve/reject/transition）
+    4. 路由路径前缀推断（如 /api/v1/adgroup → adgroup/ad_group/广告组）
+    
+    Args:
+        query: 原始查询
+        ir_data: IR 缓存数据（包含 functions/routes/structs 等）
+        profile: 可选 profile 配置
+        
+    Returns:
+        扩展后的查询词列表
+    """
+    keywords = expand_synonyms(query, profile)
+    
+    if not ir_data or not isinstance(ir_data, dict):
+        return keywords
+    
+    query_lower = query.lower()
+    
+    # 1. 从函数名推断同义词
+    for func in ir_data.get('functions', []):
+        if isinstance(func, dict):
+            fname = func.get('name', '')
+            fsig = func.get('signature', '')
+        else:
+            fname = getattr(func, 'name', '')
+            fsig = getattr(func, 'signature', '')
+        
+        if not fname:
+            continue
+            
+        # 检查函数名是否包含查询关键词
+        if any(term.lower() in fname.lower() for term in [query] + keywords[:5]):
+            # 从函数名提取有意义的子串作为扩展词
+            parts = re.split(r'[_\-\s]', fname)
+            for part in parts:
+                if 3 <= len(part) <= 20 and part.lower() not in [k.lower() for k in keywords]:
+                    keywords.append(part)
+    
+    # 2. 从路由路径推断同义词
+    for route in ir_data.get('routes', []):
+        if isinstance(route, dict):
+            rpath = route.get('path', '')
+            rhandler = route.get('handler', '')
+        else:
+            rpath = getattr(route, 'path', '')
+            rhandler = getattr(route, 'handler', '')
+        
+        if not rpath:
+            continue
+            
+        # 检查路由是否匹配查询
+        if any(term.lower() in rpath.lower() for term in [query] + keywords[:5]):
+            # 从路由路径提取实体名
+            path_parts = rpath.strip('/').split('/')
+            for part in path_parts:
+                if 2 <= len(part) <= 20 and part.lower() not in [k.lower() for k in keywords]:
+                    keywords.append(part)
+    
+    # 3. 从 struct 名推断同义词
+    for struct in ir_data.get('structs', []):
+        if isinstance(struct, dict):
+            sname = struct.get('name', '')
+        else:
+            sname = getattr(struct, 'name', '')
+        
+        if not sname:
+            continue
+            
+        if any(term.lower() in sname.lower() for term in [query] + keywords[:5]):
+            # 从 struct 名提取字段名作为扩展词
+            fields = struct.get('fields', []) if isinstance(struct, dict) else getattr(struct, 'fields', [])
+            if fields:
+                for f in fields[:5]:
+                    if isinstance(f, dict):
+                        fname = f.get('name', '')
+                    else:
+                        fname = str(f)
+                    if fname and len(fname) >= 2:
+                        keywords.append(fname)
+    
+    # 4. 从 entity_tables 推断同义词
+    for et in ir_data.get('entity_tables', []):
+        if isinstance(et, dict):
+            entity = et.get('entity', '')
+            table = et.get('table', '')
+        else:
+            entity = getattr(et, 'entity', '')
+            table = getattr(et, 'table', '')
+            
+        if entity and any(term.lower() in entity.lower() for term in [query] + keywords[:5]):
+            if table and table.lower() not in [k.lower() for k in keywords]:
+                keywords.append(table)
+    
+    # 5. 从 _CODE_SYNONYM_MAP 扩展
+    for term, variants in _CODE_SYNONYM_MAP.items():
+        if term.lower() in query_lower:
+            keywords.extend(variants)
+    
+    # 去重并限制数量
+    keywords = list(dict.fromkeys(keywords))
+    return keywords[:40]  # 最多 40 个关键词
+
+
+def infer_related_terms_from_ir(query: str, ir_data: Optional[dict]) -> List[str]:
+    """从 IR 数据中推断与查询相关的术语
+    
+    用于证据查询结果的智能排序和过滤。
+    
+    Returns:
+        相关术语列表
+    """
+    if not ir_data or not isinstance(ir_data, dict):
+        return []
+    
+    query_lower = query.lower()
+    related = set()
+    
+    # 1. 查找包含查询关键词的函数
+    for func in ir_data.get('functions', []):
+        if isinstance(func, dict):
+            fname = func.get('name', '').lower()
+            fsig = func.get('signature', '').lower()
+        else:
+            fname = str(getattr(func, 'name', '')).lower()
+            fsig = str(getattr(func, 'signature', '')).lower()
+        
+        if query_lower in fname or query_lower in fsig:
+            related.add(func.get('name', '') if isinstance(func, dict) else getattr(func, 'name', ''))
+    
+    # 2. 查找包含查询关键词的路由
+    for route in ir_data.get('routes', []):
+        if isinstance(route, dict):
+            rpath = route.get('path', '').lower()
+            rhandler = route.get('handler', '').lower()
+        else:
+            rpath = str(getattr(route, 'path', '')).lower()
+            rhandler = str(getattr(route, 'handler', '')).lower()
+        
+        if query_lower in rpath or query_lower in rhandler:
+            related.add(route.get('path', '') if isinstance(route, dict) else getattr(route, 'path', ''))
+    
+    # 3. 查找包含查询关键词的 struct
+    for struct in ir_data.get('structs', []):
+        if isinstance(struct, dict):
+            sname = struct.get('name', '').lower()
+        else:
+            sname = str(getattr(struct, 'name', '')).lower()
+        
+        if query_lower in sname:
+            related.add(struct.get('name', '') if isinstance(struct, dict) else getattr(struct, 'name', ''))
+    
+    return list(related)[:20]
 
 
 # ──────────────────────────────────────────────
@@ -745,7 +1029,7 @@ def search_code(
             try:
                 with open(profile_path) as f:
                     profile = json.load(f)
-            except:
+            except Exception:
                 pass
     
     # 使用 expand_synonyms 扩展查询词（替代旧的 expand_query）
@@ -771,7 +1055,7 @@ def search_code(
         # 如果结果太少，启用 BM25 补充
         if len(results) < top_k // 2:
             try:
-                from .enhanced_search import BM25Scorer
+                from enhanced_search import BM25Scorer
                 searchable_docs = []
                 for func in ir_data.get('functions', []):
                     sig = func.get('signature', func.get('name', ''))
@@ -829,11 +1113,12 @@ def _search_code_fuzzy(ir_data: dict, queries: List[str], top_k: int) -> List[Di
         query_lower = q.lower()
         # Compute adaptive threshold for this query
         try:
-            from .enhanced_search import classify_query, adaptive_threshold
+            from enhanced_search import classify_query as es_classify, adaptive_threshold as es_threshold
+            qtype = es_classify(q)
+            min_threshold = es_threshold(q, qtype)
+        except ImportError:
             qtype = classify_query(q)
             min_threshold = adaptive_threshold(q, qtype)
-        except Exception:
-            min_threshold = 0.5  # Default safe threshold
         
         # Search functions
         for func in ir_data.get('functions', []):
@@ -1134,23 +1419,69 @@ def search_entity_relations(
 # ──────────────────────────────────────────────
 
 def query_wiki_evidence(query: str, wiki_path: str = None, top_k: int = 5) -> List[Dict]:
+    """Wiki 知识库增强证据查询。
+    
+    策略：
+    1. 从 wiki 目录搜索 markdown 文件
+    2. 使用 fuzzy_score 匹配查询词
+    3. 返回前 K 个最相关的页面片段
     """
-    用 LLM Wiki 增强证据查询：
-    1. 先搜 wiki 页面
-    2. 返回页面作为证据
-    """
-    from .wiki_engine import query as wiki_query, wiki_search as wiki_search_engine
-
-    if wiki_path and wiki_path != 'none':
+    results = []
+    
+    if not wiki_path or wiki_path == 'none':
+        return results
+    
+    wiki_dir = Path(wiki_path)
+    if not wiki_dir.exists():
+        return results
+    
+    # 尝试从 wiki_engine 导入（如果可用）
+    try:
+        from .wiki_engine import wiki_search as ws_engine
+        if hasattr(ws_engine, '__call__'):
+            # wiki_engine 有搜索能力，优先使用
+            pass
+    except ImportError:
+        pass
+    
+    # 降级方案：直接搜索 wiki 目录下的 markdown 文件
+    md_files = list(wiki_dir.rglob('**/*.md'))[:50]
+    query_lower = query.lower()
+    
+    for md_file in md_files:
         try:
-            result = wiki_search_engine(query, wiki=wiki_search_engine.__globals__.get('wiki'))
-            # 实际调用需要正确初始化
-            pass
+            content = md_file.read_text(encoding='utf-8', errors='ignore')
         except Exception:
-            pass
-
-    # 如果 wiki 不可用，返回空
-    return []
+            continue
+        
+        # 检查是否包含查询关键词
+        if query_lower not in content.lower():
+            continue
+        
+        # 计算匹配分数
+        score = fuzzy_score(query_lower, content[:200].lower())
+        
+        # 提取上下文片段
+        idx = content.lower().find(query_lower)
+        if idx >= 0:
+            context_start = max(0, idx - 150)
+            context_end = min(len(content), idx + 400)
+            context = content[context_start:context_end].strip()
+        else:
+            context = content[:500].strip()
+        
+        results.append({
+            'type': 'wiki',
+            'title': md_file.stem,
+            'path': str(md_file.relative_to(wiki_dir.parent)),
+            'content': context[:500],
+            'score': round(score, 4),
+            'source': 'wiki',
+        })
+    
+    # 按分数排序并限制数量
+    results.sort(key=lambda x: x.get('score', 0), reverse=True)
+    return results[:top_k]
 
 
 # ──────────────────────────────────────────────
@@ -1254,7 +1585,7 @@ def search_kb(query: str, kb_paths: List[str], top_k: int = 10, profile_path: st
         for md_file in md_files[:50]:
             try:
                 md_content = md_file.read_text(encoding='utf-8', errors='ignore')
-            except:
+            except Exception:
                 continue
             
             query_lower = query.lower()
@@ -1338,7 +1669,7 @@ def run_evidence_query(
             with open(profile_path) as f:
                 profile = json.load(f)
             kb_paths = profile.get("knowledge_base_paths", [])
-        except:
+        except Exception:
             pass
         results = search_kb(query, kb_paths, top_k, profile_path)
         if results:
@@ -1623,5 +1954,399 @@ def search_by_similarity(query: str, ir_data: dict, top_k: int = 10) -> List[Dic
     
     # 按相似度排序
     results.sort(key=lambda x: x['score'], reverse=True)
+    
+    return results
+
+
+# ──────────────────────────────────────────────
+# Enhanced Semantic Search — BM25-style scoring
+# ──────────────────────────────────────────────
+
+
+def _bm25_score(query_terms: List[str], doc_terms: List[str], k1: float = 1.5, b: float = 0.75) -> float:
+    """BM25 scoring for short-text matching (function names, routes, etc.)"""
+    if not query_terms or not doc_terms:
+        return 0.0
+    
+    doc_len = len(doc_terms)
+    avg_doc_len = max(doc_len, 1)
+    
+    score = 0.0
+    for q_term in query_terms:
+        tf = sum(1 for t in doc_terms if t == q_term)
+        if tf == 0:
+            continue
+        idf = math.log(1 + (avg_doc_len / max(tf, 1)))
+        tf_score = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * doc_len / avg_doc_len))
+        score += idf * tf_score
+    
+    # Jaccard bonus for term overlap
+    query_set = set(query_terms)
+    doc_set = set(doc_terms)
+    overlap = len(query_set & doc_set)
+    union = len(query_set | doc_set)
+    if union > 0:
+        score += (overlap / union) * 0.5
+    
+    return score
+
+
+def enhanced_semantic_search(query: str, documents: List[str], top_k: int = 10) -> List[Dict]:
+    """Enhanced semantic search combining BM25 + fuzzy + domain context."""
+    query_tokens = _tokenize(query)
+    query_lower = query.lower()
+    
+    results = []
+    for i, doc in enumerate(documents):
+        doc_tokens = _tokenize(doc)
+        doc_lower = doc.lower()
+        
+        bm25 = _bm25_score(query_tokens, doc_tokens)
+        fuzzy = fuzzy_score(query_lower, doc_lower)
+        
+        domain_bonus = 0.0
+        for key in _DOMAIN_CONTEXT_MAP:
+            if key in query_lower and key in doc_lower:
+                domain_bonus += 0.3
+                break
+        
+        combined = 0.5 * bm25 + 0.4 * fuzzy + domain_bonus
+        
+        if combined > 0.1:
+            results.append({
+                'doc': doc,
+                'score': round(combined, 4),
+                'rank': i,
+                'bm25_score': round(bm25, 4),
+                'fuzzy_score': round(fuzzy, 4),
+            })
+    
+    results.sort(key=lambda x: x['score'], reverse=True)
+    return results[:top_k]
+
+
+def semantic_expand_query_v2(query: str, ir_data: dict, top_k: int = 20) -> List[str]:
+    """Enhanced semantic query expansion using BM25 + domain context."""
+    searchable = []
+    
+    for func in ir_data.get('functions', []):
+        sig = func.get('signature', '')
+        name = func.get('name', '')
+        file = func.get('file', '')
+        if sig:
+            searchable.append(f"{name} {sig} {file}")
+        elif name:
+            searchable.append(name)
+    
+    for route in ir_data.get('routes', []):
+        rs = f"{route.get('method', '')} {route.get('path', '')} {route.get('handler', '')} {route.get('request', '')} {route.get('response', '')}"
+        if rs.strip():
+            searchable.append(rs)
+    
+    for bl in ir_data.get('business_logic', []):
+        desc = bl.get('description', '')
+        handler = bl.get('handler', '')
+        if desc:
+            searchable.append(f"{handler} {desc}")
+    
+    for struct in ir_data.get('structs', []):
+        sname = struct.get('name', '')
+        fields = ', '.join(f.get('name', '') if isinstance(f, dict) else str(f) for f in struct.get('fields', []))
+        if sname:
+            searchable.append(f"{sname} {fields}")
+    
+    if not searchable:
+        return []
+    
+    results = enhanced_semantic_search(query, searchable, top_k=min(top_k * 2, len(searchable)))
+    
+    expanded = []
+    for r in results[:min(top_k, len(results))]:
+        tokens = _tokenize(r['doc'])
+        for t in tokens:
+            if len(t) >= 2 and t not in expanded:
+                expanded.append(t)
+        if len(expanded) >= top_k * 2:
+            break
+    
+    domain_context = _get_domain_context(query)
+    for dc in domain_context:
+        if dc not in expanded:
+            expanded.append(dc)
+    
+    return expanded[:top_k * 2]
+
+def cross_field_search(query: str, ir_data: dict, top_k: int = 10) -> List[Dict]:
+    """跨字段关联搜索 — 同时搜索 struct 字段 + 路由 + 业务逻辑，找到关联证据
+    
+    策略：
+    1. 从 query 提取实体名
+    2. 搜索该实体的 struct 定义
+    3. 搜索使用该 struct 的路由
+    4. 搜索涉及该 struct 的业务逻辑
+    5. 返回关联证据链
+    
+    Returns:
+        [{type, title, path, content, score, chain}]
+    """
+    results = []
+    query_lower = query.lower()
+    
+    # 1. 提取候选实体名
+    struct_candidates = []
+    for s in ir_data.get('structs', []):
+        sname = s.get('name', '') if isinstance(s, dict) else getattr(s, 'name', '')
+        if sname:
+            score = fuzzy_score(query_lower, sname.lower())
+            if score >= 0.4:
+                struct_candidates.append((sname, score))
+    
+    # 2. 对于每个候选实体，追踪关联路由和业务逻辑
+    for struct_name, struct_score in struct_candidates:
+        struct_lower = struct_name.lower()
+        
+        # 2a. 找使用该 struct 的路由
+        related_routes = []
+        for route in ir_data.get('routes', []):
+            route_handler = route.get('handler', '').lower()
+            route_path = route.get('path', '').lower()
+            route_request = route.get('request', '').lower()
+            route_response = route.get('response', '').lower()
+            
+            if (struct_lower in route_handler or struct_lower in route_path or
+                struct_lower in route_request or struct_lower in route_response):
+                related_routes.append({
+                    'type': 'route',
+                    'title': f"{route.get('method', '')} {route.get('path', '')}",
+                    'path': route.get('file', ''),
+                    'content': f"Handler: {route.get('handler', '')}",
+                    'score': struct_score * 0.9,
+                    'chain': f"struct:{struct_name} → route:{route.get('path', '')}",
+                })
+        
+        # 2b. 找涉及该 struct 的业务逻辑
+        related_bl = []
+        for bl in ir_data.get('business_logic', []):
+            bl_desc = bl.get('description', '').lower()
+            bl_handler = bl.get('handler', '').lower()
+            
+            if struct_lower in bl_desc or struct_lower in bl_handler:
+                related_bl.append({
+                    'type': 'business_logic',
+                    'title': f"业务逻辑: {bl.get('handler', '')}",
+                    'path': bl.get('file', ''),
+                    'content': bl_desc[:200],
+                    'score': struct_score * 0.8,
+                    'chain': f"struct:{struct_name} → business_logic:{bl.get('handler', '')}",
+                })
+        
+        # 2c. 找调用该 struct 相关方法的函数
+        related_funcs = []
+        for func in ir_data.get('functions', []):
+            fname = func.get('name', '').lower()
+            fsig = func.get('signature', '').lower()
+            
+            if struct_lower in fname or struct_lower in fsig:
+                related_funcs.append({
+                    'type': 'function',
+                    'title': func.get('name', ''),
+                    'path': func.get('file', ''),
+                    'content': func.get('signature', ''),
+                    'score': struct_score * 0.85,
+                    'chain': f"struct:{struct_name} → function:{func.get('name', '')}",
+                })
+        
+        # 合并关联证据
+        all_related = related_routes + related_bl + related_funcs
+        if all_related:
+            results.append({
+                'type': 'struct',
+                'title': struct_name,
+                'path': '',
+                'content': f"关联路由: {len(related_routes)}, 业务逻辑: {len(related_bl)}, 函数: {len(related_funcs)}",
+                'score': struct_score,
+                'chain': f"struct:{struct_name} → {len(all_related)} related items",
+            })
+            results.extend(all_related)
+    
+    # 3. 如果没有找到 struct 关联，尝试 entity-table 关联
+    if not results:
+        for et in ir_data.get('entity_tables', []):
+            entity = et.get('entity', '').lower()
+            table = et.get('table', '').lower()
+            searchable = f"{entity} {table}"
+            score = fuzzy_score(query_lower, searchable)
+            if score >= 0.4:
+                # 找涉及该表的路由
+                related_routes = []
+                for route in ir_data.get('routes', []):
+                    route_path = route.get('path', '').lower()
+                    route_request = route.get('request', '').lower()
+                    if entity in route_path or entity in route_request or table in route_path or table in route_request:
+                        related_routes.append(route.get('path', ''))
+                
+                results.append({
+                    'type': 'entity_table',
+                    'title': f"{et.get('entity', '')} → {et.get('table', '')}",
+                    'path': et.get('file', ''),
+                    'content': searchable,
+                    'score': score,
+                    'chain': f"entity:{entity} → table:{table} → routes:{related_routes}",
+                })
+    
+    # 去重并排序
+    seen = set()
+    unique = []
+    for r in results:
+        key = (r.get('type'), r.get('title'))
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    
+    unique.sort(key=lambda x: x.get('score', 0), reverse=True)
+    return unique[:top_k]
+
+
+# ──────────────────────────────────────────────
+# Query Understanding — 查询理解与重构
+# ──────────────────────────────────────────────
+
+def understand_query(query: str, ir_data: Optional[dict] = None) -> Dict:
+    """查询理解 — 分析查询意图并生成最优搜索策略
+    
+    Returns:
+        {
+            'original_query': str,
+            'intent': str,
+            'entities': List[str],      # 提取的实体名
+            'actions': List[str],        # 提取的动作
+            'search_strategy': str,      # 'precise' / 'fuzzy' / 'semantic' / 'correlation'
+            'recommended_sources': List[str],
+            'expanded_queries': List[str],
+        }
+    """
+    result = {
+        'original_query': query,
+        'intent': 'query',
+        'entities': [],
+        'actions': [],
+        'search_strategy': 'fuzzy',
+        'recommended_sources': ['code', 'schema', 'api_docs'],
+        'expanded_queries': [query],
+    }
+    
+    query_lower = query.lower()
+    
+    # 1. 意图识别
+    intent, _ = extract_intent(query)
+    result['intent'] = intent
+    
+    # 2. 实体提取
+    # 驼峰实体名
+    camel_entities = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*', query)
+    result['entities'].extend(camel_entities)
+    
+    # 中文实体名
+    cn_entities = re.findall(r'[\u4e00-\u9fff]{2,6}', query)
+    result['entities'].extend(cn_entities)
+    
+    # 3. 动作提取
+    action_patterns = {
+        'create': ['创建', '新建', 'add', 'create', 'insert'],
+        'read': ['查询', '获取', 'get', 'list', 'search', '查看'],
+        'update': ['更新', '修改', 'update', 'edit', 'modify'],
+        'delete': ['删除', 'delete', 'remove', 'destroy'],
+        'approve': ['审核', '批准', 'approve', 'review'],
+        'reject': ['拒绝', 'reject'],
+        'publish': ['发布', 'publish', '上线'],
+        'sync': ['同步', 'sync', 'syncing'],
+    }
+    for action, patterns in action_patterns.items():
+        if any(p in query_lower for p in patterns):
+            result['actions'].append(action)
+    
+    # 4. 搜索策略选择
+    if intent == 'impact' or intent == 'callchain':
+        result['search_strategy'] = 'correlation'
+        result['recommended_sources'] = ['code', 'business']
+    elif intent == 'debug':
+        result['search_strategy'] = 'fuzzy'
+        result['recommended_sources'] = ['code', 'schema', 'business']
+    elif intent == 'relationship':
+        result['search_strategy'] = 'correlation'
+        result['recommended_sources'] = ['code', 'entity_relations']
+    elif intent == 'coverage':
+        result['search_strategy'] = 'fuzzy'
+        result['recommended_sources'] = ['code', 'schema', 'api_docs', 'business']
+    elif re.match(r'^/api/', query_lower) or re.search(r'\b\d{3,}\b', query_lower):
+        result['search_strategy'] = 'precise'
+    else:
+        result['search_strategy'] = 'fuzzy'
+    
+    # 5. 扩展查询
+    expanded = [query]
+    if result['entities']:
+        expanded.extend(result['entities'])
+    if result['actions']:
+        expanded.extend(result['actions'])
+    
+    # 同义词扩展
+    try:
+        expanded = expand_synonyms(query)
+    except Exception:
+        pass
+    
+    result['expanded_queries'] = list(dict.fromkeys(expanded))[:30]
+    
+    return result
+
+
+def smart_search(query: str, ir_data: dict, profile: dict = None, top_k: int = 20) -> List[Dict]:
+    """智能搜索 — 基于查询理解选择最优搜索策略
+    
+    这是 search_code 的增强版，自动选择搜索策略：
+    1. 精确匹配 → 直接搜索
+    2. 影响分析/调用链 → 跨字段关联搜索
+    3. 模糊查询 → fuzzy search + semantic search
+    4. 覆盖查询 → 全面搜索所有 source
+    
+    Returns:
+        融合搜索结果
+    """
+    # 1. 查询理解
+    understanding = understand_query(query, ir_data)
+    
+    # 2. 根据策略选择搜索方式
+    strategy = understanding['search_strategy']
+    
+    if strategy == 'correlation':
+        # 跨字段关联搜索
+        results = cross_field_search(query, ir_data, top_k)
+    else:
+        # 常规搜索
+        results = search_code(query, "", top_k, profile=profile, ir_cache=ir_data)
+        
+        # 如果结果不足，补充语义搜索
+        if len(results) < top_k // 3:
+            semantic_results = semantic_expand_query(query, ir_data, top_k=15)
+            if semantic_results:
+                seen = {(r.get('path'), r.get('type')) for r in results}
+                for sr in semantic_results:
+                    key = (sr, '')
+                    if key not in seen:
+                        seen.add(key)
+                        results.append({
+                            'type': 'semantic',
+                            'title': sr,
+                            'path': '',
+                            'content': sr,
+                            'score': 0.5,
+                            'source': 'semantic_expand',
+                        })
+    
+    # 3. 添加查询理解元数据
+    for r in results[:top_k]:
+        r['_intent'] = understanding['intent']
+        r['_strategy'] = strategy
     
     return results[:top_k]

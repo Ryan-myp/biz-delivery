@@ -14,7 +14,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 # 导入证据查询和 learn_repo
 sys.path.insert(0, str(Path(__file__).parent))
@@ -77,10 +77,126 @@ class TestEngine(EngineBase):
         report_file = self.output_dir / "test_cases.md"
         report_file.write_text(llm_response, encoding="utf-8")
         
+        # 解析测试用例报告，提取结构化数据
+        parsed = self._parse_test_report(llm_response)
+        
         return {
             "status": "completed",
             "report_file": str(report_file),
             "sections": ["正向流程", "异常分支", "边界条件", "性能测试", "安全测试"],
+            "parsed": parsed,
+        }
+    
+    def _parse_test_report(self, llm_response: str) -> dict:
+        """解析测试用例报告，提取结构化数据。"""
+        result = {
+            'total_cases': 0,
+            'by_category': {},
+            'by_priority': {'P0': [], 'P1': [], 'P2': []},
+            'sections': {},
+        }
+        
+        # 统计总用例数
+        import re as re_mod
+        tc_matches = re_mod.findall(r'TC\d{3,}', llm_response)
+        result['total_cases'] = len(tc_matches)
+        
+        # 按优先级分类
+        for priority in ['P0', 'P1', 'P2']:
+            pattern = rf'\|\s*TC\d+\s*\|.*?\|.*?\|.*?\|.*?\|\s*{priority}\s*\|'
+            matches = re_mod.findall(pattern, llm_response)
+            result['by_priority'][priority] = matches
+        
+        # 按分类提取
+        for cat in ['正向流程', '异常分支', '边界条件', '安全测试', '兼容性测试', '状态转换']:
+            content = _extract_section(llm_response, cat)
+            if content:
+                result['sections'][cat] = content.strip()
+        
+        return result
+    
+    def generate_test_code_from_ir(self, handlers: Optional[List[str]] = None, 
+                                   test_types: Optional[List[str]] = None,
+                                   language: str = "go") -> dict:
+        """基于 IR 数据生成自动化测试代码。
+        
+        使用 test_code_generator 从 IR 提取函数签名，自动生成 Go test / pytest 骨架。
+        
+        Args:
+            handlers: 要生成测试的 handler 列表，None 则自动生成所有 route handler
+            test_types: 测试类型 (success/exception/boundary)，默认全部
+            language: 目标语言 (go/python)
+            
+        Returns:
+            {files: {filename: code}, summary: {...}}
+        """
+        from test_code_generator import TestCodeGenerator
+        
+        # 扫描代码获取 IR
+        ir = self._scan_codebase()
+        
+        # 构建 IR dict
+        ir_dict: Dict[str, Any] = {
+            'functions': [],
+            'structs': [],
+            'routes': [],
+            'error_codes': [],
+            'call_graph': getattr(ir, 'call_graph', []),
+            'entity_tables': getattr(ir, 'entity_tables', []),
+        }
+        
+        for f in ir.functions:
+            if hasattr(f, '__dict__'):
+                ir_dict['functions'].append(f.__dict__)
+            elif isinstance(f, dict):
+                ir_dict['functions'].append(f)
+        
+        for s in ir.structs:
+            if hasattr(s, '__dict__'):
+                ir_dict['structs'].append(s.__dict__)
+            elif isinstance(s, dict):
+                ir_dict['structs'].append(s)
+        
+        for r in ir.routes:
+            if hasattr(r, '__dict__'):
+                ir_dict['routes'].append(r.__dict__)
+            elif isinstance(r, dict):
+                ir_dict['routes'].append(r)
+        
+        for ec in ir.error_codes:
+            if hasattr(ec, '__dict__'):
+                ir_dict['error_codes'].append(ec.__dict__)
+            elif isinstance(ec, dict):
+                ir_dict['error_codes'].append(ec)
+        
+        gen = TestCodeGenerator(ir_dict)
+        
+        # 确定 handlers
+        if handlers is None:
+            handlers = []
+            for route in ir_dict.get('routes', [])[:10]:
+                handler = route.get('handler', '')
+                if handler:
+                    handlers.append(handler.split('.')[-1])
+        
+        test_types = test_types or ["success", "exception", "boundary"]
+        
+        # 生成测试代码
+        results = gen.generate_batch_tests(handlers or [], test_types)
+        
+        # 统计
+        summary = {
+            'total_files': len(results),
+            'handlers': handlers,
+            'languages': ['go', 'python'],
+            'test_types': test_types,
+        }
+        
+        return {
+            'status': 'completed',
+            'files': results,
+            'summary': summary,
+            'output_dir': str(self.output_dir / 'generated_tests'),
         }
     
     def _build_test_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, td_text: Optional[str] = None, cache_dir: str = None) -> str:
@@ -100,98 +216,31 @@ class TestEngine(EngineBase):
         prompt_parts.append("生成一份全面的测试用例，覆盖正向流程、异常分支和边界条件。")
         prompt_parts.append("")
         
-        # 代码库摘要
+        # 代码库摘要 — 使用 base_engine 共享方法
         prompt_parts.append("## 代码库摘要")
-        prompt_parts.append(f"- **业务域**: {self.business_domain}")
-        prompt_parts.append(f"- **仓库**: {', '.join(r['name'] for r in self.repos)}")
-        prompt_parts.append(f"- **语言**: {ir.language}")
-        prompt_parts.append(f"- **Structs**: {len(ir.structs)}")
-        prompt_parts.append(f"- **Functions**: {len(ir.functions)}")
-        prompt_parts.append(f"- **Routes**: {len(ir.routes)}")
-        prompt_parts.append(f"- **Entity Tables**: {len(ir.entity_tables)}")
-        prompt_parts.append(f"- **SQL Operations**: {len(ir.sql_operations)}")
-        prompt_parts.append(f"- **Error Codes**: {len(ir.error_codes)}")
-        prompt_parts.append(f"- **Auth Models**: {len(ir.auth_models)}")
-        prompt_parts.append(f"- **Test Coverage**: {ir.coverage_report.get('coverage_pct', 0)}%")
+        prompt_parts.extend(self._build_ir_summary(ir))
         prompt_parts.append("")
         
-        # 关键路由（前30条）
-        if ir.routes:
-            prompt_parts.append("## 关键路由（前30条）")
-            for route in ir.routes[:30]:
-                method = getattr(route, 'method', 'GET').upper()
-                path = getattr(route, 'path', '?')
-                handler = getattr(route, 'handler', '?')
-                prompt_parts.append(f"- `{method}` {path} → `{handler}`")
-            prompt_parts.append("")
+        # 关键路由 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_routes_section(ir, limit=30))
         
-        # 业务逻辑（从入口点追踪的调用链）
-        if ir.business_logic:
-            prompt_parts.append("## 业务逻辑（入口点调用链）")
-            for bl in ir.business_logic[:10]:
-                route = bl.get('route', '?')
-                method = bl.get('method', 'GET')
-                handler = bl.get('handler', '?')
-                desc = bl.get('description', '')
-                prompt_parts.append(f"- `{method}` {route} → `{handler}`")
-                prompt_parts.append(f"  逻辑: {desc}")
-                calls = bl.get('calls', [])
-                if calls:
-                    prompt_parts.append(f"  调用: {', '.join(calls[:8])}")
-                second = bl.get('second_layer', [])
-                if second:
-                    for sl in second[:5]:
-                        prompt_parts.append(f"    - {sl.get('name', '?')}() @ {sl.get('file', '?')}")
-                prompt_parts.append("")
+        # 业务逻辑 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_business_logic_section(ir, limit=10))
         
-        # Entity-Table 映射
-        if ir.entity_tables:
-            prompt_parts.append("## Entity-Table 映射（前15张）")
-            for et in ir.entity_tables[:15]:
-                entity = et.get('entity', '?')
-                table = et.get('table', '?')
-                prompt_parts.append(f"- `{entity}` → `{table}`")
-            prompt_parts.append("")
+        # Entity-Table 映射 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_entity_table_section(ir, limit=15))
         
-        # 错误码
-        if ir.error_codes:
-            prompt_parts.append("## 错误码（前15个）")
-            for ec in ir.error_codes[:15]:
-                name = ec.get('name', '?')
-                code = ec.get('code', '?')
-                msg = ec.get('message', '')
-                prompt_parts.append(f"- `{name}`: {code} — {msg}")
-            prompt_parts.append("")
+        # 错误码 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_error_code_section(ir, limit=15))
         
-        # 鉴权模型
-        if ir.auth_models:
-            prompt_parts.append("## 鉴权模型")
-            for am in ir.auth_models:
-                mw = am.get('middleware', '?')
-                logic = am.get('logic', '')
-                prompt_parts.append(f"- **{mw}**: {logic}")
-            prompt_parts.append("")
+        # 鉴权模型 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_auth_model_section(ir))
         
-        # SQL 操作
-        if ir.sql_operations:
-            prompt_parts.append("## SQL 操作示例（前10个）")
-            for sq in ir.sql_operations[:10]:
-                op = sq.get('sql_operation', '?')
-                table = sq.get('table', '?')
-                file = sq.get('file', '?')
-                prompt_parts.append(f"- `{op}` on `{table}` in `{file}`")
-            prompt_parts.append("")
+        # SQL 操作 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_sql_section(ir, limit=10))
         
-        # 测试覆盖
-        if ir.test_functions:
-            prompt_parts.append("## 测试覆盖情况")
-            prompt_parts.append(f"- **测试文件**: {len(ir.test_files)}")
-            prompt_parts.append(f"- **测试函数**: {len(ir.test_functions)}")
-            prompt_parts.append(f"- **框架**: {ir.coverage_report.get('framework', 'unknown')}")
-            if ir.coverage_report.get('uncovered_highlights'):
-                uncovered = ir.coverage_report['uncovered_highlights'][:10]
-                prompt_parts.append(f"- **未覆盖函数**: {', '.join(uncovered)}")
-            prompt_parts.append("")
+        # 测试覆盖 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_test_coverage_section(ir))
         
         # 证据查询结果
         if filtered.get('evidence'):
@@ -285,7 +334,9 @@ class TestEngine(EngineBase):
         prompt_parts.append("- 数据库查询是否加了索引？")
         prompt_parts.append("")
         
-        # 新增：注入实际错误码用于测试断言
+        # ── IR 数据注入（供 LLM 生成精确测试用例） ──────────────────
+        
+        # 错误码
         if ir.error_codes:
             prompt_parts.append("### 6.1 可用错误码（从代码提取）")
             for ec in ir.error_codes[:15]:
@@ -295,7 +346,7 @@ class TestEngine(EngineBase):
                 prompt_parts.append(f"- `{name}`: {code} — {msg}")
             prompt_parts.append("")
         
-        # 新增：注入实际 Request/Response struct 用于测试
+        # Struct 定义
         if ir.structs:
             prompt_parts.append("### 6.2 可用 Struct（从代码提取）")
             for s in ir.structs[:15]:
@@ -308,7 +359,7 @@ class TestEngine(EngineBase):
                 prompt_parts.append(f"- **`{name}`**: {', '.join(str(f.get('name', '')) if isinstance(f, dict) else str(f) for f in fields[:5])}")
             prompt_parts.append("")
         
-        # 新增：注入实际路由和 handler 用于测试构造
+        # 路由
         if ir.routes:
             prompt_parts.append("### 6.3 实际路由（从 IR 提取）")
             for route in ir.routes[:20]:
@@ -318,7 +369,7 @@ class TestEngine(EngineBase):
                 prompt_parts.append(f"- `{method}` {path} → `{handler}`")
             prompt_parts.append("")
         
-        # 新增：注入实际函数签名用于测试构造
+        # 函数签名
         if ir.functions:
             prompt_parts.append("### 6.4 关键函数签名（从 IR 提取）")
             for func in ir.functions[:15]:
@@ -336,7 +387,7 @@ class TestEngine(EngineBase):
                 prompt_parts.append(f"- `{sig}` @ `{file}`")
             prompt_parts.append("")
         
-        # 新增：注入状态转换模式用于状态机测试
+        # 状态转换函数
         state_patterns = [
             r'\.SetStatus\s*\(', r'\.UpdateStatus\s*\(', r'status\s*=\s*\w+',
             r'\.Approve\s*\(', r'\.Reject\s*\(', r'\.Publish\s*\(',
@@ -356,16 +407,60 @@ class TestEngine(EngineBase):
             prompt_parts.append("基于以上状态转换函数，生成状态机测试用例")
             prompt_parts.append("")
         
-        # 数据准备策略
-        prompt_parts.append("### 6.6 数据准备策略")
-        prompt_parts.append("- **Test Fixtures**: 使用 JSON/YAML fixture 文件准备测试数据")
-        prompt_parts.append("- **Factory Pattern**: 使用 factory 函数生成测试对象（避免硬编码）")
-        prompt_parts.append("- **Database Seeding**: 测试前用 seed 数据初始化 DB 状态")
-        prompt_parts.append("- **事务回滚**: 每个测试在事务中执行，测试后自动回滚")
-        prompt_parts.append("- **Clean Slate**: 测试结束后清理所有测试产生的数据")
-        prompt_parts.append("")
+        # ── 新增：IR 驱动的数据准备模板 ──────────────────────
         
-        # 输出格式
+        # 实际 Request/Response struct 模板
+        if ir.structs:
+            prompt_parts.append("### 6.6 数据构造模板（从代码提取 Request/Response struct）")
+            # 过滤出可能的 Request/Response struct
+            request_structs = []
+            response_structs = []
+            for s in ir.structs[:20]:
+                sname = s.get('name', '') if isinstance(s, dict) else getattr(s, 'name', '')
+                if 'request' in sname.lower() or 'input' in sname.lower():
+                    request_structs.append(s)
+                elif 'response' in sname.lower() or 'output' in sname.lower():
+                    response_structs.append(s)
+            
+            if request_structs:
+                prompt_parts.append("**Request Struct 示例**:")
+                for rs in request_structs[:5]:
+                    name = rs.get('name', '?')
+                    fields = rs.get('fields', [])
+                    prompt_parts.append(f"```go")
+                    prompt_parts.append(f"type {name} struct {{")
+                    for f in fields[:5]:
+                        if isinstance(f, dict):
+                            fname = f.get('name', '')
+                            ftype = f.get('type', '')
+                            tag = f.get('tag', '')
+                            prompt_parts.append(f"    {fname} {ftype} `{tag}`")
+                        else:
+                            prompt_parts.append(f"    // {f}")
+                    prompt_parts.append(f"}}")
+                    prompt_parts.append(f"```\n")
+            
+            if response_structs:
+                prompt_parts.append("**Response Struct 示例**:")
+                for rs in response_structs[:5]:
+                    name = rs.get('name', '?')
+                    fields = rs.get('fields', [])
+                    prompt_parts.append(f"```go")
+                    prompt_parts.append(f"type {name} struct {{")
+                    for f in fields[:5]:
+                        if isinstance(f, dict):
+                            fname = f.get('name', '')
+                            ftype = f.get('type', '')
+                            tag = f.get('tag', '')
+                            prompt_parts.append(f"    {fname} {ftype} `{tag}`")
+                        else:
+                            prompt_parts.append(f"    // {f}")
+                    prompt_parts.append(f"}}")
+                    prompt_parts.append(f"```\n")
+            
+            prompt_parts.append("")
+        
+        # 输出格式模板
         prompt_parts.append("## 输出格式")
         prompt_parts.append("请按以下 Markdown 格式输出测试用例：")
         prompt_parts.append("")
@@ -396,7 +491,7 @@ class TestEngine(EngineBase):
         prompt_parts.append("| TC202 | 超长字符串 | 已登录 | 1. POST /api/v1/xxx name=1000字符 | 返回 400 或截断 | P1 |")
         prompt_parts.append("| TC203 | 超大分页 | 已登录 | 1. GET /api/v1/xxx?page=1&size=10000 | 返回 400 或限制 | P2 |")
         prompt_parts.append("")
-        prompt_parts.append("## 4. 兼容性测试（如有）")
+        prompt_parts.append("## 4. 兼容性测试（如果是新功能）")
         prompt_parts.append("")
         prompt_parts.append("| ID | 场景 | 前置条件 | 操作步骤 | 预期结果 | 优先级 |")
         prompt_parts.append("|----|------|----------|----------|----------|--------|")
@@ -435,93 +530,12 @@ class TestEngine(EngineBase):
         prompt_parts.append("")
         prompt_parts.append("## 7. 自动化测试建议")
         prompt_parts.append("")
-        prompt_parts.append("### 7.1 Go 单元测试框架")
-        prompt_parts.append("- 测试文件: `*_test.go`")
-        prompt_parts.append("- 测试框架: testify/gomock")
-        prompt_parts.append("- 覆盖范围: Service 层核心逻辑")
+        prompt_parts.append("### 7.1 测试层级与框架")
+        prompt_parts.append("- **单元测试** (`*_test.go`): Service 层核心逻辑，使用 testify/gomock")
+        prompt_parts.append("- **集成测试** (`*_integration_test.go`): Handler + Service + DAO 全链路")
+        prompt_parts.append("- **E2E 测试** (`e2e/*_test.go`): 完整请求链路，需启动完整服务")
         prompt_parts.append("")
-        prompt_parts.append("### 7.2 集成测试")
-        prompt_parts.append("- 测试文件: `*_integration_test.go`")
-        prompt_parts.append("- 覆盖范围: Handler + Service + DAO")
-        prompt_parts.append("- 需要 Mock 外部依赖")
-        prompt_parts.append("")
-        prompt_parts.append("### 7.3 E2E 测试")
-        prompt_parts.append("- 测试文件: `e2e/*_test.go`")
-        prompt_parts.append("- 覆盖范围: 完整请求链路")
-        prompt_parts.append("- 需要启动完整服务")
-        prompt_parts.append("")
-        prompt_parts.append("### 7.4 自动化测试代码生成（Go + testify）")
-        prompt_parts.append("为每个 P0 测试用例生成对应的 Go 测试代码框架：")
-        prompt_parts.append("")
-        prompt_parts.append("```go")
-        prompt_parts.append("// TestCreateAdGroup_Success 测试正常创建广告组")
-        prompt_parts.append("func TestCreateAdGroup_Success(t *testing.T) {")
-        prompt_parts.append("    // 1. Setup: 创建 mock 依赖")
-        prompt_parts.append("    ctrl := gomock.NewController(t)")
-        prompt_parts.append("    defer ctrl.Finish()")
-        prompt_parts.append("    ")
-        prompt_parts.append("    // 2. Mock DAO 层")
-        prompt_parts.append("    mockDAO := NewMockAdGroupDAO(ctrl)")
-        prompt_parts.append("    mockDAO.EXPECT().Insert(gomock.Any()).Return(nil)")
-        prompt_parts.append("    ")
-        prompt_parts.append("    // 3. Mock Service 层")
-        prompt_parts.append("    mockService := NewMockAdGroupService(ctrl)")
-        prompt_parts.append("    mockService.EXPECT().Validate(gomock.Any()).Return(nil)")
-        prompt_parts.append("    ")
-        prompt_parts.append("    // 4. 构造请求")
-        prompt_parts.append("    req := &CreateAdGroupRequest{")
-        prompt_parts.append("        Name:  \"test-adgroup\",")
-        prompt_parts.append("        Status: 1,")
-        prompt_parts.append("    }")
-        prompt_parts.append("    ")
-        prompt_parts.append("    // 5. 执行")
-        prompt_parts.append("    result, err := handler.CreateAdGroup(context.Background(), req)")
-        prompt_parts.append("    ")
-        prompt_parts.append("    // 6. 断言")
-        prompt_parts.append("    assert.NoError(t, err)")
-        prompt_parts.append("    assert.NotNil(t, result)")
-        prompt_parts.append("    assert.Equal(t, 1, result.ID)")
-        prompt_parts.append("}")
-        prompt_parts.append("```")
-        prompt_parts.append("")
-        prompt_parts.append("### 7.5 自动化测试代码生成（pytest）")
-        prompt_parts.append("如果是 Python 项目，生成 pytest 测试代码：")
-        prompt_parts.append("")
-        prompt_parts.append("```python")
-        prompt_parts.append("def test_create_adgroup_success(mock_dao, mock_service):")
-        prompt_parts.append("    '''测试正常创建广告组'''")
-        prompt_parts.append("    # 1. Mock 依赖")
-        prompt_parts.append("    mock_dao.insert.return_value = MagicMock(id=1)")
-        prompt_parts.append("    mock_service.validate.return_value = None")
-        prompt_parts.append("    ")
-        prompt_parts.append("    # 2. 构造请求")
-        prompt_parts.append("    request = CreateAdGroupRequest(")
-        prompt_parts.append("        name='test-adgroup',")
-        prompt_parts.append("        status=1")
-        prompt_parts.append("    )")
-        prompt_parts.append("    ")
-        prompt_parts.append("    # 3. 执行")
-        prompt_parts.append("    result = handler.create_adgroup(request)")
-        prompt_parts.append("    ")
-        prompt_parts.append("    # 4. 断言")
-        prompt_parts.append("    assert result is not None")
-        prompt_parts.append("    assert result.id == 1")
-        prompt_parts.append("    mock_dao.insert.assert_called_once()")
-        prompt_parts.append("```")
-        prompt_parts.append("")
-        prompt_parts.append("### 7.6 基于实际代码生成测试（重要）")
-        prompt_parts.append("测试代码必须基于实际代码结构生成：")
-        prompt_parts.append("- 使用 IR 中的实际 struct 名作为 Request/Response 类型")
-        prompt_parts.append("- 使用 IR 中的实际 handler 函数名")
-        prompt_parts.append("- 使用 IR 中的实际 DAO 方法名")
-        prompt_parts.append("- 使用 IR 中的实际错误码")
-        prompt_parts.append("- 使用 IR 中的实际路由路径")
-        prompt_parts.append("")
-        
-        # 新增：注入 Mock 策略细化
-        prompt_parts.append("### 7.7 Mock 策略细化")
-        prompt_parts.append("")
-        prompt_parts.append("根据依赖类型选择合适的 Mock 策略：")
+        prompt_parts.append("### 7.2 Mock 策略")
         prompt_parts.append("")
         prompt_parts.append("| 依赖类型 | Mock 策略 | 说明 |")
         prompt_parts.append("|----------|-----------|------|")
@@ -534,9 +548,7 @@ class TestEngine(EngineBase):
         prompt_parts.append("| Time | time.Now = func() { ... } | 替换全局时间函数 |")
         prompt_parts.append("| Context | context.WithTimeout/Cancel | 测试超时和取消场景 |")
         prompt_parts.append("")
-        
-        # 新增：数据准备策略细化
-        prompt_parts.append("### 7.8 数据准备策略细化")
+        prompt_parts.append("### 7.3 数据准备策略")
         prompt_parts.append("")
         prompt_parts.append("| 策略 | 适用场景 | 优点 | 缺点 |")
         prompt_parts.append("|------|----------|------|------|")
@@ -546,9 +558,7 @@ class TestEngine(EngineBase):
         prompt_parts.append("| Transaction Rollback | 单元测试 | 自动回滚 | 不适用于事务外操作 |")
         prompt_parts.append("| Clean Slate | E2E 测试 | 完全隔离 | 初始化成本高 |")
         prompt_parts.append("")
-        
-        # 新增：测试覆盖率目标
-        prompt_parts.append("### 7.9 测试覆盖率目标")
+        prompt_parts.append("### 7.4 测试覆盖率目标")
         prompt_parts.append("")
         prompt_parts.append("- **P0 用例**: 100% 覆盖率（核心流程、鉴权、数据一致性）")
         prompt_parts.append("- **P1 用例**: ≥80% 覆盖率（异常分支、边界条件）")
@@ -556,11 +566,47 @@ class TestEngine(EngineBase):
         prompt_parts.append("- **行覆盖率**: ≥70%")
         prompt_parts.append("- **分支覆盖率**: ≥60%")
         prompt_parts.append("")
-        
-        prompt_parts.append("## 测试优先级说明")
-        prompt_parts.append("- **P1**: 重要功能测试，建议通过")
-        prompt_parts.append("- **P2**: 边缘场景测试，视时间而定")
+        prompt_parts.append("### 7.5 测试代码生成规则（重要）")
+        prompt_parts.append("测试代码必须基于实际代码结构生成：")
+        prompt_parts.append("- 使用 IR 中的实际 struct 名作为 Request/Response 类型")
+        prompt_parts.append("- 使用 IR 中的实际 handler 函数名")
+        prompt_parts.append("- 使用 IR 中的实际 DAO 方法名")
+        prompt_parts.append("- 使用 IR 中的实际错误码")
+        prompt_parts.append("- 使用 IR 中的实际路由路径")
         prompt_parts.append("")
+        prompt_parts.append("示例（Go + testify/gomock）:")
+        prompt_parts.append("```go")
+        prompt_parts.append("// TestCreateAdGroup_Success 测试正常创建广告组")
+        prompt_parts.append("func TestCreateAdGroup_Success(t *testing.T) {")
+        prompt_parts.append("    ctrl := gomock.NewController(t)")
+        prompt_parts.append("    defer ctrl.Finish()")
+        prompt_parts.append("")
+        prompt_parts.append("    mockDAO := NewMockAdGroupDAO(ctrl)")
+        prompt_parts.append("    mockDAO.EXPECT().Insert(gomock.Any()).Return(nil)")
+        prompt_parts.append("")
+        prompt_parts.append("    req := &CreateAdGroupRequest{")
+        prompt_parts.append("        Name:  \"test-adgroup\",")
+        prompt_parts.append("        Status: 1,")
+        prompt_parts.append("    }")
+        prompt_parts.append("")
+        prompt_parts.append("    result, err := handler.CreateAdGroup(context.Background(), req)")
+        prompt_parts.append("    assert.NoError(t, err)")
+        prompt_parts.append("    assert.NotNil(t, result)")
+        prompt_parts.append("}")
+        prompt_parts.append("```")
+        prompt_parts.append("")
+        prompt_parts.append("示例（Python + pytest）:")
+        prompt_parts.append("```python")
+        prompt_parts.append("def test_create_adgroup_success(mock_dao, mock_service):")
+        prompt_parts.append("    mock_dao.insert.return_value = MagicMock(id=1)")
+        prompt_parts.append("    mock_service.validate.return_value = None")
+        prompt_parts.append("")
+        prompt_parts.append("    request = CreateAdGroupRequest(name='test-adgroup', status=1)")
+        prompt_parts.append("    result = handler.create_adgroup(request)")
+        prompt_parts.append("")
+        prompt_parts.append("    assert result is not None")
+        prompt_parts.append("    assert result.id == 1")
+        prompt_parts.append("    mock_dao.insert.assert_called_once()")
         prompt_parts.append("```")
         prompt_parts.append("")
         
@@ -617,6 +663,23 @@ def main():
         result = engine.generate_tests(prd_text, td_text)
     
     print(f"\nResult: {json.dumps(result, indent=2, ensure_ascii=False)}")
+
+
+# ============================================================================
+# Shared helper — extracted from review_engine for reuse
+# ============================================================================
+
+def _extract_section(text: str, heading: str) -> Optional[str]:
+    """从 Markdown 文本中提取指定 section 的内容。"""
+    pattern = rf'(?:#{1,2}\s+)?{re.escape(heading)}.*?\n((?:[^\n]*\n?)*)'
+    match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+    if match:
+        content = match.group(1).strip()
+        next_heading = re.search(r'\n###?\s+\w', content)
+        if next_heading:
+            content = content[:next_heading.start()]
+        return content
+    return None
 
 
 if __name__ == "__main__":

@@ -10,7 +10,24 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from query_evidence import expand_synonyms, run_evidence_query
+# Lazy imports to avoid circular dependency
+_QUERY_EVIDENCE = None
+def _get_query_evidence():
+    global _QUERY_EVIDENCE
+    if _QUERY_EVIDENCE is None:
+        from query_evidence import (
+            expand_synonyms, run_evidence_query,
+            smart_search, understand_query, enhanced_semantic_search, cross_field_search,
+        )
+        _QUERY_EVIDENCE = {
+            'expand_synonyms': expand_synonyms,
+            'run_evidence_query': run_evidence_query,
+            'smart_search': smart_search,
+            'understand_query': understand_query,
+            'enhanced_semantic_search': enhanced_semantic_search,
+            'cross_field_search': cross_field_search,
+        }
+    return _QUERY_EVIDENCE
 
 
 def extract_prd_keywords(prd_text: str, max_keywords: int = 20) -> List[str]:
@@ -219,7 +236,28 @@ def query_evidence_for_prd(
     profile_data = profile.get('profile', {}) if isinstance(profile, dict) else profile
     if not profile_data:
         profile_data = profile
-    expanded_queries = expand_synonyms(prd_text, profile_data)
+    
+    # 一次性加载 IR 缓存（在展开查询之前，避免重复读取磁盘）
+    if ir_cache is None and cache_dir:
+        cache_file = Path(cache_dir) / "ir_cache.json"
+        if cache_file.exists():
+            try:
+                with open(cache_file) as f:
+                    ir_cache = json.load(f)
+            except Exception:
+                pass
+    
+    qe = _get_query_evidence()
+    
+    # IR-aware synonym expansion: 如果 ir_cache 可用，使用增强版扩展
+    if ir_cache and isinstance(ir_cache, dict):
+        try:
+            expanded_queries = qe['expand_synonyms_with_ir'](prd_text, ir_cache, profile_data)
+        except (ImportError, AttributeError):
+            # 回退到标准扩展
+            expanded_queries = qe['expand_synonyms'](prd_text, profile_data) if profile_data else [prd_text]
+    else:
+        expanded_queries = qe['expand_synonyms'](prd_text, profile_data) if profile_data else [prd_text]
 
     # 查询变体扩展
     variants = []
@@ -231,35 +269,61 @@ def query_evidence_for_prd(
 
     all_queries = list(dict.fromkeys(keywords + expanded_queries + variants))[:30]
 
-    # 一次性加载 IR 缓存（如果未提供）
-    if ir_cache is None and cache_dir:
-        cache_file = Path(cache_dir) / "ir_cache.json"
-        if cache_file.exists():
-            try:
-                with open(cache_file) as f:
-                    ir_cache = json.load(f)
-            except Exception:
-                pass
-
-    # 多路搜索 — 复用同一份 IR 缓存
+    # ── Multi-path search — reuse the same IR cache ──────────────
+    qe = _get_query_evidence()
     all_evidence = []
     sources = ["code", "schema", "api_docs", "business"]
+
+    # Use smart_search for the PRD-level query (intelligent routing)
+    if ir_cache and isinstance(ir_cache, dict):
+        try:
+            smart_results = qe['smart_search'](
+                prd_text, ir_cache, profile_data, top_k=max_total
+            )
+            if smart_results:
+                all_evidence.extend(smart_results)
+        except Exception:
+            pass
+
+    # Traditional per-keyword search for broad coverage
     for query in all_queries:
         try:
-            result = run_evidence_query(
+            result = qe['run_evidence_query'](
                 query=query,
                 wiki_path=wiki_path,
                 top_k=top_k_per_query,
                 sources=sources,
                 cache_dir=cache_dir,
-                ir_cache=ir_cache,  # 传入预加载的缓存
+                ir_cache=ir_cache,  # pass preloaded cache
             )
             if result.get('evidence'):
                 all_evidence.extend(result['evidence'])
         except Exception:
             pass
 
-    # 去重（基于 path + type），保留最高分
+    # Cross-field search for entity relationships
+    if ir_cache and isinstance(ir_cache, dict):
+        try:
+            cf_results = qe['cross_field_search'](prd_text, ir_cache, top_k=15)
+            if cf_results:
+                all_evidence.extend(cf_results)
+        except Exception:
+            pass
+
+    # Enhanced semantic search for broader recall
+    if ir_cache and isinstance(ir_cache, dict):
+        try:
+            semantic_results = qe['enhanced_semantic_search'](
+                prd_text,
+                [kw for kw in all_queries if len(kw) > 2],
+                top_k=15,
+            )
+            if semantic_results:
+                all_evidence.extend(semantic_results)
+        except Exception:
+            pass
+
+    # Deduplicate (by path + type), keep highest score
     seen = {}
     for item in all_evidence:
         key = (item.get('path', ''), item.get('type', ''))

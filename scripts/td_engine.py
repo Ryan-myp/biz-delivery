@@ -102,137 +102,86 @@ class TDEngine(EngineBase):
         prompt_parts.append("生成一份详细的技术设计方案（Technical Design Document）。")
         prompt_parts.append("")
         
-        # 代码库摘要
+        # 代码库摘要 — 使用 base_engine 共享方法
         prompt_parts.append("## 代码库摘要")
-        prompt_parts.append(f"- **业务域**: {self.business_domain}")
-        prompt_parts.append(f"- **仓库**: {', '.join(r['name'] for r in self.repos)}")
-        prompt_parts.append(f"- **语言**: {ir.language}")
-        prompt_parts.append(f"- **Structs**: {len(ir.structs)}")
-        prompt_parts.append(f"- **Functions**: {len(ir.functions)}")
-        prompt_parts.append(f"- **Routes**: {len(ir.routes)}")
-        prompt_parts.append(f"- **Entity Tables**: {len(ir.entity_tables)}")
-        prompt_parts.append(f"- **SQL Operations**: {len(ir.sql_operations)}")
-        prompt_parts.append(f"- **Error Codes**: {len(ir.error_codes)}")
-        prompt_parts.append(f"- **Auth Models**: {len(ir.auth_models)}")
-        prompt_parts.append(f"- **Test Coverage**: {ir.coverage_report.get('coverage_pct', 0)}%")
+        prompt_parts.extend(self._build_ir_summary(ir))
         prompt_parts.append("")
         
-        # 关键路由（前30条）
-        if ir.routes:
-            prompt_parts.append("## 关键路由（前30条）")
-            for route in ir.routes[:30]:
-                method = getattr(route, 'method', 'GET').upper()
-                path = getattr(route, 'path', '?')
-                handler = getattr(route, 'handler', '?')
-                prompt_parts.append(f"- `{method}` {path} → `{handler}`")
-            prompt_parts.append("")
+        # 关键路由 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_routes_section(ir, limit=30))
         
-        # 业务逻辑（从入口点追踪的调用链）
-        if ir.business_logic:
-            prompt_parts.append("## 业务逻辑（入口点调用链）")
-            for bl in ir.business_logic[:10]:
-                route = bl.get('route', '?')
-                method = bl.get('method', 'GET')
-                handler = bl.get('handler', '?')
-                desc = bl.get('description', '')
-                prompt_parts.append(f"- `{method}` {route} → `{handler}`")
-                prompt_parts.append(f"  逻辑: {desc}")
-                calls = bl.get('calls', [])
-                if calls:
-                    prompt_parts.append(f"  调用: {', '.join(calls[:8])}")
-                second = bl.get('second_layer', [])
-                if second:
-                    for sl in second[:5]:
-                        prompt_parts.append(f"    - {sl.get('name', '?')}() @ {sl.get('file', '?')}")
+        # 业务逻辑 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_business_logic_section(ir, limit=10))
+        
+        # Entity-Table 映射 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_entity_table_section(ir, limit=15))
+        
+        # 错误码 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_error_code_section(ir, limit=15))
+        
+        # 鉴权模型 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_auth_model_section(ir))
+        
+        # SQL 操作 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_sql_section(ir, limit=10))
+        
+        # 测试覆盖 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_test_coverage_section(ir))
+        
+        # 核心业务流程 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_core_flows_section(ir, limit=6))
+        
+        # 注入包结构（用于架构图生成）— 使用 base_engine 共享方法
+        prompt_parts.append(self._build_packages_section(ir, limit=15))
+        
+        # 注入调用图（用于服务关系图）— 使用 base_engine 共享方法
+        prompt_parts.append(self._build_call_graph_section(ir, limit=20))
+        
+        # 注入跨仓库依赖分析（多仓库场景）
+        if hasattr(ir, 'services') and ir.services:
+            service_names = []
+            for svc in ir.services:
+                if isinstance(svc, dict):
+                    name = svc.get('name', svc.get('service_name', ''))
+                else:
+                    name = getattr(svc, 'name', getattr(svc, 'service_name', ''))
+                if name:
+                    service_names.append(name)
+            if len(service_names) > 1:
+                prompt_parts.append("## 🌐 跨仓库服务拓扑")
+                prompt_parts.append(f"检测到 {len(service_names)} 个服务: {', '.join(service_names[:10])}")
                 prompt_parts.append("")
-        
-        # Entity-Table 映射
-        if ir.entity_tables:
-            prompt_parts.append("## Entity-Table 映射（前15张）")
-            for et in ir.entity_tables[:15]:
-                entity = et.get('entity', '?')
-                table = et.get('table', '?')
-                prompt_parts.append(f"- `{entity}` → `{table}`")
-            prompt_parts.append("")
-        
-        # 错误码
-        if ir.error_codes:
-            prompt_parts.append("## 错误码（前15个）")
-            for ec in ir.error_codes[:15]:
-                name = ec.get('name', '?')
-                code = ec.get('code', '?')
-                msg = ec.get('message', '')
-                prompt_parts.append(f"- `{name}`: {code} — {msg}")
-            prompt_parts.append("")
-        
-        # 鉴权模型
-        if ir.auth_models:
-            prompt_parts.append("## 鉴权模型")
-            for am in ir.auth_models:
-                mw = am.get('middleware', '?')
-                logic = am.get('logic', '')
-                prompt_parts.append(f"- **{mw}**: {logic}")
-            prompt_parts.append("")
-        
-        # SQL 操作
-        if ir.sql_operations:
-            prompt_parts.append("## SQL 操作示例（前10个）")
-            for sq in ir.sql_operations[:10]:
-                op = sq.get('sql_operation', '?')
-                table = sq.get('table', '?')
-                file = sq.get('file', '?')
-                prompt_parts.append(f"- `{op}` on `{table}` in `{file}`")
-            prompt_parts.append("")
-        
-        # 测试覆盖
-        if ir.test_functions:
-            prompt_parts.append("## 测试覆盖情况")
-            prompt_parts.append(f"- **测试文件**: {len(ir.test_files)}")
-            prompt_parts.append(f"- **测试函数**: {len(ir.test_functions)}")
-            prompt_parts.append(f"- **框架**: {ir.coverage_report.get('framework', 'unknown')}")
-            if ir.coverage_report.get('uncovered_highlights'):
-                uncovered = ir.coverage_report['uncovered_highlights'][:10]
-                prompt_parts.append(f"- **未覆盖函数**: {', '.join(uncovered)}")
-            prompt_parts.append("")
-        
-        # 注入核心业务流程
-        if hasattr(ir, 'core_flows') and ir.core_flows:
-            prompt_parts.append("## 核心业务流程（从代码自动推断）")
-            for cf in ir.core_flows[:6]:
-                prompt_parts.append(f"- **{cf.get('flow_name', '?')}**: {cf.get('entry_point', '?')} → {cf.get('data_flow', '?')}")
-                prompt_parts.append(f"  调用: {', '.join(cf.get('call_chain', [])[:5])}")
-            prompt_parts.append("")
-        
-        # 注入包结构（用于架构图生成）
-        if hasattr(ir, 'packages') and ir.packages:
-            prompt_parts.append("## 包结构（用于架构图生成）")
-            for pkg_name, pkg_data in list(ir.packages.items())[:15]:
-                files = pkg_data.get('files', []) if isinstance(pkg_data, dict) else []
-                funcs = pkg_data.get('functions', []) if isinstance(pkg_data, dict) else []
-                structs = pkg_data.get('structs', {}) if isinstance(pkg_data, dict) else {}
-                prompt_parts.append(f"### `{pkg_name}`")
-                prompt_parts.append(f"- Files: {len(files)}")
-                if funcs:
-                    prompt_parts.append(f"- Functions: {', '.join(funcs[:5])}")
-                if structs:
-                    prompt_parts.append(f"- Structs: {', '.join(structs.keys() if isinstance(structs, dict) else structs[:5])}")
-            prompt_parts.append("")
-        
-        # 注入调用图（用于服务关系图）
-        if hasattr(ir, 'call_graph') and ir.call_graph:
-            prompt_parts.append("## 调用关系（用于服务关系图）")
-            for edge in ir.call_graph[:20]:
-                if isinstance(edge, dict):
-                    caller = edge.get('caller', '?')
-                    callee = edge.get('callee', '?')
-                    prompt_parts.append(f"- `{caller}` → `{callee}`")
-                elif hasattr(edge, 'caller'):
-                    prompt_parts.append(f"- `{edge.caller}` → `{edge.callee}`")
-            prompt_parts.append("")
+                
+                # 注入服务间调用关系
+                if hasattr(ir, 'call_graph') and ir.call_graph:
+                    prompt_parts.append("### 服务间调用链")
+                    cross_service_calls = set()
+                    for edge in ir.call_graph:
+                        if isinstance(edge, dict):
+                            caller_pkg = edge.get('caller', '')
+                            callee_pkg = edge.get('callee', '')
+                            if caller_pkg and callee_pkg:
+                                caller_base = caller_pkg.split('/')[0] if '/' in caller_pkg else caller_pkg
+                                callee_base = callee_pkg.split('/')[0] if '/' in callee_pkg else callee_pkg
+                                if caller_base != callee_base:
+                                    cross_service_calls.add((caller_base, callee_base))
+                    
+                    if cross_service_calls:
+                        for src, dst in sorted(cross_service_calls)[:15]:
+                            prompt_parts.append(f"- `{src}` → `{dst}`")
+                    prompt_parts.append("")
+                
+                prompt_parts.append("设计方案时需要考虑：")
+                prompt_parts.append("- 服务间通信方式（HTTP/RPC/MQ）")
+                prompt_parts.append("- 跨服务事务一致性方案")
+                prompt_parts.append("- 服务降级和熔断策略")
+                prompt_parts.append("- 服务版本兼容性管理")
+                prompt_parts.append("- **关键**: 新增功能不能破坏现有服务契约")
+                prompt_parts.append("")
         
         # 注入实际生成的 Mermaid 图表（基于 IR 数据）
         try:
-            from .mermaid_generator import MermaidGenerator
+            from mermaid_generator import MermaidGenerator
             generator = MermaidGenerator({
                 'packages': ir.packages if hasattr(ir, 'packages') else {},
                 'call_graph': ir.call_graph if hasattr(ir, 'call_graph') else [],
@@ -270,6 +219,17 @@ class TDEngine(EngineBase):
                 seq_diagram = generator.generate_sequence_diagram(top_flow)
                 prompt_parts.append("## 🔄 核心流程时序图（基于实际调用链自动生成）")
                 prompt_parts.append(seq_diagram)
+                prompt_parts.append("")
+            
+            # Use MermaidGenerator outputs instead of inline broken versions
+            if diagrams.get('state_machine'):
+                prompt_parts.append("## 🔄 状态机图（基于 IR 状态转换函数自动生成）")
+                prompt_parts.append(diagrams['state_machine'])
+                prompt_parts.append("")
+            
+            if diagrams.get('dependency'):
+                prompt_parts.append("## 🔗 模块依赖图（基于 IR call_graph 自动生成）")
+                prompt_parts.append(diagrams['dependency'])
                 prompt_parts.append("")
         except Exception as e:
             prompt_parts.append(f"⚠️  Mermaid diagram generation skipped: {e}")

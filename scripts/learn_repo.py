@@ -18,6 +18,10 @@ import json
 from dataclasses import asdict
 from collections import defaultdict
 import os
+import importlib.util
+import ast
+import urllib.request
+import urllib.parse
 import re
 import subprocess
 import sys
@@ -60,7 +64,7 @@ class CodeKnowledgeExtractor:
             
             try:
                 text = go_file.read_text(encoding="utf-8", errors="ignore")
-            except:
+            except Exception:
                 continue
             
             # 找 package 声明（跳过注释）
@@ -118,7 +122,7 @@ class CodeKnowledgeExtractor:
             
             try:
                 text = py_file.read_text(encoding="utf-8", errors="ignore")
-            except:
+            except Exception:
                 continue
             
             rel_path = str(py_file.relative_to(self.repo_path.parent))
@@ -158,7 +162,7 @@ class CodeKnowledgeExtractor:
         for java_file in self.repo_path.rglob("**/*.java"):
             try:
                 text = java_file.read_text(encoding="utf-8", errors="ignore")
-            except:
+            except Exception:
                 continue
             
             # 找 package 声明
@@ -223,7 +227,7 @@ class CodeKnowledgeExtractor:
                 continue
             try:
                 content = go_file.read_text(encoding="utf-8", errors="ignore")
-            except:
+            except Exception:
                 continue
             
             # 找 HTTP 调用
@@ -258,7 +262,7 @@ class CodeKnowledgeExtractor:
         for go_file in self.repo_path.rglob("**/main.go"):
             try:
                 content = go_file.read_text(encoding="utf-8", errors="ignore")
-            except:
+            except Exception:
                 continue
             
             # 找关键调用
@@ -275,7 +279,7 @@ class CodeKnowledgeExtractor:
                 continue
             try:
                 content = go_file.read_text(encoding="utf-8", errors="ignore")
-            except:
+            except Exception:
                 continue
             
             # 找 cobra.Command 定义
@@ -292,7 +296,7 @@ class CodeKnowledgeExtractor:
                 continue
             try:
                 content = go_file.read_text(encoding="utf-8", errors="ignore")
-            except:
+            except Exception:
                 continue
             
             if "embed.FS" in content or "//go:embed" in content:
@@ -981,24 +985,23 @@ class GoScanner:
             print(f"  WARNING: Universal code analysis failed ({e})")
         
         # 2. 轻量提取 structs/functions（只扫描前 100 个文件）
-        import re as re_mod
         try:
             all_go_files = list(dir_path.rglob("**/*.go"))[:100]
             for go_file in all_go_files:
                 try:
                     text = go_file.read_text(encoding="utf-8", errors="ignore")
-                except:
+                except Exception:
                     continue
                 
                 rel_path = str(go_file.relative_to(dir_path.parent))
                 
                 # 提取 struct
-                structs = re_mod.findall(r"type\s+(\w+)\s+struct\s*{(.*?)^\}", text, re_mod.MULTILINE | re_mod.DOTALL)
+                structs = re.findall(r"type\s+(\w+)\s+struct\s*{(.*?)^\}", text, re.MULTILINE | re.DOTALL)
                 for name, body in structs:
                     ir.structs.append(StructDef(name=name, file=rel_path, fields=[]))
                 
                 # 提取函数
-                funcs = re_mod.findall(r"func\s+(\w+)\s*\(", text)
+                funcs = re.findall(r"func\s+(\w+)\s*\(", text)
                 for name in funcs:
                     if name[0].isupper():
                         ir.functions.append(FuncDef(name=name, file=rel_path))
@@ -1135,7 +1138,6 @@ class GoScanner:
             if not module_files:
                 print(f"  Skipping _extract_business_logic (no module/router/handler files)")
                 return
-        import re as re_mod
         
         # 第一步：构建全局函数名 → 文件映射 + 方法体缓存
         all_go_files = list(dir_path.rglob("**/*.go"))[:1000] + list(dir_path.rglob("**/*.py"))[:500] + list(dir_path.rglob("**/*.java"))[:500]
@@ -1148,21 +1150,21 @@ class GoScanner:
         for go_file in all_go_files[:max_entries * 20]:
             try:
                 text = go_file.read_text(encoding='utf-8', errors='ignore')
-            except:
+            except Exception:
                 continue
             
             rel_path = str(go_file.relative_to(dir_path.parent))
             
             # 提取所有 func 定义
             # 修复：params 可能有嵌套括号，用更宽松的正则
-            func_re = re_mod.compile(r'func\s+(?:\((?:[^()]*|\([^()]*\))*\)\s+)?(\w+)\s*\(')
+            func_re = re.compile(r'func\s+(?:\((?:[^()]*|\([^()]*\))*\)\s+)?(\w+)\s*\(')
             for fm in func_re.finditer(text):
                 func_name = fm.group(1)
                 if func_name not in func_to_files:
                     func_to_files.setdefault(func_name, []).append(rel_path)
             
             # 提取方法体（用于递归追踪）
-            method_re = re_mod.compile(r'func\s+\(\s*(\w+)\s+\*?(\w+)\s*\)\s+(\w+)\s*\(')
+            method_re = re.compile(r'func\s+\(\s*(\w+)\s+\*?(\w+)\s*\)\s+(\w+)\s*\(')
             for mm in method_re.finditer(text):
                 receiver_var = mm.group(1)
                 receiver_type = mm.group(2)
@@ -1189,7 +1191,7 @@ class GoScanner:
                     func_bodies[(rel_path, method_name)] = text[method_body_start:method_body_end]
             
             # 也提取包级别函数
-            pkg_func_re = re_mod.compile(r'^func\s+(\w+)\s*\(', re_mod.MULTILINE)
+            pkg_func_re = re.compile(r'^func\s+(\w+)\s*\(', re.MULTILINE)
             for pf in pkg_func_re.finditer(text):
                 func_name = pf.group(1)
                 start_pos = pf.end() - 1
@@ -1217,7 +1219,7 @@ class GoScanner:
         for go_file in all_go_files[:max_entries * 10]:
             try:
                 text = go_file.read_text(encoding='utf-8', errors='ignore')
-            except:
+            except Exception:
                 continue
             
             rel_path = str(go_file.relative_to(dir_path.parent))
@@ -1230,7 +1232,7 @@ class GoScanner:
                 if stripped and not stripped.startswith('//') and not stripped.startswith('/*') and not stripped.startswith('*'):
                     pkg_line = stripped
                     break
-            pkg_match = re_mod.match(r'package\s+(\w+)', pkg_line)
+            pkg_match = re.match(r'package\s+(\w+)', pkg_line)
             if pkg_match:
                 pkg = pkg_match.group(1)
                 if pkg not in packages:
@@ -1238,11 +1240,11 @@ class GoScanner:
                 packages[pkg]['files'].append(rel_path)
                 
                 # 提取 import
-                imports = re_mod.findall(r'"([^"]+)"', text)
+                imports = re.findall(r'"([^"]+)"', text)
                 packages[pkg]['imports'].update(imports)
                 
                 # 提取导出符号
-                exports = re_mod.findall(r'type\s+(\w+)|func\s+(\w+)', text)
+                exports = re.findall(r'type\s+(\w+)|func\s+(\w+)', text)
                 for exp in exports:
                     for name in exp:
                         if name and name[0].isupper():
@@ -1268,7 +1270,7 @@ class GoScanner:
             try:
                 text = path.read_text(encoding='utf-8', errors='ignore')
                 module_files.append((path, text))
-            except:
+            except Exception:
                 continue
         
         # 第三步：从每个 module 文件提取路由和 handler，递归追踪调用链
@@ -1280,14 +1282,14 @@ class GoScanner:
             rel_path = str(module_path.relative_to(dir_path.parent))
             
             # 提取路由注册
-            route_pattern = re_mod.compile(r'(?:group|groupPermission|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*(?:m\.)?(\w+)')
+            route_pattern = re.compile(r'(?:group|groupPermission|r)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"\s*,\s*(?:m\.)?(\w+)')
             route_matches = list(route_pattern.finditer(module_text))
             
             if not route_matches:
                 continue
             
             # 提取模块结构体名
-            struct_pattern = re_mod.compile(r'type\s+(\w+Module)\s+struct')
+            struct_pattern = re.compile(r'type\s+(\w+Module)\s+struct')
             struct_match = struct_pattern.search(module_text)
             struct_name = struct_match.group(1) if struct_match else 'Module'
             
@@ -1300,8 +1302,8 @@ class GoScanner:
                 handler_name = route_match.group(3)
                 
                 # 提取 handler 方法体
-                sig_pattern = re_mod.compile(
-                    rf'func\s+\(m\s+\*{re_mod.escape(struct_name)}\)\s+{re_mod.escape(handler_name)}\s*\('
+                sig_pattern = re.compile(
+                    rf'func\s+\(m\s+\*{re.escape(struct_name)}\)\s+{re.escape(handler_name)}\s*\('
                 )
                 sig_match = sig_pattern.search(module_text)
                 
@@ -1396,7 +1398,6 @@ class GoScanner:
         if visited is None:
             visited = set()
         
-        import re as re_mod
         
         excluded = {'if', 'for', 'switch', 'return', 'defer', 'go', 'select', 'make', 'new', 
                    'append', 'len', 'cap', 'close', 'copy', 'delete', 'panic', 'recover', 
@@ -1408,13 +1409,13 @@ class GoScanner:
         
         # 提取当前层的调用
         calls = []
-        for m in re_mod.finditer(r'(?:m\.|ctx\.|util\.|dao\.|service\.|model\.|entity\.)(\w+)\s*\(', body):
+        for m in re.finditer(r'(?:m\.|ctx\.|util\.|dao\.|service\.|model\.|entity\.)(\w+)\s*\(', body):
             called = m.group(1)
             if called not in excluded and len(called) > 2 and called not in visited:
                 calls.append(called)
         
         # 也提取不带前缀的调用
-        for m in re_mod.finditer(r'(?:(?:m|ctx|util|dao|service|model|entity)\.)?(\w+)\s*\(', body):
+        for m in re.finditer(r'(?:(?:m|ctx|util|dao|service|model|entity)\.)?(\w+)\s*\(', body):
             called = m.group(1)
             if called not in excluded and len(called) > 2 and called not in calls:
                 calls.append(called)
@@ -1553,7 +1554,6 @@ class GoScanner:
         6. 跨策略去重（同一业务入口可能被多种策略捕获）
         """
         # Import CoreFlowAnalyzer — use sys.path to avoid relative import issues
-        import importlib.util
         analyzer_path = str(Path(__file__).parent / "core_flow_analyzer.py")
         spec = importlib.util.spec_from_file_location("core_flow_analyzer", analyzer_path)
         if spec and spec.loader:
@@ -1634,15 +1634,66 @@ class GoScanner:
             if isinstance(et, dict):
                 ir_dict['entity_tables'].append(et)
         
-        # Run enhanced analyzer
+        # Run enhanced analyzer — use analyze_all() for comprehensive flow data
         analyzer = CoreFlowAnalyzer(ir_dict)
-        flows = analyzer.infer_flows()
+        result = analyzer.analyze_all()
         
         # Add metadata from original IR
-        for flow in flows:
+        for flow in result['flows']:
             flow['source'] = 'enhanced_analyzer'
+        for path in result['critical_paths']:
+            path['source'] = 'critical_path_analyzer'
+        for df in result['data_flows']:
+            df['source'] = 'data_flow_analyzer'
         
-        return flows
+        # Add coverage metadata
+        if 'flow_coverage' in result:
+            for item in result['flow_coverage'].get('uncovered_entities', []):
+                item['source'] = 'flow_coverage_analyzer'
+        
+        # Return combined data — flatten critical paths + data flows into core_flows
+        # for backward compatibility with downstream engines
+        all_flows = list(result['flows'])
+        # Merge critical paths as high-priority flows
+        for cp in result['critical_paths'][:5]:
+            all_flows.append({
+                'flow_name': cp.get('path_name', 'critical path'),
+                'flow_type': 'critical_path',
+                'entry_type': 'http',
+                'entry_point': cp.get('entry_point', ''),
+                'route': cp.get('route', ''),
+                'call_chain': cp.get('call_chain', []),
+                'stages': cp.get('stages', []),
+                'is_golden_path': cp.get('is_golden_path', False),
+                'domain': cp.get('cn_domain', ''),
+                'score': cp.get('score', 0),
+                'source': 'critical_path',
+            })
+        # Merge data flows — preserve full enriched fields from infer_data_flows_enhanced
+        for df in result['data_flows'][:10]:
+            all_flows.append({
+                'flow_name': df.get('flow_name', f"{df.get('route','')} 数据流"),
+                'flow_type': 'data_flow',
+                'entry_type': 'http',
+                'entry_point': df.get('entry_point', ''),
+                'route': df.get('route', ''),
+                'http_method': df.get('http_method', ''),
+                'call_chain': df.get('call_chain', df.get('dao_methods', [])),
+                'stages': df.get('layers', []),
+                'data_flow': ' → '.join(df.get('layers', [])),
+                'entities': df.get('entities', []),
+                'dao_methods': df.get('dao_methods', []),
+                'cache_usage': df.get('cache_usage', []),
+                'has_transaction': df.get('has_transaction', False),
+                'depth': df.get('depth', 0),
+                'score': df.get('score', 0),
+                'source': 'data_flow',
+            })
+        
+        # Sort by score descending so high-priority flows appear first
+        all_flows.sort(key=lambda x: x.get('score', 0), reverse=True)
+        
+        return all_flows
 
     def _calc_max_depth(self, call_tree: list, current: int = 0) -> int:
         if not call_tree:
@@ -1845,7 +1896,6 @@ class GoScanner:
                 "full_path": "Request → Handler → AdGroupService → AdGroupDAO → Insert → MySQL",
             }
         """
-        import re as re_mod
         
         stages = []
         data_ops = []
@@ -1867,34 +1917,34 @@ class GoScanner:
         stages.append("Handler")
         
         # 3. 识别 Service 层调用
-        service_calls = re_mod.findall(r'(?:m\.|\.)(\w+Service)\s*\(', handler_body)
-        service_calls += re_mod.findall(r'(\w+Service)\.(Create|Update|Delete|Get|List|Query|Build)', handler_body)
+        service_calls = re.findall(r'(?:m\.|\.)(\w+Service)\s*\(', handler_body)
+        service_calls += re.findall(r'(\w+Service)\.(Create|Update|Delete|Get|List|Query|Build)', handler_body)
         if service_calls:
             stages.append("Service")
             for svc in set(service_calls):
                 if isinstance(svc, tuple):
                     svc = svc[0]
-                svc_methods = re_mod.findall(rf'{svc}\.(Create|Update|Delete|Get|List|Query|Build|Validate)', handler_body)
+                svc_methods = re.findall(rf'{svc}\.(Create|Update|Delete|Get|List|Query|Build|Validate)', handler_body)
                 if svc_methods:
                     data_ops.extend(svc_methods)
         
         # 4. 识别 DAO 层调用
-        dao_calls = re_mod.findall(r'(?:dao\.|\.)(\w+DAO)\s*\(', handler_body)
-        dao_methods = re_mod.findall(r'DAO\.(Insert|Update|Delete|Get|List|Query|Count|Exists)', handler_body)
+        dao_calls = re.findall(r'(?:dao\.|\.)(\w+DAO)\s*\(', handler_body)
+        dao_methods = re.findall(r'DAO\.(Insert|Update|Delete|Get|List|Query|Count|Exists)', handler_body)
         if dao_calls or dao_methods:
             stages.append("DAO")
             for m in dao_methods:
                 data_ops.append(m.lower())
         
         # 5. 识别直接 DB 操作
-        db_ops = re_mod.findall(r'\.(Insert|Update|Delete|Query|Get|List|Count|Exec|Scan)\s*\(', handler_body)
+        db_ops = re.findall(r'\.(Insert|Update|Delete|Query|Get|List|Count|Exec|Scan)\s*\(', handler_body)
         for op in db_ops:
             if op not in data_ops:
                 data_ops.append(op.lower())
         
         # 6. 识别外部 RPC/HTTP/MQ 调用
-        rpc_calls = re_mod.findall(r'(?:client|rpc|proxy|external)\.(\w+)', handler_body)
-        mq_calls = re_mod.findall(r'(?:mq|kafka|rabbit|pubsub|publish)\.\w+', handler_body)
+        rpc_calls = re.findall(r'(?:client|rpc|proxy|external)\.(\w+)', handler_body)
+        mq_calls = re.findall(r'(?:mq|kafka|rabbit|pubsub|publish)\.\w+', handler_body)
         
         if rpc_calls:
             external_calls.extend([f"RPC:{c}" for c in set(rpc_calls)])
@@ -1926,7 +1976,7 @@ class GoScanner:
             if r.returncode == 0:
                 test_files = [f.strip() for f in r.stdout.strip().split('\n') if f.strip()]
                 ir.test_files = test_files[:max_files]
-        except:
+        except Exception:
             pass
         
         # 2. 扫描测试函数 — 直接读测试文件（不依赖 rg，沙箱里 rg 不可用）
@@ -1945,7 +1995,7 @@ class GoScanner:
                     elif "stretchr" in content:
                         framework = "stretchr"
                     break
-                except:
+                except Exception:
                     pass
         
         # 逐个测试文件扫描测试函数
@@ -1973,7 +2023,7 @@ class GoScanner:
                             "framework": framework,
                             "covers": [],
                         })
-            except:
+            except Exception:
                 pass
         
         # 3. 构建覆盖率报告
@@ -1993,7 +2043,7 @@ class GoScanner:
                     for call in calls:
                         if call.startswith('Get') or call.startswith('Create') or call.startswith('Update') or call.startswith('Delete') or call.startswith('List') or call.startswith('Query') or call.startswith('Parse'):
                             tested_funcs.add(call)
-                except:
+                except Exception:
                     pass
         
         # 简单估算：测试文件中的 TestXxx 对应 Xxx 方法的测试
@@ -2050,7 +2100,7 @@ class GoScanner:
             try:
                 content = full_path.read_text()
                 lines = content.splitlines()
-            except:
+            except Exception:
                 continue
             
             for route in routes[:5]:
@@ -2150,7 +2200,7 @@ class GoScanner:
         
         try:
             go_files = list(dao_dir.rglob("*.go"))
-        except:
+        except Exception:
             return
         
         # GORM 操作模式映射
@@ -2226,7 +2276,7 @@ class GoScanner:
                                 "context": line[:100],
                             })
                             break
-            except:
+            except Exception:
                 pass
         
         # 识别大事务（Transaction 中有多步操作）
@@ -2263,7 +2313,7 @@ class GoScanner:
                         if tx_depth <= 0:
                             in_transaction = False
                             
-            except:
+            except Exception:
                 pass
     
     def _extract_error_codes(self, ir: IRDocument, dir_path: Path, max_files: int):
@@ -2285,7 +2335,7 @@ class GoScanner:
                 ["find", str(dir_path), "-name", "errors*.go", "-o", "-name", "error*.go", "-o", "-name", "errcode*.go", "-not", "-path", "*/vendor/*"],
                 capture_output=True, text=True, timeout=30
             )
-        except:
+        except Exception:
             return
         
         error_files = [f.strip() for f in r.stdout.strip().split('\n') if f.strip()]
@@ -2344,7 +2394,7 @@ class GoScanner:
                         "category": category,
                         "file": str(rel),
                     })
-            except:
+            except Exception:
                 pass
     
     def _extract_auth_models(self, ir: IRDocument, dir_path: Path, max_files: int):
@@ -2369,7 +2419,7 @@ class GoScanner:
                 middleware_dirs = [f.strip() for f in r.stdout.strip().split('\n') if f.strip()]
                 # 排除 vendor
                 middleware_dirs = [d for d in middleware_dirs if '/vendor/' not in d]
-            except:
+            except Exception:
                 middleware_dirs = []
         else:
             middleware_dirs = [str(middleware_dir)]
@@ -2377,7 +2427,7 @@ class GoScanner:
         for mw_dir in middleware_dirs[:3]:
             try:
                 mw_files = list(Path(mw_dir).rglob("*.go"))
-            except:
+            except Exception:
                 continue
             
             for mw_file in mw_files:
@@ -2422,7 +2472,7 @@ class GoScanner:
                                 "logic": "; ".join(logic_keywords) if logic_keywords else "unknown",
                                 "description": "",
                             })
-                except:
+                except Exception:
                     pass
         
         # 2. 从 api_spec 构建受保护路由
@@ -2456,7 +2506,7 @@ class GoScanner:
         
         try:
             go_files = list(entity_dir.rglob("*.go"))
-        except:
+        except Exception:
             return
         
         for go_file in go_files:
@@ -2491,7 +2541,7 @@ class GoScanner:
                                     "file": str(rel),
                                     "line": i + 1,
                                 })
-            except:
+            except Exception:
                 pass
     
     def _extract_conditions(self, ir: IRDocument, dir_path: Path, max_files: int):
@@ -2506,7 +2556,7 @@ class GoScanner:
         
         try:
             go_files = list(cond_dir.rglob("*.go"))
-        except:
+        except Exception:
             return
         
         for go_file in go_files:
@@ -2541,7 +2591,7 @@ class GoScanner:
                             "file": str(rel),
                             "fields": fields[:20],
                         })
-            except:
+            except Exception:
                 pass
     
     def _extract_configs(self, ir: IRDocument, dir_path: Path, max_files: int):
@@ -2560,7 +2610,7 @@ class GoScanner:
             
             try:
                 config_files = list(config_dir.glob("*.yml")) + list(config_dir.glob("*.yaml")) + list(config_dir.glob("*.json"))
-            except:
+            except Exception:
                 continue
             
             for cf in config_files:
@@ -2604,7 +2654,7 @@ class GoScanner:
                                         "key": kv_m.group(1),
                                         "value": kv_m.group(2)[:200],
                                     })
-                except:
+                except Exception:
                     pass
     
     def _detect_perf_hotspots(self, ir: IRDocument, dir_path: Path, max_files: int):
@@ -2615,7 +2665,7 @@ class GoScanner:
         
         try:
             go_files = list(dao_dir.rglob("*.go"))
-        except:
+        except Exception:
             return
         
         for go_file in go_files:
@@ -2720,14 +2770,14 @@ class GoScanner:
                                 "detail": f"Raw SQL with format specifier: {stripped[:80]}",
                             })
                 
-            except:
+            except Exception:
                 pass
     
     def _detect_compat_issues(self, ir: IRDocument, dir_path: Path, max_files: int):
         """检测向后兼容性问题"""
         try:
             go_files = list(dir_path.rglob("*.go"))
-        except:
+        except Exception:
             return
         
         go_files = [f for f in go_files if '/vendor/' not in str(f)][:max_files * 5]
@@ -2786,7 +2836,7 @@ class GoScanner:
                             "detail": f"Potential hardcoded value: {stripped[:80]}",
                         })
                 
-            except:
+            except Exception:
                 pass
     
     def _build_call_graph_from_signatures(self, ir: IRDocument):
@@ -2828,7 +2878,7 @@ class PythonScanner:
                         expr = ""
                         try:
                             expr = ast.unparse(node.value)
-                        except:
+                        except Exception:
                             expr = "?"
                         nodes.append(DataFlowNode(
                             var_name=target.id,
@@ -2885,7 +2935,7 @@ class PythonScanner:
                 # Optional[List[str]], Dict[str, int] 等
                 try:
                     return ast.unparse(return_node)
-                except:
+                except Exception:
                     return "?"
         return None
     
@@ -2900,7 +2950,7 @@ class PythonScanner:
             if arg.annotation:
                 try:
                     param["type"] = ast.unparse(arg.annotation)
-                except:
+                except Exception:
                     param["type"] = "?"
             else:
                 param["type"] = "Any"
@@ -2934,7 +2984,6 @@ class PythonScanner:
         except Exception:
             return {"status": "degraded", "reason": "read_failed"}
         
-        import ast
         try:
             tree = ast.parse(source)
         except SyntaxError:
@@ -4291,8 +4340,6 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
             llm_api_key = os.environ.get('HERMES_LLM_API_KEY', '')
             if llm_api_key:
                 # 调用 LLM API
-                import urllib.request
-                import urllib.parse
                 
                 payload = json.dumps({
                     "model": "agnes-2.0-flash",
@@ -4317,7 +4364,6 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
                     llm_text = llm_response['choices'][0]['message']['content']
                     
                     # 提取 JSON
-                    import re
                     json_match = re.search(r'\{.*\}', llm_text, re.DOTALL)
                     if json_match:
                         business_terminology = json.loads(json_match.group(0))
@@ -4528,7 +4574,7 @@ class KnowledgeCache:
         if self.cache_file.exists():
             try:
                 return json.load(open(self.cache_file))
-            except:
+            except Exception:
                 return {}
         return {}
     
@@ -4586,7 +4632,7 @@ def generate_kb_cache(kb_base: str, cache_dir: str) -> dict:
                     'keywords': keywords[:20],
                     'lines': len(content.split('\n')),
                 }
-            except:
+            except Exception:
                 continue
         
         cache.set('kb_index', index)

@@ -2,7 +2,10 @@
 """意图识别 + 路由模块 - 增强查询意图理解"""
 
 from typing import Tuple, Optional, Dict, List
-from .query_cache import QueryCache
+try:
+    from query_cache import QueryCache
+except ImportError:
+    from .query_cache import QueryCache
 
 INTENT_PATTERNS = {
     "create": ["创建", "新建", "添加", "新增", "生成", "构建", "add", "new"],

@@ -20,6 +20,9 @@ Unified Code Parser — 统一代码解析引擎
 """
 
 from abc import ABC, abstractmethod
+import re
+import subprocess
+import ast
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -204,22 +207,85 @@ class GoScanner(CodeParser):
         self._rg_available = self._check_rgrep()
     
     def _check_rgrep(self) -> bool:
-        import subprocess
         try:
             subprocess.run(['rg', '--version'], capture_output=True, timeout=5)
             return True
-        except:
+        except Exception:
             return False
     
     def parse_file(self, file_path: Path) -> Optional[ParseResult]:
-        """解析单个 Go 文件"""
-        # TODO: 实现单文件解析
-        return None
+        """解析单个 Go 文件 — 提取 struct、function、route、error_code"""
+        result = ParseResult(language='go', repo_path=str(file_path.parent))
+        
+        try:
+            source = file_path.read_text(encoding='utf-8', errors='ignore')
+        except Exception:
+            return None
+        
+        # 提取 struct
+        for m in re.finditer(r'type\s+(\w+)\s+struct\s*\{(.*?)\}', source, re.DOTALL):
+            name = m.group(1)
+            body = m.group(2)
+            fields = []
+            for fm in re.finditer(r'(\w+)\s+(\S+)', body, re.MULTILINE):
+                fname, ftype = fm.group(1), fm.group(2)
+                if fname.upper() not in ('ID', 'NAME'):
+                    fields.append({'name': fname, 'type': ftype})
+            result.structs.append(CodeStruct(
+                name=name, file=str(file_path.relative_to(file_path.parent)),
+                line=source[:m.start()].count('\n') + 1, fields=fields[:10]
+            ))
+        
+        # 提取 function/method
+        for m in re.finditer(r'func\s+(?:\(\s*\w+\s+\*\w+\)\s+)?(\w+)\s*\(([^)]*)\)\s*(?:\(([^)]*)\)|\w+\s*\{)', source):
+            func_name = m.group(1)
+            params_str = m.group(2) or ''
+            returns_str = m.group(3) or ''
+            params = []
+            for p in params_str.split(','):
+                p = p.strip()
+                if not p or p.startswith('_'):
+                    continue
+                parts = p.split()
+                pname = parts[-1] if parts else p
+                ptype = ' '.join(parts[:-1]) if len(parts) > 1 else 'interface{}'
+                params.append({'name': pname, 'type': ptype})
+            returns = []
+            for r in returns_str.split(','):
+                r = r.strip()
+                if r:
+                    parts = r.split()
+                    rtype = parts[-1] if parts else 'interface{}'
+                    rname = parts[0] if len(parts) > 1 else ''
+                    returns.append({'name': rname, 'type': rtype})
+            
+            result.functions.append(CodeFunction(
+                name=func_name, file=str(file_path.relative_to(file_path.parent)),
+                line=source[:m.start()].count('\n') + 1,
+                params=params, returns=returns, is_method=bool(m.group(1))
+            ))
+        
+        # 提取 route（handler registration）
+        for m in re.finditer(r'(?:GET|POST|PUT|PATCH|DELETE)\s*\(\s*["\']([^"\']+)["\']', source):
+            path = m.group(1)
+            result.routes.append(CodeRoute(
+                path=path, method='GET', handler='',
+                file=str(file_path.relative_to(file_path.parent)), line=source[:m.start()].count('\n') + 1
+            ))
+        
+        # 提取 error code
+        for m in re.finditer(r'(Err\w+|Error\w+)\s*=\s*&Error\{[^}]*Code:\s*(\d+)[^}]*Message:\s*"([^"]+)"', source):
+            result.errors.append(CodeError(
+                name=m.group(1), code=m.group(2), message=m.group(3), category='business'
+            ))
+        
+        result.total_files = 1
+        result.total_lines = len(source.split('\n'))
+        return result
     
     def parse_directory(self, dir_path: Path, max_files: int = 500) -> ParseResult:
         """解析整个 Go 项目"""
         # 委托给 GoScanner.scan_directory
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         
@@ -291,7 +357,6 @@ class GoScanner(CodeParser):
         return result
     
     def extract_routes(self, dir_path: Path, max_files: int = 500) -> List[CodeRoute]:
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         return [CodeRoute(
@@ -301,7 +366,6 @@ class GoScanner(CodeParser):
     
     def extract_calls(self, dir_path: Path, max_files: int = 500) -> List[CodeCall]:
         """提取函数调用关系"""
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         
@@ -327,7 +391,6 @@ class GoScanner(CodeParser):
         return None
     
     def extract_tables(self, dir_path: Path, max_files: int = 500) -> List[CodeTable]:
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         return [CodeTable(
@@ -336,7 +399,6 @@ class GoScanner(CodeParser):
         ) for t in ir.entity_tables[:max_files]]
     
     def extract_error_codes(self, dir_path: Path, max_files: int = 500) -> List[CodeError]:
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         return [CodeError(
@@ -345,7 +407,6 @@ class GoScanner(CodeParser):
         ) for e in ir.error_codes[:max_files]]
     
     def extract_auth_models(self, dir_path: Path, max_files: int = 500) -> List[CodeAuth]:
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         return [CodeAuth(
@@ -355,7 +416,6 @@ class GoScanner(CodeParser):
     
     def extract_call_graph(self, dir_path: Path, max_files: int = 500) -> List[Dict]:
         """提取调用图"""
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         
@@ -389,7 +449,6 @@ class PythonASTExtractor(CodeParser):
     """Python 代码解析器 — 基于 ast 模块"""
     
     def parse_directory(self, dir_path: Path, max_files: int = 500) -> ParseResult:
-        import ast
         result = ParseResult(language='python', repo_path=str(dir_path))
         
         py_files = list(dir_path.rglob('*.py'))[:max_files]
@@ -397,7 +456,7 @@ class PythonASTExtractor(CodeParser):
             try:
                 source = file_path.read_text(encoding='utf-8')
                 tree = ast.parse(source, filename=str(file_path))
-            except:
+            except Exception:
                 continue
             
             for node in ast.walk(tree):
@@ -418,12 +477,52 @@ class PythonASTExtractor(CodeParser):
         return result
     
     def extract_routes(self, dir_path: Path, max_files: int = 500) -> List[CodeRoute]:
-        # TODO: 实现
-        return []
+        """从 Python FastAPI/Flask 代码中提取路由"""
+        routes = []
+        py_files = list(dir_path.rglob('*.py'))[:max_files]
+        for file_path in py_files:
+            try:
+                source = file_path.read_text(encoding='utf-8')
+                tree = ast.parse(source, filename=str(file_path))
+            except Exception:
+                continue
+            
+            rel_path = str(file_path.relative_to(dir_path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    for decorator in node.decorator_list:
+                        method = None
+                        path = None
+                        
+                        # FastAPI: @router.get("/path"), @app.post("/path")
+                        if isinstance(decorator, ast.Call):
+                            func = decorator.func
+                            if isinstance(func, ast.Attribute) and func.attr in ('get', 'post', 'put', 'patch', 'delete'):
+                                method = func.attr.upper()
+                                if decorator.args and isinstance(decorator.args[0], ast.Constant):
+                                    path = decorator.args[0].value
+                        
+                        # Flask: @app.route("/path", methods=["GET", "POST"])
+                        elif isinstance(decorator, ast.Call):
+                            func = decorator.func
+                            if isinstance(func, ast.Attribute) and func.attr == 'route':
+                                if decorator.args and isinstance(decorator.args[0], ast.Constant):
+                                    path = decorator.args[0].value
+                                for kw in decorator.keywords:
+                                    if kw.arg == 'methods' and isinstance(kw.value, ast.List):
+                                        methods = [str(e.value) for e in kw.value.elts if isinstance(e, ast.Constant)]
+                                        method = ','.join(methods).upper()
+                        
+                        if path and isinstance(path, str):
+                            routes.append(CodeRoute(
+                                path=path, method=method or 'GET',
+                                handler=node.name, file=rel_path, line=node.lineno
+                            ))
+        
+        return routes
     
     def extract_calls(self, dir_path: Path, max_files: int = 500) -> List[CodeCall]:
         """提取函数调用关系"""
-        from learn_repo import GoScanner as LegacyGoScanner
         scanner = LegacyGoScanner()
         ir = scanner.scan_directory(dir_path, max_files=max_files)
         

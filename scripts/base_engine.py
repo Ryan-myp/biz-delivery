@@ -36,8 +36,31 @@ class EngineBase:
         self.profile = profile
         self.output_dir = Path(output_dir)
         self.wiki_path = wiki_path
-        self.business_domain = profile.get("business_domain", "unknown")
-        self.repos = profile.get("repositories", [])
+        
+        # Validate and normalize profile
+        profile_data = self._normalize_profile(profile)
+        
+        # Required fields validation
+        missing = []
+        if not profile_data.get("business_domain"):
+            missing.append("business_domain")
+        if not profile_data.get("repositories"):
+            missing.append("repositories")
+        
+        # Warn on missing required fields
+        if missing:
+            print(f"⚠️  Profile missing required fields: {', '.join(missing)}")
+            print(f"   business_domain will default to 'unknown'")
+            print(f"   repositories will be empty — engines may skip scanning")
+        
+        self.business_domain = profile_data.get("business_domain", "unknown")
+        self.repos = profile_data.get("repositories", [])
+        
+        # Validate repository paths
+        for repo in self.repos:
+            repo_path = repo.get("path", "")
+            if repo_path and not Path(repo_path).exists():
+                print(f"⚠️  Repository path does not exist: {repo_path}")
 
         # Infer kb_dir from profile or project structure
         self.kb_dir = None
@@ -78,7 +101,7 @@ class EngineBase:
             import time as _time
             age_hours = (_time.time() - cache_file.stat().st_mtime) / 3600
             if age_hours > 24:
-                return None  # Cache too old
+                return None
             return json.loads(cache_file.read_text(encoding="utf-8"))
         except Exception:
             return None

@@ -340,4 +340,152 @@ class MermaidGenerator:
             'data_model': self.generate_data_model_diagram(),
             'deployment': self.generate_deployment_diagram(),
             'sequence': self.generate_sequence_diagram(),
+            'state_machine': self.generate_state_machine_diagram(),
+            'dependency': self.generate_dependency_diagram(),
         }
+    
+    def generate_state_machine_diagram(self) -> str:
+        """Generate state machine diagram from IR state transition functions.
+        
+        Detects state transition patterns (SetStatus, Approve, Reject, Publish, Submit)
+        and generates a mermaid stateDiagram-v2.
+        """
+        lines = ["```mermaid", "stateDiagram-v2"]
+        
+        # Detect states from struct fields and constants
+        states = set()
+        transitions = []
+        
+        for struct in self.structs:
+            if isinstance(struct, dict):
+                name = struct.get('name', '')
+                fields = struct.get('fields', [])
+            else:
+                name = getattr(struct, 'name', '')
+                fields = getattr(struct, 'fields', [])
+            
+            if not name:
+                continue
+            
+            # Check for status/state fields
+            for field in fields:
+                if isinstance(field, dict):
+                    fname = field.get('name', '').lower()
+                else:
+                    fname = str(field).lower()
+                
+                if 'status' in fname or 'state' in fname or 'stage' in fname:
+                    # Try to detect state values from comments or defaults
+                    comment = field.get('comment', '') if isinstance(field, dict) else ''
+                    if comment:
+                        import re as re_mod
+                        # Extract state values from comments like "1=draft 2=pending 3=approved"
+                        state_matches = re_mod.findall(r'(\d+)=([\w]+)', comment)
+                        for val, state in state_matches:
+                            states.add(state)
+        
+        # Detect transitions from function names
+        transition_patterns = {
+            'Submit': 'SUBMITTED',
+            'Approve': 'APPROVED',
+            'Reject': 'REJECTED',
+            'Publish': 'PUBLISHED',
+            'Unpublish': 'UNPUBLISHED',
+            'Activate': 'ACTIVE',
+            'Deactivate': 'INACTIVE',
+            'Archive': 'ARCHIVED',
+            'Recall': 'RECALLED',
+            'Resubmit': 'RESUBMITTED',
+            'Audit': 'AUDITED',
+        }
+        
+        for func in self.functions:
+            if isinstance(func, dict):
+                fname = func.get('name', '')
+            else:
+                fname = getattr(func, 'name', '')
+            
+            for pattern, state in transition_patterns.items():
+                if pattern.lower() in fname.lower():
+                    transitions.append(('TO_' + state, state))
+                    states.add(state)
+                    break
+        
+        # If we found states, generate the diagram
+        if states:
+            # Add initial state
+            lines.append("    [*] --> DRAFT")
+            states.discard('DRAFT')
+            
+            for state in sorted(states):
+                if state == 'DRAFT':
+                    continue
+                lines.append(f"    DRAFT --> {state}")
+            
+            # Add transitions
+            for trans_name, state in transitions:
+                lines.append(f"    {state} --> {trans_name}")
+            
+            lines.append("    [*] --> DRAFT")
+        else:
+            # Fallback: generic state machine template
+            lines.append("    [*] --> Draft")
+            lines.append("    Draft --> PendingApproval")
+            lines.append("    PendingApproval --> Approved")
+            lines.append("    PendingApproval --> Rejected")
+            lines.append("    Approved --> Published")
+            lines.append("    Rejected --> Draft")
+            lines.append("    Published --> Archived")
+            lines.append("    Published --> Rejected")
+        
+        lines.append("```")
+        return "\n".join(lines)
+    
+    def generate_dependency_diagram(self) -> str:
+        """Generate module dependency diagram from call_graph.
+        
+        Shows package-level dependencies with direction arrows.
+        """
+        lines = ["```mermaid", "graph LR"]
+        
+        # Group by package
+        packages = {}
+        for edge in self.call_graph:
+            if isinstance(edge, dict):
+                caller = edge.get('caller', '')
+                callee = edge.get('callee', '')
+            else:
+                caller = getattr(edge, 'caller', '')
+                callee = getattr(edge, 'callee', '')
+            
+            if not caller or not callee:
+                continue
+            
+            caller_pkg = caller.split('/')[-2] if '/' in caller else caller.split('.')[0]
+            callee_pkg = callee.split('/')[-2] if '/' in callee else callee.split('.')[0]
+            
+            if caller_pkg not in packages:
+                packages[caller_pkg] = set()
+            packages[caller_pkg].add(callee_pkg)
+        
+        # Add nodes
+        for pkg in packages:
+            safe_id = pkg.replace('/', '_').replace('.', '_')
+            lines.append(f"    {safe_id}[\"{pkg}\"]")
+        
+        # Add edges
+        for pkg, deps in packages.items():
+            safe_id = pkg.replace('/', '_').replace('.', '_')
+            for dep in deps:
+                dep_safe = dep.replace('/', '_').replace('.', '_')
+                lines.append(f"    {safe_id} --> {dep_safe}")
+        
+        if not packages:
+            lines.append("    Handler[Handler Layer]")
+            lines.append("    Service[Service Layer]")
+            lines.append("    DAO[DAO Layer]")
+            lines.append("    Handler --> Service")
+            lines.append("    Service --> DAO")
+        
+        lines.append("```")
+        return "\n".join(lines)

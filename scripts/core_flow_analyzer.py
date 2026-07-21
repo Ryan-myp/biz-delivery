@@ -585,15 +585,14 @@ class CoreFlowAnalyzer:
     
     def _extract_entities_from_path(self, path: str) -> List[str]:
         """Extract entity names from API path like /api/v1/creatives/{id}/review."""
-        import re as re_mod
         parts = path.strip('/').split('/')
         entities = []
         for part in parts:
             # Skip version segments like 'v1'
-            if re_mod.match(r'^v\d+$', part):
+            if re.match(r'^v\d+$', part):
                 continue
             # Skip placeholder segments like '{id}'
-            if re_mod.match(r'^\{.*\}$', part):
+            if re.match(r'^\{.*\}$', part):
                 continue
             if part and len(part) > 2:
                 entities.append(part)
@@ -846,13 +845,12 @@ class CoreFlowAnalyzer:
     
     def _extract_root_resource(self, path: str) -> Optional[str]:
         """Extract root resource from path like /api/v1/creatives/review → creatives."""
-        import re as re_mod
         parts = path.strip('/').split('/')
         # Skip /api/vN/ prefix
         idx = 0
         if parts and parts[idx] == 'api':
             idx += 1
-        if idx < len(parts) and re_mod.match(r'^v\d+$', parts[idx]):
+        if idx < len(parts) and re.match(r'^v\d+$', parts[idx]):
             idx += 1
         # The next segment is the resource
         if idx < len(parts):
@@ -1199,3 +1197,626 @@ class CoreFlowAnalyzer:
         
         mappings.sort(key=lambda x: x['score'], reverse=True)
         return mappings[:20]
+
+    # ──────────────────────────────────────────────
+    # NEW: Dynamic golden path inference (replaces hardcoded patterns)
+    # ──────────────────────────────────────────────
+
+    def _infer_dynamic_lifecycle_patterns(self) -> List[Dict]:
+        """动态推断生命周期模式，替代硬编码的 golden_patterns。
+        
+        Strategy:
+        1. 从函数名中检测状态转换动词（approve/reject/publish/submit 等）
+        2. 按实体分组，找出每个实体的完整生命周期
+        3. 自动构建 create→transition→publish 路径
+        
+        Returns: [{name, verbs[], domain, cn_domain, confidence}]
+        """
+        # Collect all state transition functions
+        transition_funcs = []
+        for func in self.functions:
+            if not isinstance(func, dict):
+                continue
+            fname = func.get('name', '')
+            if not fname:
+                continue
+            fname_lower = fname.lower()
+            
+            # Check for state transition patterns
+            for pattern in ['approve', 'reject', 'publish', 'submit', 'activate', 
+                           'deactivate', 'pause', 'resume', 'transition', 'status']:
+                if pattern in fname_lower:
+                    transition_funcs.append(fname)
+                    break
+        
+        if not transition_funcs:
+            return []
+        
+        # Group transitions by entity (from struct names or route paths)
+        entity_transitions = defaultdict(list)
+        for func_name in transition_funcs:
+            # Try to find which entity this function belongs to
+            for edge in self.call_graph:
+                if not isinstance(edge, dict):
+                    continue
+                caller = edge.get('caller', '')
+                callee = edge.get('callee', '')
+                if callee == func_name:
+                    # Extract entity from caller name
+                    parts = caller.split('.')
+                    if len(parts) > 1:
+                        entity_key = parts[-2].lower()
+                        entity_transitions[entity_key].append(func_name)
+                    break
+        
+        # Build lifecycle patterns for each entity
+        patterns = []
+        for entity, funcs in entity_transitions.items():
+            if len(funcs) < 2:
+                continue
+            
+            # Detect lifecycle stages
+            has_create = any('create' in f or 'add' in f or 'build' in f for f in funcs)
+            has_approve = any('approve' in f or 'review' in f or 'audit' in f for f in funcs)
+            has_publish = any('publish' in f or 'release' in f or 'activate' in f for f in funcs)
+            has_delete = any('delete' in f or 'remove' in f for f in funcs)
+            
+            lifecycle_stages = []
+            if has_create:
+                lifecycle_stages.append('create')
+            if has_approve:
+                lifecycle_stages.append('approve')
+            if has_publish:
+                lifecycle_stages.append('publish')
+            if has_delete:
+                lifecycle_stages.append('delete')
+            
+            if len(lifecycle_stages) >= 2:
+                stage_names = {'create': '创建', 'approve': '审核', 'publish': '发布', 'delete': '删除'}
+                cn_name = '→'.join(stage_names.get(s, str(s)) for s in lifecycle_stages)
+                
+                patterns.append({
+                    'name': cn_name,
+                    'verbs': lifecycle_stages,
+                    'entities': [entity],
+                    'functions': funcs[:10],
+                    'stage_count': len(lifecycle_stages),
+                    'confidence': min(1.0, len(lifecycle_stages) / 4.0),
+                })
+        
+        return patterns
+
+    def infer_critical_paths_enhanced(self) -> List[Dict]:
+        """增强的黄金路径检测 — 结合动态生命周期模式和硬编码模式。
+        
+        改进:
+        1. 动态推断生命周期模式（替代完全硬编码）
+        2. 合并动态模式和预定义模式
+        3. 更精确的评分（考虑实体覆盖度、调用深度、状态转换数）
+        """
+        paths = []
+        
+        # Build handler → layer map
+        func_layer = {}
+        for func in self.functions:
+            if not isinstance(func, dict):
+                continue
+            fname = func.get('name', '')
+            ffile = func.get('file', '')
+            if not fname or not ffile:
+                continue
+            fl = ffile.lower()
+            if any(kw in fl for kw in ['handler', 'router', 'controller']):
+                layer = 'Handler'
+            elif any(kw in fl for kw in ['service', 'manager', 'biz']):
+                layer = 'Service'
+            elif any(kw in fl for kw in ['dao', 'repo', 'repository']):
+                layer = 'DAO'
+            else:
+                layer = 'Unknown'
+            func_layer[fname] = layer
+        
+        # Get dynamically inferred lifecycle patterns
+        dynamic_patterns = self._infer_dynamic_lifecycle_patterns()
+        
+        # Keep original hardcoded patterns as fallback
+        golden_patterns = [
+            {
+                'name': '创建→审核→发布',
+                'verbs': [['create', 'add', 'build', 'new'], ['approve', 'review', 'audit'], ['publish', 'release', 'activate']],
+                'domain': 'content_lifecycle',
+                'cn_domain': '内容生命周期',
+            },
+            {
+                'name': '创建→投放→监控',
+                'verbs': [['create', 'add', 'build'], ['launch', 'start', 'deploy', 'bid'], ['monitor', 'track', 'report', 'stats']],
+                'domain': 'campaign_lifecycle',
+                'cn_domain': '投放生命周期',
+            },
+            {
+                'name': '查询→分析→优化',
+                'verbs': [['query', 'get', 'search', 'list'], ['analyze', 'report', 'stats'], ['optimize', 'adjust', 'tune']],
+                'domain': 'optimization',
+                'cn_domain': '优化流程',
+            },
+        ]
+        
+        # Combine dynamic and hardcoded patterns
+        all_patterns = dynamic_patterns + [{'dynamic': False, 'name': p['name'], 'verbs': p['verbs'],
+                                            'domain': p['domain'], 'cn_domain': p['cn_domain']}
+                                           for p in golden_patterns]
+        
+        # For each route, check if it matches any pattern
+        matched_handlers = set()
+        for route in self.routes:
+            if not isinstance(route, dict):
+                continue
+            handler = route.get('handler', '')
+            path = route.get('path', '')
+            method = route.get('method', 'GET')
+            
+            if not handler:
+                continue
+            
+            handler_lower = handler.lower().split('.')[-1]
+            
+            for gp in all_patterns:
+                if not isinstance(gp, dict):
+                    continue
+                    
+                verb_groups = gp.get('verbs', [])
+                matched_verbs = []
+                for verb_group in verb_groups:
+                    if any(v in handler_lower for v in verb_group):
+                        matched_verbs.append(verb_group[0])
+                
+                if len(matched_verbs) >= 2 and handler not in matched_handlers:
+                    # Build full call chain via BFS
+                    layers = [f"HTTP {method}"]
+                    visited = set()
+                    queue = [(handler, 0)]
+                    while queue:
+                        fn, depth = queue.pop(0)
+                        if fn in visited or depth > 4:
+                            continue
+                        visited.add(fn)
+                        layer = func_layer.get(fn, 'Unknown')
+                        if layer not in layers:
+                            layers.append(layer)
+                        for edge in self.call_graph:
+                            if not isinstance(edge, dict):
+                                continue
+                            if edge.get('caller') == fn and edge.get('callee') not in visited:
+                                queue.append((edge.get('callee'), depth + 1))
+                    
+                    # Count state transitions
+                    transition_count = sum(
+                        1 for fn in visited
+                        if any(re.search(p, fn, re.IGNORECASE) 
+                               for p in ['approve', 'reject', 'publish', 'submit', 'activate'])
+                    )
+                    
+                    # Extract entities
+                    entities = self._extract_entities_from_path(path)
+                    
+                    # Calculate score with enhanced factors
+                    base_score = len(layers) * 20 + transition_count * 15 + len(entities) * 10
+                    # Bonus for dynamic patterns (higher confidence)
+                    bonus = 10 if gp.get('dynamic', True) else 0
+                    # Bonus for deeper call chains
+                    depth_bonus = max(0, len(layers) - 3) * 5
+                    
+                    matched_handlers.add(handler)
+                    paths.append({
+                        'path_name': f"{self._cn_resource(entities[0] if entities else 'resource')} {gp.get('name', 'lifecycle')}",
+                        'domain': gp.get('domain', 'unknown'),
+                        'cn_domain': gp.get('cn_domain', gp.get('name', '')),
+                        'entry_point': handler,
+                        'route': path,
+                        'stages': layers,
+                        'call_chain': list(visited)[:15],
+                        'matched_verbs': matched_verbs,
+                        'transition_count': transition_count,
+                        'entities': entities,
+                        'is_golden_path': True,
+                        'score': base_score + bonus + depth_bonus,
+                        'confidence': gp.get('confidence', 0.7) if 'confidence' in gp else 0.5,
+                    })
+                    break
+        
+        # Also detect high-traffic paths
+        func_call_count = defaultdict(int)
+        for edge in self.call_graph:
+            if isinstance(edge, dict):
+                callee = edge.get('callee', '')
+                if callee:
+                    func_call_count[callee] += 1
+        
+        for func, count in sorted(func_call_count.items(), key=lambda x: -x[1])[:5]:
+            if not any(p['entry_point'] == func for p in paths):
+                layers = [func_layer.get(func, 'Unknown')]
+                paths.append({
+                    'path_name': f"{func} (高频调用)",
+                    'domain': 'high_traffic',
+                    'cn_domain': '高频调用',
+                    'entry_point': func,
+                    'route': '',
+                    'stages': layers,
+                    'call_chain': [func],
+                    'call_count': count,
+                    'is_golden_path': False,
+                    'score': count * 5,
+                    'confidence': 0.3,
+                })
+        
+        paths.sort(key=lambda x: x['score'], reverse=True)
+        return paths[:10]
+
+    # ──────────────────────────────────────────────
+    # NEW: Flow coverage analysis
+    # ──────────────────────────────────────────────
+
+    def analyze_flow_coverage(self) -> Dict[str, Any]:
+        """分析流程覆盖率 — 检测哪些业务流程有/没有代码实现。
+        
+        Strategy:
+        1. 从 entity_tables 提取所有实体
+        2. 对每个实体，检查是否有对应的路由和函数
+        3. 标记未覆盖的实体（可能是新需求或遗漏）
+        
+        Returns: {covered_entities, uncovered_entities, coverage_rate, missing_operations}
+        """
+        covered = []
+        uncovered = []
+        missing_ops = []
+        
+        for et in self.entity_tables:
+            if not isinstance(et, dict):
+                continue
+            entity = et.get('entity', '')
+            if not entity:
+                continue
+            
+            # Check if there are routes covering this entity
+            has_routes = False
+            for route in self.routes:
+                if not isinstance(route, dict):
+                    continue
+                path = route.get('path', '')
+                handler = route.get('handler', '')
+                if entity.lower() in path.lower() or entity.lower() in handler.lower():
+                    has_routes = True
+                    break
+            
+            # Check if there are functions operating on this entity
+            has_functions = False
+            for func in self.functions:
+                if not isinstance(func, dict):
+                    continue
+                fname = func.get('name', '')
+                if entity.lower() in fname.lower():
+                    has_functions = True
+                    break
+            
+            if has_routes and has_functions:
+                covered.append(entity)
+            elif not has_routes:
+                uncovered.append({
+                    'entity': entity,
+                    'missing': 'routes',
+                    'table': et.get('table', ''),
+                    'operations': et.get('operations', []),
+                })
+                missing_ops.append({
+                    'entity': entity,
+                    'operation': 'CRUD routes',
+                    'severity': 'high',
+                })
+            elif not has_functions:
+                uncovered.append({
+                    'entity': entity,
+                    'missing': 'functions',
+                    'table': et.get('table', ''),
+                    'operations': et.get('operations', []),
+                })
+                missing_ops.append({
+                    'entity': entity,
+                    'operation': 'service functions',
+                    'severity': 'medium',
+                })
+        
+        total = len(covered) + len(uncovered)
+        coverage_rate = len(covered) / total if total > 0 else 0.0
+        
+        return {
+            'covered_entities': covered,
+            'uncovered_entities': uncovered,
+            'coverage_rate': round(coverage_rate, 2),
+            'missing_operations': missing_ops[:20],
+            'total_entities': total,
+        }
+
+    # ──────────────────────────────────────────────
+    # NEW: PRD flow alignment
+    # ──────────────────────────────────────────────
+
+    def align_prd_flows(self, prd_keywords: List[str]) -> Dict[str, Any]:
+        """PRD 流程对齐分析 — 检查 PRD 提到的流程是否在代码中有对应实现。
+        
+        Strategy:
+        1. 从 PRD keywords 中提取实体名和操作名
+        2. 在代码中查找对应的路由、函数、状态转换
+        3. 标记匹配、部分匹配和未匹配的项
+        
+        Args:
+            prd_keywords: PRD 中的关键词列表（如 ['素材创建', '审核通过', '批量发布']）
+        
+        Returns: {matched, partial, unmatched, alignment_score}
+        """
+        matched = []
+        partial = []
+        unmatched = []
+        
+        # Build lookup maps
+        route_map = {}
+        for route in self.routes:
+            if not isinstance(route, dict):
+                continue
+            handler = route.get('handler', '')
+            path = route.get('path', '')
+            if handler:
+                route_map[handler.lower()] = {'path': path, 'method': route.get('method', '')}
+        
+        func_map = {}
+        for func in self.functions:
+            if not isinstance(func, dict):
+                continue
+            fname = func.get('name', '')
+            if fname:
+                func_map[fname.lower()] = func
+        
+        for keyword in prd_keywords:
+            keyword_lower = keyword.lower()
+            found_exact = False
+            found_partial = False
+            
+            # Check exact match in handlers
+            for handler in route_map:
+                if keyword_lower in handler or handler in keyword_lower:
+                    matched.append({
+                        'keyword': keyword,
+                        'type': 'route',
+                        'detail': route_map[handler],
+                        'match_type': 'exact',
+                    })
+                    found_exact = True
+                    break
+            
+            if not found_exact:
+                # Check in function names
+                for func_name in func_map:
+                    if keyword_lower in func_name or func_name in keyword_lower:
+                        matched.append({
+                            'keyword': keyword,
+                            'type': 'function',
+                            'detail': func_map[func_name],
+                            'match_type': 'exact',
+                        })
+                        found_exact = True
+                        break
+            
+            if not found_exact:
+                # Check partial match (entity name only)
+                for et in self.entity_tables:
+                    if not isinstance(et, dict):
+                        continue
+                    entity = et.get('entity', '')
+                    if entity.lower() in keyword_lower or keyword_lower in entity.lower():
+                        partial.append({
+                            'keyword': keyword,
+                            'type': 'entity',
+                            'detail': {'entity': entity, 'table': et.get('table', '')},
+                            'match_type': 'partial',
+                        })
+                        found_partial = True
+                        break
+            
+            if not found_exact and not found_partial:
+                unmatched.append({
+                    'keyword': keyword,
+                    'reason': 'no_matching_code',
+                })
+        
+        total = len(matched) + len(partial) + len(unmatched)
+        alignment_score = (len(matched) * 1.0 + len(partial) * 0.5) / total if total > 0 else 0.0
+        
+        return {
+            'matched': matched,
+            'partial': partial,
+            'unmatched': unmatched,
+            'alignment_score': round(alignment_score, 2),
+            'total_keywords': total,
+        }
+
+    # ──────────────────────────────────────────────
+    # NEW: Enhanced data flow with DAO method tracking
+    # ──────────────────────────────────────────────
+
+    def infer_data_flows_enhanced(self) -> List[Dict]:
+        """增强的数据流推断 — 追踪到 DAO 方法级别。
+        
+        改进:
+        1. 从 handler 追踪到具体的 DAO 方法（不只是层）
+        2. 识别读写操作
+        3. 检测缓存使用
+        4. 识别事务边界
+        """
+        flows = []
+        
+        # Build detailed function map
+        func_details = {}
+        for func in self.functions:
+            if not isinstance(func, dict):
+                continue
+            fname = func.get('name', '')
+            ffile = func.get('file', '')
+            if not fname or not ffile:
+                continue
+            
+            fl = ffile.lower()
+            if any(kw in fl for kw in ['handler', 'router', 'controller']):
+                layer = 'Handler'
+            elif any(kw in fl for kw in ['service', 'manager', 'biz']):
+                layer = 'Service'
+            elif any(kw in fl for kw in ['dao', 'repo', 'repository']):
+                layer = 'DAO'
+            elif any(kw in fl for kw in ['middleware', 'auth', 'intercept']):
+                layer = 'Middleware'
+            else:
+                layer = 'Unknown'
+            
+            func_details[fname] = {'layer': layer, 'file': ffile}
+        
+        # For each route, trace full data flow
+        for route in self.routes:
+            if not isinstance(route, dict):
+                continue
+            
+            handler = route.get('handler', '')
+            path = route.get('path', '')
+            method = route.get('method', 'GET')
+            
+            if not handler:
+                continue
+            
+            entities = self._extract_entities_from_path(path)
+            
+            # Build layer chain
+            layers = [f"HTTP {method}"]
+            visited = set()
+            dao_methods = []  # Track specific DAO methods called
+            cache_usage = []  # Track cache operations
+            
+            queue = [(handler, 0)]
+            while queue:
+                fn, depth = queue.pop(0)
+                if fn in visited or depth > 4:
+                    continue
+                visited.add(fn)
+                
+                detail = func_details.get(fn, {})
+                layer = detail.get('layer', 'Unknown')
+                if layer not in layers:
+                    layers.append(layer)
+                
+                # Detect DAO methods
+                if layer == 'DAO':
+                    dao_methods.append(fn)
+                
+                # Detect cache usage
+                if any(kw in fn.lower() for kw in ['cache', 'redis', 'get_cache', 'set_cache']):
+                    cache_usage.append(fn)
+                
+                # Find callees
+                for edge in self.call_graph:
+                    if not isinstance(edge, dict):
+                        continue
+                    if edge.get('caller') == fn and edge.get('callee') not in visited:
+                        queue.append((edge.get('callee'), depth + 1))
+            
+            # Add data storage layer
+            if entities:
+                layers.append('DB/Cache')
+            
+            # Detect transaction boundaries
+            has_transaction = any('tx' in fn.lower() or 'transaction' in fn.lower() 
+                                 for fn in visited)
+            
+            if len(layers) >= 3:
+                flows.append({
+                    'flow_name': f"{path} 数据流",
+                    'entry_point': handler,
+                    'route': path,
+                    'http_method': method,
+                    'layers': layers,
+                    'entities': entities,
+                    'dao_methods': dao_methods[:10],
+                    'cache_usage': cache_usage[:5],
+                    'has_transaction': has_transaction,
+                    'depth': len(layers) - 1,
+                    'call_chain': list(visited)[:15],
+                    'score': len(layers) * 15 + len(entities) * 10 + len(dao_methods) * 5,
+                })
+        
+        flows.sort(key=lambda x: x['score'], reverse=True)
+        return flows[:20]
+
+    # ──────────────────────────────────────────────
+    # NEW: Unified analysis entry point
+    # ──────────────────────────────────────────────
+
+    def analyze_all(self) -> Dict[str, Any]:
+        """Run all flow inference strategies and return a unified result.
+
+        This is the single entry point for getting ALL flow analysis data.
+        Called from learn_repo.py to populate the enhanced IR fields.
+
+        Returns:
+            {
+                'flows': [...],                    # Combined flows from all strategies
+                'critical_paths': [...],           # Golden paths (create→review→publish)
+                'data_flows': [...],               # Route→Handler→Service→DAO→DB chains
+                'service_topology': {...},         # Service groups + cross-service deps
+                'entity_ownership': [...],         # Entity → operations → routes mapping
+                'business_processes': [...],       # Clustered lifecycle processes
+                'entity_route_map': [...],         # Entity → route mapping
+                'domain_classified': {...},        # Flows grouped by business domain
+                'flow_coverage': {...},            # NEW: Flow coverage analysis
+                'prd_alignment': {...},            # NEW: PRD flow alignment (requires prd_keywords)
+                'data_flows_enhanced': [...],      # NEW: Enhanced data flow with DAO tracking
+                '_timing': {...},                  # Diagnostic: time taken per strategy
+            }
+        """
+        import time as _time
+        start = _time.time()
+        result = {}
+
+        # Run infer_flows() once and reuse for both 'flows' and 'domain_classified'
+        flows = self.infer_flows()
+        result['flows'] = flows
+
+        strategies = [
+            ('critical_paths', lambda: self.infer_critical_paths_enhanced()),
+            ('data_flows', lambda: self.infer_data_flows_enhanced()),
+            ('service_topology', lambda: self.infer_service_topology()),
+            ('entity_ownership', lambda: self.analyze_entity_ownership()),
+            ('business_processes', lambda: self.cluster_business_processes()),
+            ('entity_route_map', lambda: self.map_entity_to_routes()),
+            ('domain_classified', lambda: self.classify_by_business_domain(flows)),
+            ('flow_coverage', lambda: self.analyze_flow_coverage()),
+        ]
+        
+        timing = {}
+        for name, fn in strategies:
+            t0 = _time.time()
+            try:
+                result[name] = fn()
+            except Exception as e:
+                result[name] = []
+                print(f"⚠️  CoreFlowAnalyzer.{name} failed: {e}")
+            timing[f'{name}_ms'] = round((_time.time() - t0) * 1000, 1)
+        
+        result['_timing'] = timing
+        result['_total_ms'] = round((_time.time() - start) * 1000, 1)
+        
+        return result
+
+    def align_with_prd(self, prd_keywords: List[str]) -> Dict[str, Any]:
+        """PRD 流程对齐分析 — 独立入口方法。
+        
+        Args:
+            prd_keywords: PRD 中的关键词列表
+        
+        Returns: Alignment analysis result
+        """
+        return self.align_prd_flows(prd_keywords)

@@ -40,7 +40,7 @@ def run_query(query: str, sources: str, cache_dir: str) -> tuple:
         if '结果:' in line:
             try:
                 total_results = int(line.split(':')[1].strip())
-            except:
+            except Exception:
                 pass
     
     return elapsed, total_results
