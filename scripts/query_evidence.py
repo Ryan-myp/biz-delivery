@@ -782,82 +782,14 @@ def infer_related_terms_from_ir(query: str, ir_data: Optional[dict]) -> List[str
 
 
 # ──────────────────────────────────────────────
-# Query Variant Expansion — 查询变体生成
+# Query Variant Expansion — 查询变体生成（已迁移至 _common.py）
 # ──────────────────────────────────────────────
-
-# 常见缩写映射表
-ABBREVIATION_MAP = {
-    'campaign': ['campaign', 'ad_plan', '推广计划'],
-    'adgroup': ['adgroup', 'ad_group', '广告组'],
-    'creative': ['creative', '素材', 'ad_material'],
-    'bidding': ['bidding', '竞价', '出价'],
-    'review': ['review', '审核', 'approval'],
-    'publish': ['publish', '发布', '上线'],
-    'permission': ['permission', '权限', 'auth'],
-    'cache': ['cache', '缓存', 'redis'],
-    'kafka': ['kafka', '消息队列', 'mq'],
-    'rpc': ['rpc', 'grpc', '远程调用'],
-    'http': ['http', 'api', 'web请求'],
-    'db': ['db', 'database', '数据库'],
-    'index': ['index', '索引', 'search_index'],
-    'page': ['page', 'pagination', '分页'],
-    'timeout': ['timeout', '超时', 'deadline'],
-    'retry': ['retry', '重试', 'recovery'],
-}
-
+# generate_query_variants is now in _common.py — import it here to avoid duplication
 
 def _generate_query_variants(query: str) -> List[str]:
-    """生成查询变体以提升召回率。
-    
-    策略：
-    1. 短查询（≤3字符）：额外生成单字/拼音首字母变体
-    2. 驼峰分割：CamelCase → camel_case / CamelCase
-    3. 缩写展开：RPC → remote procedure call
-    4. 大小写变换：CamelCase → camelcase
-    5. 子串提取：长词 → 关键子串
-    """
-    variants = []
-    query_lower = query.lower().strip()
-    
-    # 1. 驼峰分割 → snake_case 和 kebab-case
-    # 将 CamelCase 转换为 camel_case
-    snake_case = re.sub(r'([a-z])([A-Z])', r'\1_\2', query).lower()
-    if snake_case != query_lower and snake_case:
-        variants.append(snake_case)
-    
-    # kebab-case
-    kebab_case = re.sub(r'([a-z])([A-Z])', r'\1-\2', query).lower()
-    if kebab_case != query_lower and kebab_case:
-        variants.append(kebab_case)
-    
-    # 2. 缩写展开
-    for abbr, expansions in ABBREVIATION_MAP.items():
-        if abbr in query_lower:
-            for exp in expansions:
-                if exp not in variants and exp not in query_lower:
-                    variants.append(exp)
-    
-    # 3. 短查询（≤3字符）：生成单字变体
-    if len(query) <= 3 and len(query) > 0:
-        # 对中文：按字符拆分
-        chinese_chars = re.findall(r'[\u4e00-\u9fff]', query)
-        if chinese_chars:
-            variants.extend(chinese_chars)
-        # 对英文：生成所有前缀
-        if any(c.isalpha() for c in query):
-            for i in range(1, len(query) + 1):
-                prefix = query[:i]
-                if prefix and prefix not in variants:
-                    variants.append(prefix)
-    
-    # 4. 提取关键子串（保留 ≥3 字符的部分）
-    parts = re.split(r'[_\-\s/]+', query)
-    for part in parts:
-        if 3 <= len(part) <= 20 and part not in variants:
-            variants.append(part)
-    
-    # 限制变体数量，避免噪声过多
-    return variants[:10]
+    """Generate query variants — delegates to _common.generate_query_variants."""
+    from _common import generate_query_variants as gqv
+    return gqv(query)
 
 
 # ──────────────────────────────────────────────

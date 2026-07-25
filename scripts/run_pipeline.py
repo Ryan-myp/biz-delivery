@@ -22,8 +22,16 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
+
+# Top-level imports for pipeline functions
+from learn_repo import learn_from_repos
+from llm_client import LLMClient
+from review_engine import ReviewEngine
+from td_engine import TDEngine
+from test_engine import TestEngine
 
 
 def load_profile(profile_path: str) -> dict:
@@ -148,9 +156,9 @@ Output your review in Markdown format with P0/P1/P2 priority levels."""
             results["td"] = {"status": "completed", "report_file": td_report_file, "source": "existing"}
             print(f"  ✅ Using existing technical design ({len(td_content)} chars)")
         else:
-            _call_llm_for_td(td_engine, llm_client, prd_text, results)
+            _call_llm_for_td(td_engine, llm_client, prd_text, results, output_dir)
     else:
-        _call_llm_for_td(td_engine, llm_client, prd_text, results)
+        _call_llm_for_td(td_engine, llm_client, prd_text, results, output_dir)
     
     # Stage 3: 测试用例生成（自动调用 LLM）
     print("\n📋 Stage 3: Test Cases (Auto)")
@@ -165,9 +173,9 @@ Output your review in Markdown format with P0/P1/P2 priority levels."""
             results["test"] = {"status": "completed", "report_file": test_report_file, "source": "existing"}
             print(f"  ✅ Using existing test cases ({len(test_content)} chars)")
         else:
-            _call_llm_for_tests(test_engine, llm_client, prd_text, results)
+            _call_llm_for_tests(test_engine, llm_client, prd_text, results, output_dir)
     else:
-        _call_llm_for_tests(test_engine, llm_client, prd_text, results)
+        _call_llm_for_tests(test_engine, llm_client, prd_text, results, output_dir)
     
     return {
         "status": "completed",
@@ -176,8 +184,72 @@ Output your review in Markdown format with P0/P1/P2 priority levels."""
     }
 
 
-def _call_llm_for_td(td_engine, llm_client, prd_text, results):
-    """调用 LLM 生成技术方案"""
+def _safe_llm_call(llm_client, prompt_content: str, system_prompt: str, max_retries: int = 2) -> Optional[dict]:
+    """安全调用 LLM API，带重试和错误处理。
+    
+    Args:
+        llm_client: LLMClient 实例
+        prompt_content: 提示词内容
+        system_prompt: 系统提示词
+        max_retries: 最大重试次数
+        
+    Returns:
+        {content, usage} dict or None on failure
+    """
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = llm_client.chat(prompt_content, system=system_prompt)
+            content = response.get("content", "")
+            if content and len(content.strip()) > 50:
+                return response
+            last_error = f"Empty or too short response ({len(content)} chars)"
+        except Exception as e:
+            last_error = str(e)
+        
+        if attempt < max_retries:
+            wait_time = (attempt + 1) * 2  # 2s, 4s exponential backoff
+            print(f"  ⏳ Retry {attempt+1}/{max_retries} in {wait_time}s... (error: {last_error[:80]})")
+            time.sleep(wait_time)
+    
+    return None
+
+
+def _call_llm_for_review(review_engine, llm_client, prd_text, results, output_dir):
+    """调用 LLM 审查 PRD（带重试）"""
+    prompt_file = review_engine.output_dir / "review_prompt.md"
+    if not prompt_file.exists():
+        results["review"] = {"status": "skipped", "message": "No review prompt available"}
+        return
+    
+    prompt_content = prompt_file.read_text(encoding="utf-8")
+    print(f"  🤖 Calling LLM for review ({len(prompt_content)} chars)...")
+    
+    system_prompt = """You are a senior software architect reviewing a Product Requirements Document (PRD) against the existing codebase.
+Focus on: correctness, completeness, feasibility, risk, compatibility, performance, security.
+Output your review in Markdown format with P0/P1/P2 priority levels."""
+    
+    response = _safe_llm_call(llm_client, prompt_content, system_prompt)
+    if response:
+        llm_content = response.get("content", "")
+        review_engine.review_with_response(llm_content, str(prompt_file))
+        parsed = review_engine._parse_review_report(llm_content)
+        results["review"] = {
+            "status": "completed",
+            "report_file": os.path.join(output_dir, "review_report.md"),
+            "parsed": parsed,
+            "source": "llm_auto",
+            "tokens_used": response.get("usage", {}).get("total_tokens", 0),
+        }
+        p0_count = len(parsed.get('p0_issues', []))
+        print(f"  ✅ Review completed ({len(llm_content)} chars, {p0_count} P0 issues)")
+    else:
+        results["review"] = {"status": "error", "message": f"LLM call failed after retries: {str(response) if response else 'unknown'}"}
+        print(f"  ❌ Review generation failed after retries")
+
+
+def _call_llm_for_td(td_engine, llm_client, prd_text, results, output_dir):
+    """调用 LLM 生成技术方案（带重试）"""
     prompt_file = td_engine.output_dir / "td_prompt.md"
     if not prompt_file.exists():
         results["td"] = {"status": "skipped", "message": "No TD prompt available"}
@@ -189,28 +261,24 @@ def _call_llm_for_td(td_engine, llm_client, prd_text, results):
     system_prompt = """You are a senior software architect. Generate a comprehensive Technical Design Document based on the PRD and codebase structure.
 Include: architecture design, interface design, database design, data migration plan, mermaid diagrams."""
     
-    try:
-        llm_response = llm_client.chat(prompt_content, system=system_prompt)
-        llm_content = llm_response.get("content", "")
-        
-        if llm_content:
-            td_engine.generate_with_response(llm_content)
-            results["td"] = {
-                "status": "completed",
-                "report_file": str(td_engine.output_dir / "technical_design.md"),
-                "source": "llm_auto",
-                "tokens_used": llm_response.get("usage", {}).get("total_tokens", 0),
-            }
-            print(f"  ✅ TD generated ({len(llm_content)} chars)")
-        else:
-            results["td"] = {"status": "error", "message": "Empty LLM response"}
-    except Exception as e:
-        results["td"] = {"status": "error", "message": str(e)}
-        print(f"  ❌ TD generation failed: {e}")
+    response = _safe_llm_call(llm_client, prompt_content, system_prompt)
+    if response:
+        llm_content = response.get("content", "")
+        td_engine.generate_with_response(llm_content)
+        results["td"] = {
+            "status": "completed",
+            "report_file": str(td_engine.output_dir / "technical_design.md"),
+            "source": "llm_auto",
+            "tokens_used": response.get("usage", {}).get("total_tokens", 0),
+        }
+        print(f"  ✅ TD generated ({len(llm_content)} chars)")
+    else:
+        results["td"] = {"status": "error", "message": "LLM call failed after retries"}
+        print(f"  ❌ TD generation failed after retries")
 
 
-def _call_llm_for_tests(test_engine, llm_client, prd_text, results):
-    """调用 LLM 生成测试用例"""
+def _call_llm_for_tests(test_engine, llm_client, prd_text, results, output_dir):
+    """调用 LLM 生成测试用例（带重试）"""
     prompt_file = test_engine.output_dir / "test_prompt.md"
     if not prompt_file.exists():
         results["test"] = {"status": "skipped", "message": "No test prompt available"}
@@ -222,25 +290,20 @@ def _call_llm_for_tests(test_engine, llm_client, prd_text, results):
     system_prompt = """You are a senior QA engineer. Generate comprehensive test cases based on the PRD and technical design.
 Include: positive flows, exception handling, boundary conditions, state transitions, security tests."""
     
-    try:
-        llm_response = llm_client.chat(prompt_content, system=system_prompt)
-        llm_content = llm_response.get("content", "")
-        
-        if llm_content:
-            test_engine.generate_with_response(llm_content)
-            results["test"] = {
-                "status": "completed",
-                "report_file": str(test_engine.output_dir / "test_cases.md"),
-                "source": "llm_auto",
-                "tokens_used": llm_response.get("usage", {}).get("total_tokens", 0),
-            }
-            print(f"  ✅ Test cases generated ({len(llm_content)} chars)")
-        else:
-            results["test"] = {"status": "error", "message": "Empty LLM response"}
-    except Exception as e:
-        results["test"] = {"status": "error", "message": str(e)}
-        print(f"  ❌ Test generation failed: {e}")
-
+    response = _safe_llm_call(llm_client, prompt_content, system_prompt)
+    if response:
+        llm_content = response.get("content", "")
+        test_engine.generate_with_response(llm_content)
+        results["test"] = {
+            "status": "completed",
+            "report_file": str(test_engine.output_dir / "test_cases.md"),
+            "source": "llm_auto",
+            "tokens_used": response.get("usage", {}).get("total_tokens", 0),
+        }
+        print(f"  ✅ Test cases generated ({len(llm_content)} chars)")
+    else:
+        results["test"] = {"status": "error", "message": "LLM call failed after retries"}
+        print(f"  ❌ Test generation failed after retries")
 
 
 def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list = None, wiki_path: str = None) -> dict:

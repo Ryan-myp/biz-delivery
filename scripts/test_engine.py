@@ -12,13 +12,11 @@ import json
 import re
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # 导入证据查询和 learn_repo
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import extract_prd_keywords
 from learn_repo import GoScanner, IRDocument
 from base_engine import EngineBase
 from test_code_generator import TestCodeGenerator
@@ -258,7 +256,10 @@ class TestEngine(EngineBase):
         if filtered.get('evidence'):
             prompt_parts.append("## 现有路由")
             for route in filtered.get('evidence', [])[:30]:
-                prompt_parts.append(f"- `{route.method.upper()}` {route.path} → `{route.handler}`")
+                method = route.get('method', 'GET') if isinstance(route, dict) else getattr(route, 'method', 'GET')
+                path = route.get('path', '?') if isinstance(route, dict) else getattr(route, 'path', '?')
+                handler = route.get('handler', '?') if isinstance(route, dict) else getattr(route, 'handler', '?')
+                prompt_parts.append(f"- `{method.upper()}` {path} → `{handler}`")
             prompt_parts.append("")
 
         # 业务卡片注入 — 使用 base_engine._load_business_cards()（避免重复）

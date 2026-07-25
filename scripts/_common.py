@@ -30,22 +30,84 @@ def _get_query_evidence():
     return _QUERY_EVIDENCE
 
 
-def extract_prd_keywords(prd_text: str, max_keywords: int = 20) -> List[str]:
+# ── Domain-specific keyword boosters ────────────────────────
+
+# High-value compound terms that should NOT be split during keyword extraction
+_CN_COMPOUNDS = frozenset([
+    '素材审核', '广告组', '广告计划', '竞价引擎', '投放管理', '报表统计',
+    '权限控制', '缓存策略', '消息队列', '定时任务', '数据迁移', '监控告警',
+    '日志收集', '限流降级', '幂等设计', '加密解密', '搜索索引', '推送通知',
+    '对账结算', '风控系统', '错误码', '鉴权中间件', '健康检查', '回滚方案',
+    '灰度发布', 'Feature Flag', '金丝雀发布', '分布式锁', '事务管理',
+    '补偿机制', '重试策略', '异步处理', '批量处理', '实时计算', '离线分析',
+    '数据脱敏', '用户画像', '人群定向', '创意素材', '广告位', '投放渠道',
+    '转化追踪', '归因分析', 'ROI', 'CTR', 'CVR', 'CPM', 'CPC', 'oCPX',
+])
+
+# Business-domain specific terms that should always be prioritized
+_DOMAIN_KEYWORDS = frozenset([
+    'campaign', 'adgroup', 'creative', 'bidding', 'pacing', 'targeting',
+    'budget', 'impression', 'click', 'conversion', 'attribution',
+    'report', 'dashboard', 'analytics', 'reconciliation',
+    'rbac', 'acl', 'middleware', 'interceptor', 'gateway',
+    'redis', 'kafka', 'rabbitmq', 'elasticsearch', 'clickhouse',
+])
+
+
+def _extract_compound_terms(text: str) -> List[str]:
+    """提取长复合词（如'素材审核'、'竞价引擎'），避免被拆散。"""
+    found = []
+    for compound in _CN_COMPOUNDS:
+        if compound in text:
+            found.append(compound)
+    return found
+
+
+def extract_prd_keywords(prd_text: str, max_keywords: int = 30) -> List[str]:
     """从 PRD 文本中提取关键词。
 
-    策略：
-    1. 按标点/空格分句
-    2. 保留有意义的短语（2-15 字符）
-    3. 去重保序
+    增强策略：
+    1. 先提取复合词（素材审核、竞价引擎等），避免被拆散
+    2. 按标点/空格分句
+    3. 保留有意义的短语（2-15 字符）
+    4. 优先保留业务术语和驼峰命名
+    5. 去重保序
     """
-    parts = re.split(r'[，。、；：\s\n]+', prd_text)
     keywords = []
+
+    # Step 1: Extract compound terms first (highest priority)
+    compounds = _extract_compound_terms(prd_text)
+    if compounds:
+        keywords.extend(compounds)
+
+    # Step 2: Split by punctuation and whitespace
+    parts = re.split(r'[，。、；：\s\n]+', prd_text)
     for p in parts:
         p = p.strip()
+        if not p:
+            continue
+        # Keep compound terms already extracted
+        if p in compounds:
+            continue
+        # Keep meaningful phrases
         if 2 <= len(p) <= 15:
             keywords.append(p)
         elif len(p) >= 3:
             keywords.append(p)
+
+    # Step 3: Extract camelCase entities (Go struct names, function names)
+    camel_entities = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*', prd_text)
+    for entity in camel_entities:
+        if entity.lower() not in [k.lower() for k in keywords] and len(entity) >= 3:
+            keywords.append(entity)
+
+    # Step 4: Extract domain-specific English terms
+    text_lower = prd_text.lower()
+    for term in _DOMAIN_KEYWORDS:
+        if term in text_lower and term not in [k.lower() for k in keywords]:
+            keywords.append(term)
+
+    # Deduplicate preserving order, limit to max_keywords
     return list(dict.fromkeys(keywords))[:max_keywords]
 
 
@@ -262,7 +324,7 @@ def query_evidence_for_prd(
     else:
         expanded_queries = qe['expand_synonyms'](prd_text, profile_data) if profile_data else [prd_text]
 
-    # 查询变体扩展
+    # 查询变体扩展（驼峰分割、缩写展开、拼音匹配等）
     variants = []
     if enable_variant_expansion:
         for kw in keywords[:10]:  # 只对前 10 个关键词生成变体
@@ -270,6 +332,7 @@ def query_evidence_for_prd(
             variants.extend(v)
         variants = list(dict.fromkeys(variants))[:15]
 
+    # 合并所有查询词：原始关键词 + 同义词扩展 + 查询变体
     all_queries = list(dict.fromkeys(keywords + expanded_queries + variants))[:30]
 
     # ── Multi-path search — reuse the same IR cache ──────────────

@@ -22,8 +22,12 @@ Usage:
 """
 
 import json
+import os
+import re
 import time
 import hashlib
+import urllib.request
+import urllib.error
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
@@ -127,9 +131,6 @@ class LLMClient:
     
     def _make_call(self, body: Dict, messages: List[Dict]) -> Dict[str, Any]:
         """Make the actual API call with retry logic."""
-        import urllib.request
-        import urllib.error
-        
         url = self.api_url
         headers = {
             "Content-Type": "application/json",

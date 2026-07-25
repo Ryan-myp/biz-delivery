@@ -6,6 +6,7 @@
 2. 服务拓扑图生成（基于 IR 数据自动构建服务关系图）
 3. 实体路由映射（entity → route 跨仓库关联）
 4. 影响分析（修改某个服务会影响哪些下游服务）
+5. 跨服务调用图构建（从所有仓库 call_graph 筛选跨仓库边）
 
 Usage:
     from cross_repo_dependency import CrossRepoDependencyTracker
@@ -20,6 +21,9 @@ Usage:
     
     # 影响分析
     impact = tracker.analyze_impact('creative-handler')
+    
+    # 新增：获取跨服务调用图
+    call_graph = tracker.get_cross_service_call_graph()
 """
 
 import json
@@ -42,15 +46,33 @@ class CrossRepoDependencyTracker:
         'cache_shared': '共享缓存',
     }
     
-    def __init__(self, repo_ir_map: Dict[str, dict]):
+    # 仓库颜色映射（用于 mermaid subgraph）
+    REPO_COLORS = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+        '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+        '#F8C471', '#82E0AA', '#F1948A', '#AED6F1', '#D7BDE2',
+    ]
+    
+    # 健康状态图标
+    HEALTH_ICONS = {
+        'healthy': '✅',
+        'degraded': '⚠️',
+        'unhealthy': '❌',
+        'unknown': '🔍',
+    }
+    
+    def __init__(self, repo_ir_map: Dict[str, dict], health_status: Optional[Dict[str, str]] = None):
         """初始化跨仓库依赖追踪器。
         
         Args:
             repo_ir_map: {repo_name: ir_dict} 映射，每个 IR 字典包含
                         functions, routes, call_graph, imports 等字段
+            health_status: {repo_name: health_status} 可选，服务健康状态映射
+                           (healthy/degraded/unhealthy/unknown)
         """
         self.repo_ir_map = repo_ir_map
         self.repo_names = list(repo_ir_map.keys())
+        self.health_status = health_status or {}
         
         # 合并所有仓库的数据
         self.all_functions = {}  # func_name → {repo, file, ...}
@@ -132,6 +154,9 @@ class CrossRepoDependencyTracker:
             # 找出该服务的函数
             service_funcs = [f for f in funcs if f in self.all_functions]
             
+            # 获取健康状态
+            status = self.health_status.get(repo_name, 'unknown')
+            
             services.append({
                 'name': repo_name,
                 'repo': repo_name,
@@ -139,6 +164,7 @@ class CrossRepoDependencyTracker:
                 'function_count': len(service_funcs),
                 'functions': service_funcs[:10],
                 'route_count': len(repo_route_groups.get(repo_name, [])),
+                'health_status': status,
             })
         
         # 构建依赖边
@@ -314,27 +340,198 @@ class CrossRepoDependencyTracker:
         return {k: dict(v) for k, v in matrix.items()}
     
     def generate_topology_diagram(self) -> str:
-        """生成 Mermaid 服务拓扑图。"""
+        """生成 Mermaid 服务拓扑图（增强版）。
+
+        特性：
+        - 按仓库分组的 color-coded subgraph
+        - 依赖类型标注（sync_call/rpc/http/mq）
+        - 服务健康状态标注
+        - 最多展示 50 条跨仓库边
+        - 跨仓库依赖用虚线区分
+        - 新增 get_cross_service_call_graph() 集成
+        
+        Returns:
+            Mermaid graph 字符串
+        """
         topology = self.build_service_topology()
         lines = ["```mermaid", "graph LR"]
         
-        # 定义节点样式
+        # 为每个仓库分配颜色
+        repo_color_map = {}
+        color_idx = 0
         for svc in topology['services']:
-            safe_name = svc['name'].replace('-', '_').replace('.', '_')
-            svc_type = svc.get('type', 'unknown')
-            icon = self._get_service_icon(svc_type)
-            lines.append(f"    {safe_name}[{icon} {svc['name']}\\n({svc_type})]")
+            repo_name = svc['name']
+            if repo_name not in repo_color_map:
+                repo_color_map[repo_name] = self.REPO_COLORS[color_idx % len(self.REPO_COLORS)]
+                color_idx += 1
         
-        # 添加边
-        for edge in topology['cross_repo_edges'][:20]:
+        # Group services by repo into subgraphs
+        repo_services: Dict[str, List[dict]] = defaultdict(list)
+        for svc in topology['services']:
+            repo_services[svc['name']].append(svc)
+        
+        for repo_name, svcs in sorted(repo_services.items()):
+            safe_repo = self._safe_id(repo_name)
+            color = repo_color_map.get(repo_name, '#CCCCCC')
+            lines.append(f"    subgraph {safe_repo}[\"📦 {repo_name}\"]")
+            lines.append(f"        direction TB")
+            
+            for svc in svcs:
+                safe_name = svc['name'].replace('-', '_').replace('.', '_')
+                svc_type = svc.get('type', 'unknown')
+                icon = self._get_service_icon(svc_type)
+                status = svc.get('health_status', 'unknown')
+                status_icon = self.HEALTH_ICONS.get(status, '🔍')
+                
+                lines.append(f'        classDef {safe_name}_style fill:{color},stroke:#333,stroke-width:2px;')
+                lines.append(f'        {safe_name}[{icon} {svc["name"]}\\\\n({svc_type})\\\\n{status_icon}]')
+                lines.append(f'        class {safe_name} {safe_name}_style;')
+            
+            lines.append("    end")
+            lines.append("")
+        
+        # Add cross-repo edges with type annotations
+        edge_count = 0
+        max_edges = 50
+        for edge in topology['cross_repo_edges']:
+            if edge_count >= max_edges:
+                break
             src_safe = edge['source'].replace('-', '_').replace('.', '_')
             dst_safe = edge['target'].replace('-', '_').replace('.', '_')
             arrow = self._get_edge_arrow(edge['type'])
             label = edge.get('cn_type', edge['type'])
-            lines.append(f"    {src_safe} -- {label} --> {dst_safe}")
+            
+            lines.append(f"    {src_safe} {arrow} {dst_safe}: {label}")
+            edge_count += 1
+        
+        # Cross-service call graph integration
+        try:
+            call_graph = self.get_cross_service_call_graph()
+            if call_graph.get('edges'):
+                lines.append("")
+                lines.append("    %% 跨服务调用图")
+                lines.append("    subgraph CallGraph[\"🔗 跨服务调用详情\"]")
+                lines.append("        direction TB")
+                cg_edges = call_graph['edges'][:15]
+                for i, ce in enumerate(cg_edges):
+                    src_safe = ce['source'].replace('-', '_').replace('.', '_')
+                    dst_safe = ce['target'].replace('-', '_').replace('.', '_')
+                    cn_type = ce.get('cn_type', ce['type'])
+                    lines.append(f"        CG_{i}[\"{ce['source']} --[{cn_type}]--> {ce['target']}\"]")
+                lines.append("    end")
+        except Exception:
+            pass
+        
+        # Legend
+        lines.append("")
+        lines.append("    %% 图例")
+        lines.append("    subgraph legend [图例]")
+        lines.append("        direction TB")
+        lines.append("        legend_sync[sync_call --> 同步调用]")
+        lines.append("        legend_mq[async_mq -.-> 异步消息]")
+        lines.append("        legend_rpc[rpc -.-> RPC/gRPC]")
+        lines.append("        legend_http[http --> HTTP调用]")
+        lines.append("    end")
         
         lines.append("```")
         return "\n".join(lines)
+    
+    def get_cross_service_call_graph(self) -> Dict[str, Any]:
+        """从所有仓库的 call_graph 中筛选跨仓库调用边，构建完整的跨服务调用图。
+        
+        Returns:
+            {
+                'nodes': [{id, name, repo, type}],
+                'edges': [{source, target, source_repo, target_repo, type, cn_type}],
+                'total_nodes': N,
+                'total_edges': M,
+                'cross_repo_edges': M,
+            }
+        """
+        nodes = {}  # func_name → node info
+        edges = []
+        seen_edges = set()
+        
+        for edge in self.all_call_graph:
+            if not isinstance(edge, dict):
+                continue
+            
+            caller = edge.get('caller', '')
+            callee = edge.get('callee', '')
+            edge_repo = edge.get('repo', '')
+            
+            if not caller or not callee:
+                continue
+            
+            # 查找 caller 和 callee 所属的服务
+            caller_svc = self._find_service_for_function(caller)
+            callee_svc = self._find_service_for_function(callee)
+            
+            if not caller_svc or not callee_svc:
+                continue
+            
+            # 只保留跨仓库调用边
+            if caller_svc == callee_svc:
+                continue
+            
+            # 去重
+            edge_key = (caller, callee)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            
+            # 添加节点（如果不存在）
+            if caller not in nodes:
+                nodes[caller] = {
+                    'id': caller,
+                    'name': caller,
+                    'repo': caller_svc,
+                    'type': self._infer_node_type(caller),
+                }
+            if callee not in nodes:
+                nodes[callee] = {
+                    'id': callee,
+                    'name': callee,
+                    'repo': callee_svc,
+                    'type': self._infer_node_type(callee),
+                }
+            
+            # 添加边
+            dep_type = self._infer_dependency_type(edge)
+            edges.append({
+                'source': caller,
+                'target': callee,
+                'source_repo': caller_svc,
+                'target_repo': callee_svc,
+                'type': dep_type,
+                'cn_type': self.DEPENDENCY_TYPES.get(dep_type, dep_type),
+            })
+        
+        return {
+            'nodes': list(nodes.values()),
+            'edges': edges,
+            'total_nodes': len(nodes),
+            'total_edges': len(edges),
+            'cross_repo_edges': len(edges),
+        }
+    
+    def _safe_id(self, name: str) -> str:
+        """Convert a service/repo name to a safe mermaid ID."""
+        return re.sub(r'[^a-zA-Z0-9_]', '_', name)[:20]
+    
+    def _infer_node_type(self, func_name: str) -> str:
+        """推断节点类型。"""
+        func_lower = func_name.lower()
+        if any(kw in func_lower for kw in ['handler', 'router', 'controller', 'api']):
+            return 'handler'
+        elif any(kw in func_lower for kw in ['service', 'manager', 'biz']):
+            return 'service'
+        elif any(kw in func_lower for kw in ['dao', 'repository', 'repo']):
+            return 'dao'
+        elif any(kw in func_lower for kw in ['middleware', 'auth', 'intercept']):
+            return 'middleware'
+        else:
+            return 'mixed'
     
     # ── 辅助方法 ──────────────────────────────
     
@@ -482,7 +679,7 @@ if __name__ == '__main__':
     parser.add_argument("--profile", help="Profile JSON 路径")
     parser.add_argument("--cache-dirs", nargs='+', help="IR 缓存目录列表")
     parser.add_argument("--action", default="topology", 
-                       choices=["topology", "deps", "impact", "matrix", "diagram"],
+                       choices=["topology", "deps", "impact", "matrix", "diagram", "call-graph"],
                        help="执行的操作")
     parser.add_argument("--service", help="目标服务名（用于 deps/impact 操作）")
     
@@ -523,3 +720,6 @@ if __name__ == '__main__':
     elif args.action == "diagram":
         diagram = tracker.generate_topology_diagram()
         print(diagram)
+    elif args.action == "call-graph":
+        call_graph = tracker.get_cross_service_call_graph()
+        print(json.dumps(call_graph, indent=2, ensure_ascii=False))

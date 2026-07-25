@@ -13,13 +13,11 @@ import json
 import re
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
 # 导入 learn_repo 的扫描器和 IR
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import extract_prd_keywords
 from learn_repo import GoScanner, IRDocument
 from base_engine import EngineBase
 from query_evidence import fuzzy_score as _fuzzy_score
@@ -198,15 +196,15 @@ class ReviewEngine(EngineBase):
     def _run_prechecks(self, ir: IRDocument, prd_text: str, evidence: list) -> List[Dict]:
         """运行预检查 — 在 LLM 审查前先标记明显问题
         
-        返回: [{check_name, severity, description}]
+        优化：使用缓存避免重复 fuzzy 计算
         """
         checks = []
         
         # 1. PRD 提到的业务实体是否在代码中存在
         prd_entities = set()
         # 从 PRD 提取可能的实体名（大写驼峰、中文业务词）
-        camel_entities = re.findall(r'[A-Z][a-z]+[A-Z]\\w*', prd_text)
-        chinese_entities = re.findall(r'[\\u4e00-\\u9fff]{2,6}', prd_text)
+        camel_entities = re.findall(r'[A-Z][a-z]+[A-Z]\w*', prd_text)
+        chinese_entities = re.findall(r'[\u4e00-\u9fff]{2,6}', prd_text)
         
         code_entities = set()
         for s in ir.structs:
@@ -220,6 +218,14 @@ class ReviewEngine(EngineBase):
             elif isinstance(f, dict):
                 code_entities.add(f.get('name', ''))
         
+        # 缓存 fuzzy_score 结果，避免重复计算
+        _fuzzy_cache: dict[tuple[str, str], float] = {}
+        def _cached_fuzzy(a: str, b: str) -> float:
+            key = (a, b)
+            if key not in _fuzzy_cache:
+                _fuzzy_cache[key] = _fuzzy_score(a, b)
+            return _fuzzy_cache[key]
+        
         for entity in camel_entities:
             if entity in code_entities:
                 checks.append({
@@ -229,11 +235,11 @@ class ReviewEngine(EngineBase):
                     'message': f"PRD 提到的实体 '{entity}' 在代码中存在",
                 })
             else:
-                # 检查 fuzzy 匹配
+                # 检查 fuzzy 匹配（使用缓存）
                 best_match = None
                 best_score = 0
                 for ce in code_entities:
-                    score = _fuzzy_score(entity.lower(), ce.lower())
+                    score = _cached_fuzzy(entity.lower(), ce.lower())
                     if score > best_score:
                         best_score = score
                         best_match = ce
@@ -256,11 +262,11 @@ class ReviewEngine(EngineBase):
         
         for route in prd_routes:
             if route not in code_routes:
-                # fuzzy match
+                # fuzzy match（使用缓存）
                 best_route = None
                 best_score = 0
                 for cr in code_routes:
-                    score = _fuzzy_score(route.lower(), cr.lower())
+                    score = _cached_fuzzy(route.lower(), cr.lower())
                     if score > best_score:
                         best_score = score
                         best_route = cr

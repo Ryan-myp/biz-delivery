@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import json
+import hashlib
 from dataclasses import asdict
 from collections import defaultdict
 import os
@@ -966,7 +967,11 @@ class GoScanner:
     
     def scan_directory(self, dir_path: Path, max_files: int = 500,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
-        """扫描整个目录 — 使用 CodeKnowledgeExtractor（快速）+ GoScanner 轻量提取"""
+        """扫描整个目录 — 使用 CodeKnowledgeExtractor（快速）+ GoScanner 轻量提取
+        
+        支持增量扫描：当 incremental=True 时，只扫描变更文件。
+        changed_files 参数应包含自上次扫描以来变更的文件列表。
+        """
         ir = IRDocument(
             repo_name=dir_path.name,
             repo_path=str(dir_path),
@@ -987,7 +992,16 @@ class GoScanner:
         # 2. 轻量提取 structs/functions（只扫描前 100 个文件）
         try:
             all_go_files = list(dir_path.rglob("**/*.go"))[:100]
+            scanned_count = 0
+            skipped_count = 0
+            
             for go_file in all_go_files:
+                # 增量扫描：跳过未变更文件
+                if incremental and changed_files is not None:
+                    if go_file not in changed_files:
+                        skipped_count += 1
+                        continue
+                
                 try:
                     text = go_file.read_text(encoding="utf-8", errors="ignore")
                 except Exception:
@@ -1005,8 +1019,10 @@ class GoScanner:
                 for name in funcs:
                     if name[0].isupper():
                         ir.functions.append(FuncDef(name=name, file=rel_path))
+                
+                scanned_count += 1
             
-            print(f"  Light extraction: {len(ir.structs)} structs, {len(ir.functions)} functions")
+            print(f"  Light extraction: {len(ir.structs)} structs, {len(ir.functions)} functions (scanned={scanned_count}, skipped={skipped_count})")
         except Exception as e:
             print(f"  WARNING: Light extraction failed ({e})")
         
@@ -1653,9 +1669,10 @@ class GoScanner:
         
         # Return combined data — flatten critical paths + data flows into core_flows
         # for backward compatibility with downstream engines
+        # 增强：保留更多数据（critical_paths[:10] + data_flows[:20]），避免丢失关键流程
         all_flows = list(result['flows'])
-        # Merge critical paths as high-priority flows
-        for cp in result['critical_paths'][:5]:
+        # Merge critical paths as high-priority flows (上限从5提升到10)
+        for cp in result.get('critical_paths', [])[:10]:
             all_flows.append({
                 'flow_name': cp.get('path_name', 'critical path'),
                 'flow_type': 'critical_path',
@@ -1666,11 +1683,15 @@ class GoScanner:
                 'stages': cp.get('stages', []),
                 'is_golden_path': cp.get('is_golden_path', False),
                 'domain': cp.get('cn_domain', ''),
+                'confidence': cp.get('confidence', 0.5),
+                'transition_count': cp.get('transition_count', 0),
+                'entities': cp.get('entities', []),
+                'matched_verbs': cp.get('matched_verbs', []),
                 'score': cp.get('score', 0),
                 'source': 'critical_path',
             })
-        # Merge data flows — preserve full enriched fields from infer_data_flows_enhanced
-        for df in result['data_flows'][:10]:
+        # Merge data flows — preserve full enriched fields (上限从10提升到20)
+        for df in result.get('data_flows', [])[:20]:
             all_flows.append({
                 'flow_name': df.get('flow_name', f"{df.get('route','')} 数据流"),
                 'flow_type': 'data_flow',
@@ -1693,7 +1714,500 @@ class GoScanner:
         # Sort by score descending so high-priority flows appear first
         all_flows.sort(key=lambda x: x.get('score', 0), reverse=True)
         
+        # ── Enhanced: integrate BusinessPathInference for lifecycle/workflow paths ──
+        try:
+            bpi_path = str(Path(__file__).parent / "business_path_inference.py")
+            spec = importlib.util.spec_from_file_location("business_path_inference", bpi_path)
+            if spec and spec.loader:
+                bpi_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(bpi_module)
+                bp_results = bpi_module.BusinessPathInference(ir_dict).infer_all()
+                
+                # Add lifecycle paths as high-priority flows
+                for lp in bp_results.get('lifecycle_paths', [])[:5]:
+                    all_flows.append({
+                        'flow_name': f"{lp['entity']} 生命周期流程 ({', '.join(lp['present_actions'])})",
+                        'flow_type': 'lifecycle',
+                        'entry_point': lp['routes'][0]['handler'] if lp.get('routes') else '',
+                        'route': lp['routes'][0]['path'] if lp.get('routes') else '',
+                        'call_chain': lp['routes'][0]['handler'] if lp.get('routes') else '',
+                        'stages': [r['action'] for r in lp.get('routes', [])],
+                        'has_full_crud': lp.get('has_full_crud', False),
+                        'missing_actions': lp.get('missing_actions', []),
+                        'score': lp.get('score', 0) + 20,  # boost lifecycle paths
+                        'source': 'business_path_inference',
+                    })
+                
+                # Add approval workflows
+                for wf in bp_results.get('approval_workflows', [])[:3]:
+                    all_flows.append({
+                        'flow_name': f"{wf['entity']} 审批工作流 ({', '.join(wf['steps'][:3])})",
+                        'flow_type': 'approval_workflow',
+                        'entry_point': wf['steps'][0].split(':')[1] if wf.get('steps') else '',
+                        'call_chain': [s.split(': ')[-1] for s in wf.get('steps', [])],
+                        'stages': wf.get('states', []),
+                        'score': wf.get('score', 0) + 30,  # boost approval workflows
+                        'source': 'business_path_inference',
+                    })
+                
+                # ── Integrate importance ranking from BusinessPathInference ──
+                # Merge top-5 importance ranking into all_flows as high-priority entries
+                importance_ranking = bp_results.get('importance_ranking', [])
+                for item in importance_ranking[:5]:
+                    # Check if this flow_name already exists in all_flows (dedup)
+                    existing_names = {f.get('flow_name', '') for f in all_flows}
+                    if item['flow_name'] not in existing_names:
+                        all_flows.append({
+                            'flow_name': item['flow_name'],
+                            'flow_type': item['flow_type'],
+                            'entity': item.get('entity', ''),
+                            'route_count': item.get('route_count', 0),
+                            'has_full_crud': item.get('has_full_crud', False),
+                            'importance_score': item['score'],
+                            'traffic_score': item.get('traffic_score', 0),
+                            'error_impact_score': item.get('error_impact_score', 0),
+                            'business_value_score': item.get('business_value_score', 0),
+                            'completeness_score': item.get('completeness_score', 0),
+                            'importance_rank': item['rank'],
+                            'score': item['score'] + 40,  # boost importance-ranked flows
+                            'source': 'importance_ranking',
+                        })
+        
+        except Exception:
+            # business_path_inference is optional enhancement; don't break existing flow
+            pass
+        
+        # Re-sort all_flows by the combined score (now includes importance ranking)
+        all_flows.sort(key=lambda x: x.get('score', 0), reverse=True)
+        
         return all_flows
+
+    def build_core_flow_summary(self, ir: IRDocument, max_flows: int = 15) -> str:
+        """Build a compact, actionable summary of core business flows for downstream engines.
+        
+        Unlike raw flow lists, this produces a structured text summary that:
+        1. Groups flows by type (lifecycle/approval/data_flow/async/auth)
+        2. Highlights critical paths with highest scores
+        3. Identifies gaps (missing CRUD ops, incomplete workflows)
+        4. Shows entity relationships and data ownership
+        
+        Returns a markdown-formatted string suitable for injection into prompts.
+        """
+        if not hasattr(ir, 'core_flows') or not ir.core_flows:
+            return ""
+        
+        lines = []
+        lines.append("## 核心业务流程摘要")
+        lines.append("")
+        
+        # Group flows by type
+        flow_groups = defaultdict(list)
+        for flow in ir.core_flows[:max_flows]:
+            if isinstance(flow, dict):
+                ftype = flow.get('flow_type', 'unknown')
+            else:
+                ftype = getattr(flow, 'flow_type', 'unknown')
+            flow_groups[ftype].append(flow)
+        
+        # Top entry points by score
+        all_flows_sorted = sorted(
+            [f for f in ir.core_flows if isinstance(f, dict)],
+            key=lambda x: x.get('score', 0),
+            reverse=True
+        )[:max_flows]
+        
+        lines.append(f"**Top {len(all_flows_sorted)} 核心流程（按重要性排序）:**")
+        lines.append("")
+        
+        for i, flow in enumerate(all_flows_sorted, 1):
+            flow_name = flow.get('flow_name', 'Unknown')
+            flow_type = flow.get('flow_type', '?')
+            entry_point = flow.get('entry_point', '')
+            route = flow.get('route', '')
+            score = flow.get('score', 0)
+            
+            # Extract key info based on flow type
+            extras = []
+            if flow_type == 'lifecycle':
+                missing = flow.get('missing_actions', [])
+                if missing:
+                    extras.append(f"缺失: {', '.join(missing)}")
+                if flow.get('has_full_crud'):
+                    extras.append("完整CRUD")
+            elif flow_type == 'approval_workflow' or flow_type == 'multi_step_workflow':
+                stages = flow.get('stages', [])
+                if stages:
+                    extras.append(f"阶段: {' → '.join(stages[:5])}")
+            elif flow_type == 'data_flow':
+                data_flow_str = flow.get('data_flow', '')
+                if data_flow_str:
+                    extras.append(f"数据流: {data_flow_str[:100]}")
+            
+            extra_str = f" ({', '.join(extras)})" if extras else ""
+            route_str = f" @{route}" if route else ""
+            
+            lines.append(f"{i}. **{flow_name}** [type={flow_type}] score={score:.0f}{extra_str}{route_str}")
+            if entry_point:
+                lines.append(f"   - Entry: `{entry_point}`")
+        
+        lines.append("")
+        
+        # Entity relationships summary
+        if hasattr(ir, 'entity_tables') and ir.entity_tables:
+            entity_count = len(ir.entity_tables) if isinstance(ir.entity_tables, list) else 0
+            if entity_count > 0:
+                lines.append(f"**实体表 ({entity_count}个):**")
+                for et in ir.entity_tables[:10]:
+                    if isinstance(et, dict):
+                        name = et.get('name', '?')
+                        fields = et.get('fields', [])
+                        n_fields = len(fields) if isinstance(fields, list) else 0
+                        fks = et.get('foreign_keys', [])
+                        fk_info = f" +{len(fks)}FK" if fks else ""
+                        lines.append(f"- `{name}`: {n_fields} fields{fk_info}")
+                    elif hasattr(et, 'name'):
+                        lines.append(f"- `{et.name}`")
+                lines.append("")
+        
+        # Service layer summary
+        if hasattr(ir, 'services') and ir.services:
+            svc_list = ir.services if isinstance(ir.services, list) else []
+            if svc_list:
+                lines.append(f"**服务模块 ({len(svc_list)}个):**")
+                for svc in svc_list[:8]:
+                    if isinstance(svc, dict):
+                        lines.append(f"- {svc.get('name', svc.get('module', '?'))}")
+                    elif hasattr(svc, 'name'):
+                        lines.append(f"- {svc.name}")
+                lines.append("")
+        
+        # Gap analysis
+        lifecycle_flows = [f for f in all_flows_sorted 
+                          if isinstance(f, dict) and f.get('flow_type') == 'lifecycle']
+        for lf in lifecycle_flows[:5]:
+            missing = lf.get('missing_actions', [])
+            if missing:
+                entity = lf.get('flow_name', '').split()[0] if lf.get('flow_name') else '?'
+                lines.append(f"⚠️ **{entity} 生命周期不完整**: 缺少 {', '.join(missing)}")
+        
+        # Async/event flow detection
+        async_flows = [f for f in all_flows_sorted 
+                      if isinstance(f, dict) and f.get('flow_type') in ('async', 'event', 'mq')]
+        if async_flows:
+            lines.append("**异步事件流:**")
+            for af in async_flows[:5]:
+                name = af.get('flow_name', '?')
+                stages = af.get('stages', [])
+                stage_str = ' → '.join(stages[:4]) if stages else ''
+                lines.append(f"- {name}: {stage_str}")
+            lines.append("")
+        
+        # Auth flow analysis
+        auth_flows = [f for f in all_flows_sorted 
+                     if isinstance(f, dict) and f.get('flow_type') == 'auth']
+        if auth_flows:
+            lines.append("**认证授权流:**")
+            for af in auth_flows[:5]:
+                name = af.get('flow_name', '?')
+                route = af.get('route', '')
+                lines.append(f"- {name}" + (f" @{route}" if route else ""))
+            lines.append("")
+        
+        # Data ownership mapping — which service/module owns which entity
+        lines.append("**数据所有权映射:**")
+        entity_service_map = self._map_entity_ownership(ir)
+        for entity_name, owners in sorted(entity_service_map.items())[:10]:
+            owner_str = ', '.join(owners[:3])
+            lines.append(f"- `{entity_name}` → [{owner_str}]")
+        if not entity_service_map:
+            lines.append("- 未检测到明确的数据所有权映射")
+        lines.append("")
+        
+        # CRUD gap analysis — detect entities with incomplete CRUD operations
+        crud_gaps = self._analyze_crud_gaps(ir)
+        if crud_gaps:
+            lines.append("**CRUD 完整性分析:**")
+            for gap in crud_gaps[:8]:
+                entity = gap.get('entity', '?')
+                present = gap.get('present', [])
+                missing = gap.get('missing', [])
+                if missing:
+                    lines.append(f"- ⚠️ **{entity}**: 有 [{', '.join(present)}], 缺 {', '.join(missing)}")
+                else:
+                    lines.append(f"- ✅ **{entity}**: 完整 CRUD ({', '.join(present)})")
+            lines.append("")
+        
+        # Layer completeness scoring per flow
+        lines.append("**架构层完整性检查:**")
+        layer_issues = []
+        for flow in all_flows_sorted[:8]:
+            if not isinstance(flow, dict):
+                continue
+            call_chain = flow.get('call_chain', [])
+            if not call_chain or len(str(call_chain)) < 10:
+                continue
+            chain_str = str(call_chain)
+            has_handler = any(kw in chain_str.lower() for kw in ['handler', 'handle', 'controller', 'api'])
+            has_service = any(kw in chain_str.lower() for kw in ['service', 'biz', 'logic'])
+            has_dao = any(kw in chain_str.lower() for kw in ['dao', 'repo', 'model', 'dal'])
+            layers = sum([has_handler, has_service, has_dao])
+            flow_name = flow.get('flow_name', '?')
+            if layers <= 1:
+                layer_issues.append(f"- ⚠️ **{flow_name}**: 仅 {layers} 层 ({'handler' if has_handler else ''}{'service' if has_service else ''}{'dao' if has_dao else ''})")
+            elif layers == 2:
+                missing_layer = []
+                if not has_handler: missing_layer.append('Handler')
+                if not has_service: missing_layer.append('Service')
+                if not has_dao: missing_layer.append('DAO')
+                layer_issues.append(f"- ℹ️ **{flow_name}**: 缺 {', '.join(missing_layer)}")
+        if layer_issues:
+            lines.extend(layer_issues[:5])
+        else:
+            lines.append("- 所有核心流程层完整性良好")
+        lines.append("")
+        
+        # Cross-cutting concerns detection
+        lines.append("**横切关注点检测:**")
+        crossec = self._detect_cross_cutting_concerns(ir)
+        if crossec:
+            for concern in crossec[:6]:
+                icon = "✅" if concern.get('present', True) else "⚠️"
+                lines.append(f"- {icon} **{concern['name']}**: {concern['status']}")
+        else:
+            lines.append("- 未检测到横切关注点信息")
+        lines.append("")
+        
+        if lines[-1] != "":
+            lines.append("")
+        
+        return "\n".join(lines)
+
+    def _detect_cross_cutting_concerns(self, ir: IRDocument) -> List[Dict]:
+        """Detect cross-cutting concerns in the codebase.
+        
+        Checks for: auth middleware, rate limiting, retry/circuit-breaker,
+        structured logging, metrics/prometheus, transaction management,
+        idempotency handling, audit logging, error handling patterns.
+        """
+        concerns = []
+        
+        # Collect all source text for pattern matching
+        all_text = ""
+        for struct in getattr(ir, 'structs', []) or []:
+            if isinstance(struct, dict):
+                all_text += json.dumps(struct) + "\n"
+        for func in getattr(ir, 'functions', []) or []:
+            if isinstance(func, dict):
+                all_text += json.dumps(func) + "\n"
+        for route in getattr(ir, 'routes', []) or []:
+            if isinstance(route, dict):
+                all_text += json.dumps(route) + "\n"
+        for svc in getattr(ir, 'services', []) or []:
+            if isinstance(svc, dict):
+                all_text += json.dumps(svc) + "\n"
+        for cfg in getattr(ir, 'configs', []) or []:
+            if isinstance(cfg, dict):
+                all_text += json.dumps(cfg) + "\n"
+        
+        text_lower = all_text.lower()
+        
+        # 1. Auth/Middleware detection
+        auth_patterns = ['auth', 'middleware', 'permission', 'rbac', 'abac', 'jwt', 'oauth', 'token', '鉴权']
+        has_auth = any(p in text_lower for p in auth_patterns)
+        concerns.append({
+            'name': '认证/授权中间件',
+            'present': has_auth,
+            'status': '已实现' if has_auth else '未检测到，建议添加统一鉴权中间件',
+        })
+        
+        # 2. Rate limiting
+        rate_patterns = ['rate_limit', 'rate-limit', 'ratelimit', '限流', 'throttle', 'limiter']
+        has_rate_limit = any(p in text_lower for p in rate_patterns)
+        concerns.append({
+            'name': '限流保护',
+            'present': has_rate_limit,
+            'status': '已实现' if has_rate_limit else '未检测到限流配置，建议对高频接口添加限流',
+        })
+        
+        # 3. Retry/Circuit-breaker
+        retry_patterns = ['retry', '重试', 'circuit_breaker', 'circuit-breaker', '熔断', 'fallback', '降级']
+        has_retry = any(p in text_lower for p in retry_patterns)
+        concerns.append({
+            'name': '重试/熔断/降级',
+            'present': has_retry,
+            'status': '已实现' if has_retry else '未检测到重试/熔断机制，外部依赖调用建议添加',
+        })
+        
+        # 4. Structured logging
+        log_patterns = ['zap.', 'logrus', 'slog.', 'logger.', 'structured.log', 'traceId', 'trace_id', 'userId', 'user_id']
+        has_logging = any(p in text_lower for p in log_patterns)
+        concerns.append({
+            'name': '结构化日志',
+            'present': has_logging,
+            'status': '已实现' if has_logging else '未检测到结构化日志，建议使用 zap/logrus + traceId',
+        })
+        
+        # 5. Metrics/Prometheus
+        metric_patterns = ['prometheus', 'prometheus_client', 'metrics.', 'histogram', 'counter', 'gauge', '监控指标']
+        has_metrics = any(p in text_lower for p in metric_patterns)
+        concerns.append({
+            'name': 'Prometheus 监控指标',
+            'present': has_metrics,
+            'status': '已实现' if has_metrics else '未检测到监控指标，建议添加 QPS/延迟/错误率指标',
+        })
+        
+        # 6. Transaction management
+        tx_patterns = ['transaction', 'Transaction', 'tx.', 'BeginTx', 'Commit', 'Rollback', '事务']
+        has_tx = any(p in text_lower for p in tx_patterns)
+        concerns.append({
+            'name': '事务管理',
+            'present': has_tx,
+            'status': '已实现' if has_tx else '未检测到事务处理，写操作建议包裹在事务中',
+        })
+        
+        # 7. Idempotency
+        idem_patterns = ['idempoten', '幂等', 'idempotency_key', 'request_id', 'unique_key', '去重']
+        has_idem = any(p in text_lower for p in idem_patterns)
+        concerns.append({
+            'name': '幂等性保障',
+            'present': has_idem,
+            'status': '已实现' if has_idem else '未检测到幂等性处理，写操作建议添加幂等键',
+        })
+        
+        # 8. Health check endpoints
+        health_patterns = ['/health', '/ready', 'health_check', 'HealthCheck', 'liveness']
+        has_health = any(p in text_lower for p in health_patterns)
+        concerns.append({
+            'name': '健康检查端点',
+            'present': has_health,
+            'status': '已实现' if has_health else '未检测到 /health 或 /ready 端点，K8s 部署必须提供',
+        })
+        
+        return concerns
+    
+    def _map_entity_ownership(self, ir: IRDocument) -> Dict[str, List[str]]:
+        """Map entities to their owning services/modules based on call_graph + package structure.
+        
+        Heuristics:
+        - If a struct's table_name matches an entity, the DAO package that queries it owns it
+        - If a service method creates/updates an entity, that service owns it
+        - Route path prefix indicates which module handles the entity
+        """
+        ownership: Dict[str, List[str]] = defaultdict(list)
+        
+        # Strategy 1: From entity_tables foreign_keys → find related entities
+        if hasattr(ir, 'entity_tables') and ir.entity_tables:
+            et_list = ir.entity_tables if isinstance(ir.entity_tables, list) else []
+            for et in et_list[:30]:
+                name = et.get('name', '') if isinstance(et, dict) else getattr(et, 'name', '')
+                if not name:
+                    continue
+                fks = et.get('foreign_keys', []) if isinstance(et, dict) else getattr(et, 'foreign_keys', [])
+                if fks:
+                    for fk in (fks if isinstance(fks, list) else []):
+                        if isinstance(fk, dict) and 'ref_entity' in fk:
+                            ref = fk['ref_entity']
+                            if ref not in ownership[name]:
+                                ownership[name].append(ref)
+        
+        # Strategy 2: From call_graph — find which services touch which entities
+        # (already captured via Strategy 1 FK analysis + Strategy 3 route analysis)
+        
+        # Strategy 3: From routes — map route prefix to entity
+        if hasattr(ir, 'routes') and ir.routes:
+            routes = ir.routes if isinstance(ir.routes, list) else []
+            for route in routes[:50]:
+                if not isinstance(route, dict):
+                    continue
+                path = route.get('path', '')
+                handler = route.get('handler', '')
+                # Extract entity from route path like /api/v1/adgroups/{id}
+                parts = path.strip('/').split('/')
+                for part in parts:
+                    if part.startswith('{'):
+                        continue
+                    # Check if this looks like an entity name
+                    if len(part) > 2 and any(kw in part.lower() for kw in ['adgroup', 'creative', 'campaign', 'report', 'user', 'account', 'bid', 'budget']):
+                        owner = handler.split('.')[0] if '.' in handler else handler
+                        if owner not in ownership.get(part, []):
+                            ownership.setdefault(part, []).append(owner)
+        
+        # Convert defaultdict to regular dict, ensure lists
+        result = {}
+        for k, v in ownership.items():
+            result[k] = list(dict.fromkeys(v))[:3]  # deduplicate, keep top 3
+        return result
+
+    def _analyze_crud_gaps(self, ir: IRDocument) -> List[Dict]:
+        """Analyze CRUD completeness for each entity detected in routes.
+        
+        Groups routes by resource/entity, checks which CRUD operations exist,
+        and reports gaps. This is a lightweight version of lifecycle_paths
+        that runs directly on IR without needing business_path_inference.
+        
+        Returns list of {entity, present, missing, route_count} dicts.
+        """
+        gaps = []
+        
+        # Group routes by entity
+        entity_routes: Dict[str, List[dict]] = defaultdict(list)
+        routes = getattr(ir, 'routes', []) or []
+        if isinstance(routes, list):
+            for route in routes:
+                if not isinstance(route, dict):
+                    continue
+                path = route.get('path', '')
+                method = route.get('method', 'GET')
+                handler = route.get('handler', '')
+                
+                # Extract entity from path
+                parts = path.strip('/').split('/')
+                # Skip version segments
+                entity = None
+                for part in reversed(parts):
+                    if part.startswith('{'):
+                        continue
+                    if part.isdigit() or part.startswith('v'):
+                        continue
+                    if len(part) > 1:
+                        entity = part
+                        break
+                
+                if not entity:
+                    continue
+                
+                action_map = {
+                    'POST': 'create', 'PUT': 'update', 'PATCH': 'update',
+                    'DELETE': 'delete', 'GET': 'read',
+                }
+                action = action_map.get(method, 'unknown')
+                entity_routes[entity].append({
+                    'path': path,
+                    'method': method,
+                    'handler': handler,
+                    'action': action,
+                })
+        
+        # Analyze each entity
+        for entity, routes_list in sorted(entity_routes.items()):
+            actions = set(r['action'] for r in routes_list)
+            action_labels = {
+                'create': '创建', 'read': '查询', 'update': '更新', 'delete': '删除',
+            }
+            present = [action_labels.get(a, a) for a in sorted(actions) if a != 'unknown']
+            missing = [action_labels.get(a, a) for a in ['create', 'read', 'update', 'delete'] if a not in actions]
+            
+            gaps.append({
+                'entity': entity,
+                'present': present,
+                'missing': missing,
+                'route_count': len(routes_list),
+                'has_full_crud': set(['create', 'read', 'update', 'delete']).issubset(actions),
+            })
+        
+        # Sort: incomplete first (gaps are more important), then by route count
+        gaps.sort(key=lambda x: (0 if x['missing'] else 1, -x['route_count']))
+        return gaps
 
     def _calc_max_depth(self, call_tree: list, current: int = 0) -> int:
         if not call_tree:
@@ -3063,7 +3577,11 @@ class PythonScanner:
     
     def scan_directory(self, dir_path: Path, max_files: int = 500,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
-        """扫描整个目录"""
+        """扫描整个目录 — 支持增量扫描
+        
+        当 incremental=True 时，只扫描变更文件。
+        changed_files 参数应包含自上次扫描以来变更的文件列表。
+        """
         ir = IRDocument(
             repo_name=dir_path.name,
             repo_path=str(dir_path),
@@ -3071,6 +3589,8 @@ class PythonScanner:
         )
         
         count = 0
+        scanned_count = 0
+        skipped_count = 0
         py_files = sorted(dir_path.rglob("*.py"))
         
         for py_file in py_files:
@@ -3079,14 +3599,16 @@ class PythonScanner:
             if "__pycache__" in str(py_file) or ".git" in str(py_file):
                 continue
             
-            # 增量扫描
+            # 增量扫描：跳过未变更文件
             if incremental and changed_files is not None:
                 if py_file not in changed_files:
+                    skipped_count += 1
                     continue
             
             try:
                 result = self.scan_file(py_file)
                 count += 1
+                scanned_count += 1
                 
                 # 添加 functions
                 for f in result.get("functions", []):
@@ -3125,6 +3647,9 @@ class PythonScanner:
                     ))
             except Exception as e:
                 print(f"  WARNING: Failed to scan {py_file.name}: {e}", file=sys.stderr)
+        
+        if incremental:
+            print(f"  Python scan: scanned={scanned_count}, skipped={skipped_count}")
         
         # 数据流分析（样本文件，避免全量扫描太慢）
         sample_files = list(py_files)[:20]  # 最多分析 20 个文件
@@ -3284,7 +3809,11 @@ class JavaScanner:
     
     def scan_directory(self, dir_path: Path, max_files: int = 500,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
-        """扫描整个目录"""
+        """扫描整个目录 — 支持增量扫描
+        
+        当 incremental=True 时，只扫描变更文件。
+        changed_files 参数应包含自上次扫描以来变更的文件列表。
+        """
         ir = IRDocument(
             repo_name=dir_path.name,
             repo_path=str(dir_path),
@@ -3292,6 +3821,8 @@ class JavaScanner:
         )
         
         count = 0
+        scanned_count = 0
+        skipped_count = 0
         java_files = sorted(dir_path.rglob("*.java"))
         
         for java_file in java_files:
@@ -3302,11 +3833,13 @@ class JavaScanner:
             
             if incremental and changed_files is not None:
                 if java_file not in changed_files:
+                    skipped_count += 1
                     continue
             
             try:
                 result = self.scan_file(java_file)
                 count += 1
+                scanned_count += 1
                 
                 # 添加 classes as structs
                 for c in result.get("classes", []):
@@ -3346,6 +3879,9 @@ class JavaScanner:
                     ))
             except Exception as e:
                 print(f"  WARNING: Failed to scan {java_file.name}: {e}", file=sys.stderr)
+        
+        if incremental:
+            print(f"  Java scan: scanned={scanned_count}, skipped={skipped_count}")
         
         return ir
 
@@ -3981,11 +4517,20 @@ class KnowledgeWriter:
 # ============================================================================
 
 class IncrementalScanner:
-    """增量扫描 — 只扫描自上次以来变更的文件"""
+    """增量扫描 — 只扫描自上次以来变更的文件
+    
+    支持多语言：.go/.py/.java/.ts/.js 等常见源代码后缀。
+    使用 SHA256 内容 hash 替代 mtime，避免时间戳抖动导致的误扫。
+    """
+    
+    # 支持的源代码文件扩展名
+    SOURCE_EXTENSIONS = {'.go', '.py', '.java', '.ts', '.js', '.rs', '.rb', '.php'}
+    SKIP_DIRS = {'vendor/', '.git/', 'node_modules/', '__pycache__', '.tox', '.idea/', '.vscode/'}
     
     def __init__(self, knowledge_base_dir: str):
         self.kb_dir = Path(knowledge_base_dir)
         self.last_scan_file = self.kb_dir / ".last_scan_timestamp"
+        self.hash_cache_file = self.kb_dir / ".file_hashes.json"
     
     def get_last_scan_time(self) -> Optional[float]:
         """获取上次扫描时间戳"""
@@ -3997,19 +4542,87 @@ class IncrementalScanner:
         """更新上次扫描时间戳"""
         self.last_scan_file.write_text(str(time.time()), encoding="utf-8")
     
+    @staticmethod
+    def _compute_file_hash(file_path: Path) -> str:
+        """Compute SHA256 hash of a file's content."""
+        try:
+            h = hashlib.sha256()
+            with open(file_path, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                    h.update(chunk)
+            return h.hexdigest()[:16]
+        except (IOError, OSError):
+            return ''
+    
+    def load_hash_cache(self) -> Dict[str, str]:
+        """Load previous file hashes from disk."""
+        if self.hash_cache_file.exists():
+            try:
+                data = json.loads(self.hash_cache_file.read_text(encoding="utf-8"))
+                return data.get("hashes", {})
+            except Exception:
+                pass
+        return {}
+    
+    def save_hash_cache(self, hashes: Dict[str, str]):
+        """Save current file hashes to disk."""
+        self.hash_cache_file.write_text(
+            json.dumps({"hashes": hashes, "timestamp": time.time()}, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+    
+    def _is_source_file(self, path: Path) -> bool:
+        """Check if a file is a source code file we care about."""
+        return path.suffix.lower() in self.SOURCE_EXTENSIONS
+    
+    def _should_skip(self, path: Path) -> bool:
+        """Check if a file should be skipped."""
+        path_str = str(path)
+        return any(skip in path_str for skip in self.SKIP_DIRS)
+    
     def find_changed_files(self, repo_path: Path) -> List[Path]:
-        """找出自上次扫描以来变更的文件"""
+        """找出自上次扫描以来变更的文件（支持多语言）
+        
+        策略：
+        1. 首次扫描：返回所有源文件（全量扫描）
+        2. 后续扫描：对比 SHA256 hash，只返回变更文件
+        3. 如果 hash 计算失败，回退到 mtime 比较
+        """
         last_time = self.get_last_scan_time()
-        if last_time is None:
-            return []  # 首次扫描，返回空表示全量扫
+        prev_hashes = self.load_hash_cache()
         
         modified = []
-        for go_file in repo_path.rglob("*.go"):
-            if "vendor/" in str(go_file) or ".git/" in str(go_file):
+        current_hashes = {}
+        
+        # Collect all source files
+        all_source_files = []
+        for ext in self.SOURCE_EXTENSIONS:
+            for f in repo_path.rglob(f"*{ext}"):
+                if not self._should_skip(f):
+                    all_source_files.append(f)
+        
+        for file_path in all_source_files:
+            # Compute current hash
+            current_hash = self._compute_file_hash(file_path)
+            current_hashes[str(file_path)] = current_hash
+            
+            if not current_hash:
+                # Hash computation failed, include for safety
+                modified.append(file_path)
                 continue
-            mtime = go_file.stat().st_mtime
-            if mtime > last_time:
-                modified.append(go_file)
+            
+            prev_hash = prev_hashes.get(str(file_path))
+            
+            if prev_hash is None:
+                # New file
+                modified.append(file_path)
+            elif prev_hash != current_hash:
+                # Content changed
+                modified.append(file_path)
+            # else: unchanged, skip
+        
+        # Save current hashes for next comparison
+        self.save_hash_cache(current_hashes)
         
         return modified
 
@@ -4250,6 +4863,37 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
     except ImportError:
         print(f"  ⚠️  code_graph_builder not available, skipping graph integration")
         ir_cache_extra = {}
+
+    # Add flow completeness and dependency graph from CoreFlowAnalyzer
+    try:
+        analyzer_path = str(Path(__file__).parent / "core_flow_analyzer.py")
+        spec = importlib.util.spec_from_file_location("core_flow_analyzer", analyzer_path)
+        if spec and spec.loader:
+            cfa_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cfa_module)
+            CFA = cfa_module.CoreFlowAnalyzer
+            
+            ir_dict = {
+                'call_graph': ir_cache.get('call_graph', []),
+                'business_logic': ir_cache.get('business_logic', []),
+                'routes': ir_cache.get('routes', []),
+                'functions': ir_cache.get('functions', []),
+                'structs': ir_cache.get('structs', []),
+                'entity_tables': ir_cache.get('entity_tables', []),
+                'core_flows': ir_cache.get('core_flows', []),
+                'services': ir_cache.get('services', []),
+            }
+            
+            analyzer = CFA(ir_dict)
+            ir_cache_extra['flow_completeness'] = analyzer.infer_flow_completeness()
+            ir_cache_extra['flow_dependency_graph'] = analyzer.build_flow_dependency_graph()
+            print(f"  Flow completeness: {len(ir_cache_extra['flow_completeness'])} entities analyzed")
+            fdg = ir_cache_extra['flow_dependency_graph']
+            print(f"  Dependency graph: {fdg.get('node_count', 0)} nodes, {fdg.get('edge_count', 0)} edges")
+    except Exception as e:
+        print(f"  ⚠️  Flow completeness/dependency graph analysis failed: {e}")
+        ir_cache_extra.setdefault('flow_completeness', [])
+        ir_cache_extra.setdefault('flow_dependency_graph', {'nodes': [], 'edges': [], 'node_count': 0, 'edge_count': 0})
 
     # 启发式兜底函数
     def _generate_business_terminology_heuristic(bl_list):

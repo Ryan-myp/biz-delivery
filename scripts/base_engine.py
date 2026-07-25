@@ -22,6 +22,11 @@ from learn_repo import GoScanner, IRDocument
 _HANDLER_CLEAN_RE = re.compile(r'\s*\([^)]*$')
 _HANDLER_CLEAN_RE2 = re.compile(r'\s*\([^)]*\).*')
 
+# Pre-compiled patterns for common extraction tasks
+_CAMEL_ENTITY_RE = re.compile(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*')
+_STRUCT_NAME_RE = re.compile(r'(?:Request|Response|Input|Output|Param|Option|Config)\b', re.IGNORECASE)
+_SKIP_STRUCTS = frozenset({'request', 'response', 'context', 'option', 'config', 'params', 'input', 'output'})
+
 
 class EngineBase:
     """Base class for all biz-delivery engines.
