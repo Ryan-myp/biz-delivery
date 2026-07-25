@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _common import extract_prd_keywords
 from learn_repo import GoScanner, IRDocument
 from base_engine import EngineBase
+from test_code_generator import TestCodeGenerator
 
 
 class TestEngine(EngineBase):
@@ -97,14 +98,13 @@ class TestEngine(EngineBase):
         }
         
         # 统计总用例数
-        import re as re_mod
-        tc_matches = re_mod.findall(r'TC\d{3,}', llm_response)
+        tc_matches = re.findall(r'TC\d{3,}', llm_response)
         result['total_cases'] = len(tc_matches)
         
         # 按优先级分类
         for priority in ['P0', 'P1', 'P2']:
             pattern = rf'\|\s*TC\d+\s*\|.*?\|.*?\|.*?\|.*?\|\s*{priority}\s*\|'
-            matches = re_mod.findall(pattern, llm_response)
+            matches = re.findall(pattern, llm_response)
             result['by_priority'][priority] = matches
         
         # 按分类提取
@@ -130,7 +130,6 @@ class TestEngine(EngineBase):
         Returns:
             {files: {filename: code}, summary: {...}}
         """
-        from test_code_generator import TestCodeGenerator
         
         # 扫描代码获取 IR
         ir = self._scan_codebase()
@@ -262,34 +261,28 @@ class TestEngine(EngineBase):
                 prompt_parts.append(f"- `{route.method.upper()}` {route.path} → `{route.handler}`")
             prompt_parts.append("")
 
-        # 业务卡片注入
-        bc_file = Path(cache_dir) / "business_cards.json" if cache_dir else None
-        if bc_file and bc_file.exists():
-            try:
-                with open(bc_file) as _bc_f:
-                    import json as _bc_json
-                    _bc_data = _bc_json.load(_bc_f)
-                prompt_parts.append("## 业务知识卡片")
-                _scenarios = _bc_data.get('scenario_cards', [])
-                if _scenarios:
-                    prompt_parts.append("### 场景卡（共{}个）".format(len(_scenarios)))
-                    for _sc in _scenarios[:10]:
-                        prompt_parts.append("- **{}**: {}".format(_sc['scenario'], _sc.get('description', '')[:200]))
-                        if _sc.get('call_chain'):
-                            prompt_parts.append("  调用: {}".format(', '.join(_sc['call_chain'][:5])))
-                _entities = _bc_data.get('entity_relationships', [])
-                if _entities:
-                    prompt_parts.append("### 实体关系（共{}个）".format(len(_entities)))
-                    for _er in _entities[:10]:
-                        prompt_parts.append("- `{}` → `{}`".format(_er['entity'], _er['table']))
-                _errors = _bc_data.get('error_categories', {})
-                if _errors:
-                    prompt_parts.append("### 错误分类")
-                    for _cat, _errs in _errors.items():
-                        prompt_parts.append("- **{}**: {} errors".format(_cat, len(_errs)))
-            except Exception as _bc_err:
-                prompt_parts.append("⚠️  business_cards.json 加载失败: {}".format(_bc_err))
-                prompt_parts.append("")
+        # 业务卡片注入 — 使用 base_engine._load_business_cards()（避免重复）
+        bc_data = self._load_business_cards(cache_dir)
+        if bc_data:
+            prompt_parts.append("## 业务知识卡片")
+            _scenarios = bc_data.get('scenario_cards', [])
+            if _scenarios:
+                prompt_parts.append("### 场景卡（共{}个）".format(len(_scenarios)))
+                for _sc in _scenarios[:10]:
+                    prompt_parts.append("- **{}**: {}".format(_sc['scenario'], _sc.get('description', '')[:200]))
+                    if _sc.get('call_chain'):
+                        prompt_parts.append("  调用: {}".format(', '.join(_sc['call_chain'][:5])))
+            _entities = bc_data.get('entity_relationships', [])
+            if _entities:
+                prompt_parts.append("### 实体关系（共{}个）".format(len(_entities)))
+                for _er in _entities[:10]:
+                    prompt_parts.append("- `{}` → `{}`".format(_er['entity'], _er['table']))
+            _errors = bc_data.get('error_categories', {})
+            if _errors:
+                prompt_parts.append("### 错误分类")
+                for _cat, _errs in _errors.items():
+                    prompt_parts.append("- **{}**: {} errors".format(_cat, len(_errs)))
+            prompt_parts.append("")
 
         
         # PRD 内容
@@ -303,35 +296,14 @@ class TestEngine(EngineBase):
             prompt_parts.append(td_text)
             prompt_parts.append("")
         
-        # 测试用例生成规则
+        # 测试用例生成规则 — 压缩版（去除冗余，保留关键检查点）
         prompt_parts.append("## 测试用例生成规则")
         prompt_parts.append("")
-        prompt_parts.append("### 1. 正向流程测试")
-        prompt_parts.append("- 覆盖 PRD 描述的主流程")
-        prompt_parts.append("- 每个流程节点都要有对应的测试用例")
-        prompt_parts.append("- 包括：请求参数、预期结果、数据库状态变化")
-        prompt_parts.append("")
-        prompt_parts.append("### 2. 异常分支测试")
-        prompt_parts.append("- **权限不足**: 未登录、无权限操作")
-        prompt_parts.append("- **数据校验失败**: 必填字段缺失、格式错误、超限")
-        prompt_parts.append("- **业务异常**: 资源不存在、状态不允许操作、并发冲突")
-        prompt_parts.append("- **系统异常**: 数据库连接失败、RPC 超时、第三方服务不可用")
-        prompt_parts.append("")
-        prompt_parts.append("### 3. 边界条件测试")
-        prompt_parts.append("- **空数据**: 列表为空、字段为空字符串")
-        prompt_parts.append("- **极值**: 最大/最小值、超长字符串")
-        prompt_parts.append("- **并发**: 同一资源同时修改、幂等性检查")
-        prompt_parts.append("- **分页**: 第一页、最后一页、空页、超大页")
-        prompt_parts.append("")
-        prompt_parts.append("### 4. 兼容性测试（如果是新功能）")
-        prompt_parts.append("- 旧接口是否受影响？")
-        prompt_parts.append("- 旧数据是否能正常访问？")
-        prompt_parts.append("- 灰度发布策略是否正确？")
-        prompt_parts.append("")
-        prompt_parts.append("### 5. 性能测试（如果是高频接口）")
-        prompt_parts.append("- QPS 要求是多少？")
-        prompt_parts.append("- 是否有缓存策略？")
-        prompt_parts.append("- 数据库查询是否加了索引？")
+        prompt_parts.append("- **正向流程**: 覆盖 PRD 主流程，每个节点有对应用例（请求参数/预期结果/DB 状态变化）")
+        prompt_parts.append("- **异常分支**: 权限不足/数据校验失败/业务异常(资源不存在/状态不允许/并发冲突)/系统异常(DB/RPC/第三方超时)")
+        prompt_parts.append("- **边界条件**: 空数据/极值/并发(幂等性)/分页(第一页/最后一页/空页/超大页)")
+        prompt_parts.append("- **兼容性** (新功能): 旧接口不受影响/旧数据可读/灰度策略正确")
+        prompt_parts.append("- **性能** (高频接口): QPS 要求/缓存策略/DB 索引")
         prompt_parts.append("")
         
         # ── IR 数据注入（供 LLM 生成精确测试用例） ──────────────────

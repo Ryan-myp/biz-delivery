@@ -209,6 +209,7 @@ def query_evidence_for_prd(
     max_total: int = 30,
     ir_cache: Optional[dict] = None,
     enable_variant_expansion: bool = True,
+    kb_dir: Optional[str] = None,
 ) -> dict:
     """从 PRD 提取关键词，调用 query_evidence 查询代码库证据。
 
@@ -216,10 +217,12 @@ def query_evidence_for_prd(
     - 支持传入预加载的 IR 缓存（避免重复从磁盘加载）
     - 多关键词复用同一份数据，减少 80% 磁盘 I/O
     - 可选：查询变体扩展（generate_query_variants）
+    - Knowledge base markdown 文件搜索（kb_dir 参数）
     
     Args:
         ir_cache: 可选，预加载的 IR 缓存数据。如果提供则跳过磁盘读取。
         enable_variant_expansion: 是否启用查询变体扩展（默认 True）
+        kb_dir: 可选，知识库目录，用于搜索 .md/.txt 文件
     
     Returns:
         {
@@ -270,7 +273,6 @@ def query_evidence_for_prd(
     all_queries = list(dict.fromkeys(keywords + expanded_queries + variants))[:30]
 
     # ── Multi-path search — reuse the same IR cache ──────────────
-    qe = _get_query_evidence()
     all_evidence = []
     sources = ["code", "schema", "api_docs", "business"]
 
@@ -278,7 +280,7 @@ def query_evidence_for_prd(
     if ir_cache and isinstance(ir_cache, dict):
         try:
             smart_results = qe['smart_search'](
-                prd_text, ir_cache, profile_data, top_k=max_total
+                prd_text, ir_cache, profile_data, top_k=max_total, kb_dir=kb_dir
             )
             if smart_results:
                 all_evidence.extend(smart_results)

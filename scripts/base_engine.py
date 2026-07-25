@@ -8,6 +8,7 @@ Each engine inherits from EngineBase and only implements its own prompt building
 import json
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -98,8 +99,7 @@ class EngineBase:
         if not cache_file.exists():
             return None
         try:
-            import time as _time
-            age_hours = (_time.time() - cache_file.stat().st_mtime) / 3600
+            age_hours = (time.time() - cache_file.stat().st_mtime) / 3600
             if age_hours > 24:
                 return None
             return json.loads(cache_file.read_text(encoding="utf-8"))
@@ -290,6 +290,7 @@ class EngineBase:
             cache_dir=cache_dir,
             top_k_per_query=5,
             max_total=30,
+            kb_dir=self.kb_dir,
         )
 
     # ── Prompt building helpers ─────────────────
@@ -483,3 +484,46 @@ class EngineBase:
                 except Exception:
                     pass
         return None
+
+    # ── Shared evidence formatting ──────────────────
+
+    @staticmethod
+    def _format_weighted_evidence(evidence_list: list, top_n: int = 20) -> List[str]:
+        """Format weighted evidence items into prompt lines.
+        
+        Shared across review_engine and test_engine to avoid duplication.
+        """
+        type_weights = {
+            'function': 1.5,
+            'route': 1.5,
+            'struct': 1.2,
+            'entity_table': 1.0,
+            'api': 1.3,
+            'business_logic': 0.8,
+            'schema': 0.7,
+        }
+        
+        # Compute weighted scores
+        weighted = []
+        for item in evidence_list[:top_n * 2]:  # fetch extra for sorting
+            raw_score = item.get('score', 0)
+            item_type = item.get('type', '')
+            weight = type_weights.get(item_type, 1.0)
+            weighted_score = raw_score * weight
+            weighted.append({**item, 'weighted_score': weighted_score, 'type_weight': weight})
+        
+        weighted.sort(key=lambda x: x['weighted_score'], reverse=True)
+        
+        lines = []
+        for i, item in enumerate(weighted[:top_n], 1):
+            title = item.get('title', item.get('path', 'unknown'))
+            score = item.get('score', 0)
+            w_score = item.get('weighted_score', 0)
+            content_text = item.get('content', item.get('text', ''))
+            item_type = item.get('type', '?')
+            lines.append(f"- **证据{i}** [type={item_type}] (raw={score:.3f}, weighted={w_score:.3f}): {title}")
+            if content_text:
+                ct = content_text[:200].replace('\n', '\\n')
+                lines.append(f"  ```\\n  {ct}\\n  ```")
+        lines.append("")
+        return lines

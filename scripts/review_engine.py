@@ -546,6 +546,33 @@ class ReviewEngine(EngineBase):
         # 16. 灰度发布与回滚检查
         checks.extend(self._check_gradual_release_strategy(ir, prd_text))
         
+        # 17. 数据流向冲突检测（新增）
+        checks.extend(self._detect_data_flow_conflicts(ir, prd_text))
+        
+        # 18. 核心流程完整性校验（新增）
+        checks.extend(self._check_flow_completeness(ir, prd_text))
+        
+        # 19. 外部依赖风险检查（新增）
+        checks.extend(self._check_external_dependency_risk(ir, prd_text))
+        
+        # 20. 数据隐私合规检查（新增）
+        checks.extend(self._check_data_privacy_compliance(ir, prd_text))
+        
+        # 21. API 版本化与变更影响分析（新增）
+        checks.extend(self._check_api_versioning_impact(ir, prd_text))
+        
+        # 22. 缓存穿透/击穿/雪崩风险检测（新增）
+        checks.extend(self._check_cache_penetration_risk(ir, prd_text))
+        
+        # 23. 数据备份与恢复策略检查（新增）
+        checks.extend(self._check_backup_recovery_strategy(ir, prd_text))
+        
+        # 24. 配置管理检查（新增）
+        checks.extend(self._check_config_management(ir, prd_text))
+        
+        # 25. 多租户隔离检查（新增）
+        checks.extend(self._check_multi_tenant_isolation(ir, prd_text))
+        
         return checks
     
     def _check_business_rule_constraints(self, ir: IRDocument, prd_text: str, profile_data: dict) -> List[Dict]:
@@ -920,7 +947,7 @@ class ReviewEngine(EngineBase):
         
         # 检查是否有 feature flag 实现
         has_feature_flag = any(
-            'feature' in str(f).lower() and 'flag' in str(f).lower() or
+            ('feature' in str(f).lower() and 'flag' in str(f).lower()) or
             'toggle' in str(f).lower() or '开关' in str(f).lower() or
             'enable_' in str(f).lower() or 'disable_' in str(f).lower()
             for f in getattr(ir, 'functions', [])
@@ -945,6 +972,159 @@ class ReviewEngine(EngineBase):
                 'description': '高风险变更未使用 Feature Flag 控制',
                 'suggestion': '建议引入 Feature Flag 系统（如 LaunchDarkly/自建），支持运行时开关功能',
             })
+        
+        return checks
+    
+    def _detect_data_flow_conflicts(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """数据流向冲突检测 — 检测 PRD 描述的数据流向与现有架构是否一致。
+        
+        检查项：
+        1. PRD 要求的数据存储方式与现有 entity_tables 是否匹配
+        2. PRD 提到的数据源是否在代码库中存在
+        3. PRD 要求的数据聚合/计算逻辑是否有对应实现
+        """
+        checks = []
+        
+        # 从 PRD 提取数据源关键词
+        data_source_keywords = ['数据来源', '数据源', 'data source', '上游', '下游', 
+                               'ETL', '同步', 'sync', '订阅', 'subscribe', '推送', 'pull']
+        has_data_source_req = any(kw in prd_text for kw in data_source_keywords)
+        
+        if not has_data_source_req:
+            return checks
+        
+        # 检查现有数据源
+        existing_sources = set()
+        for imp in getattr(ir, 'imports', []):
+            module = imp.get('module', '') if isinstance(imp, dict) else getattr(imp, 'module', '')
+            if module:
+                existing_sources.add(module.lower())
+        
+        # 检查 PRD 提到的数据源是否存在
+        prd_data_sources = []
+        known_sources = ['kafka', 'rabbitmq', 'mysql', 'postgres', 'redis', 'es', 'elasticsearch',
+                        'mongodb', 'clickhouse', 'hive', 'hbase', 'dynamodb', 's3', 'oss']
+        for src in known_sources:
+            if src in prd_text.lower():
+                prd_data_sources.append(src)
+        
+        missing_sources = [s for s in prd_data_sources if not any(s in es for es in existing_sources)]
+        if missing_sources:
+            checks.append({
+                'rule': 'missing_data_source',
+                'severity': 'high',
+                'description': f"PRD 依赖的数据源在代码中未发现: {', '.join(missing_sources[:3])}",
+                'suggestion': '确认这些外部数据源是否已集成，或需要新增接入层',
+            })
+        
+        # 检查数据聚合需求
+        aggregation_keywords = ['聚合', 'aggregate', '汇总', '统计', 'report', 'dashboard']
+        has_aggregation = any(kw in prd_text for kw in aggregation_keywords)
+        
+        if has_aggregation:
+            # 检查是否有聚合查询实现
+            has_agg_impl = any(
+                'aggregate' in str(f).lower() or 'group_by' in str(f).lower() or
+                'sum' in str(f).lower() or 'count' in str(f).lower() or
+                'avg' in str(f).lower()
+                for f in getattr(ir, 'functions', [])
+            )
+            if not has_agg_impl:
+                checks.append({
+                    'rule': 'no_aggregation_impl',
+                    'severity': 'medium',
+                    'description': 'PRD 涉及数据聚合但代码中未发现聚合查询实现',
+                    'suggestion': '大量数据聚合建议使用 OLAP 引擎（ClickHouse/Doris）或预计算表',
+                })
+        
+        return checks
+    
+    def _check_flow_completeness(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """核心流程完整性校验 — 检查 PRD 流程在代码中的覆盖程度。
+        
+        检查项：
+        1. PRD 描述的主流程步骤是否都能在代码中找到对应实现
+        2. 异常处理路径是否完整
+        3. 回调/通知/补偿机制是否实现
+        """
+        checks = []
+        
+        core_flows = getattr(ir, 'core_flows', [])
+        if not core_flows:
+            return checks
+        
+        # 从 PRD 提取流程关键词
+        flow_keywords = ['第一步', '第二步', '首先', '然后', '接着', '最后',
+                        'step 1', 'step 2', 'first', 'then', 'finally',
+                        '主流程', '主要步骤', 'workflow steps']
+        has_flow_desc = any(kw in prd_text for kw in flow_keywords)
+        
+        if not has_flow_desc:
+            return checks
+        
+        # 从 PRD 提取可能的 handler/service 名称
+        prd_handlers = set()
+        camel_names = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*', prd_text)
+        for name in camel_names:
+            if len(name) > 2:
+                prd_handlers.add(name)
+        
+        # 从 core_flows 收集已实现的 handler
+        implemented_handlers = set()
+        for flow in core_flows:
+            for h in flow.get('handlers', []):
+                implemented_handlers.add(h)
+            for fn in flow.get('call_chain', []):
+                implemented_handlers.add(fn)
+        
+        # 检查 PRD 提到的 handler 是否已实现
+        matched = prd_handlers & implemented_handlers
+        unmatched = prd_handlers - implemented_handlers
+        
+        # 过滤常见非业务名称
+        skip = {'request', 'response', 'context', 'error', 'param', 'option', 'config'}
+        unmatched = {u for u in unmatched if u.lower() not in skip and len(u) > 2}
+        
+        if unmatched and len(unmatched) <= 5:
+            checks.append({
+                'rule': 'flow_step_missing',
+                'severity': 'medium',
+                'description': f"PRD 流程中提到的以下处理节点在代码中未找到: {', '.join(list(unmatched)[:5])}",
+                'suggestion': '需要确认这些步骤是否需要新增实现，或使用了不同的命名',
+            })
+        
+        # 检查异常处理覆盖率
+        error_handling_keywords = ['异常', 'error', 'fail', '失败', 'exception', 'panic', 'recover']
+        has_error_handling = any(kw in prd_text for kw in error_handling_keywords)
+        
+        if has_error_handling:
+            # 检查 error codes 覆盖
+            error_codes = getattr(ir, 'error_codes', [])
+            if not error_codes or len(error_codes) < 5:
+                checks.append({
+                    'rule': 'insufficient_error_coverage',
+                    'severity': 'medium',
+                    'description': f'PRD 涉及异常处理但错误码定义不足（仅 {len(error_codes)} 个）',
+                    'suggestion': '建议为每个主要流程和异常分支定义对应的错误码',
+                })
+        
+        # 检查回调/通知机制
+        callback_keywords = ['回调', 'callback', 'notify', '通知', 'webhook', '推送']
+        has_callback_req = any(kw in prd_text for kw in callback_keywords)
+        
+        if has_callback_req:
+            has_callback_impl = any(
+                'callback' in str(f).lower() or 'notify' in str(f).lower() or
+                'webhook' in str(f).lower() or 'push' in str(f).lower()
+                for f in getattr(ir, 'functions', [])
+            )
+            if not has_callback_impl:
+                checks.append({
+                    'rule': 'callback_not_implemented',
+                    'severity': 'medium',
+                    'description': 'PRD 涉及回调/通知机制但代码中未发现实现',
+                    'suggestion': '建议实现异步通知机制（MQ/Webhook），避免同步阻塞主流程',
+                })
         
         return checks
     
@@ -1129,14 +1309,14 @@ class ReviewEngine(EngineBase):
                     'suggestion': '第三方集成建议实现 webhook 回调机制，避免轮询开销',
                 })
         
-        # ── 增强：数据向后兼容检查 ──────────────────────────
+        # ── 增强：数据向后兼容检查（required field default value）─────────────────────
         # 检测 PRD 是否要求新增可选字段 vs 必填字段
         optional_keywords = ['可选', 'optional', 'nullable', '可以为空']
         required_keywords = ['必填', 'required', 'not null', '不能为空']
-        
+
         has_optional = any(kw in prd_text for kw in optional_keywords)
         has_required = any(kw in prd_text for kw in required_keywords)
-        
+
         if has_required and has_db_changes:
             # 检查默认值策略
             has_default = 'default' in prd_text.lower() or '默认值' in prd_text or 'DEFAULT' in prd_text
@@ -1147,7 +1327,43 @@ class ReviewEngine(EngineBase):
                     'description': '新增必填字段但未指定默认值策略',
                     'suggestion': 'DDL 变更时必填字段必须有 DEFAULT 值，否则历史数据插入会失败',
                 })
-        
+
+        # ── 增强：required field 类型变更检查 ────────────────────────────
+        type_change_keywords = ['字段类型', 'type change', 'varchar to', 'int to', 'string to int',
+                                '类型变更', '类型修改', '类型转换']
+        has_type_change = any(kw in prd_text for kw in type_change_keywords)
+
+        if has_type_change:
+            # 检查是否有类型迁移方案
+            migration_plan_keywords = ['migration', '迁移', 'backfill', '双向兼容', '滚动升级', '双写']
+            has_migration_plan = any(kw in prd_text.lower() for kw in migration_plan_keywords)
+            if not has_migration_plan:
+                checks.append({
+                    'rule': 'field_type_change_no_migration',
+                    'severity': 'critical',
+                    'description': 'PRD 涉及字段类型变更但未发现迁移/兼容方案',
+                    'suggestion': '类型变更必须：1) 评估对现有查询的影响 2) 制定双向兼容方案 3) 灰度发布 4) 回滚预案',
+                })
+
+        # ── 增强：required field 约束变更检查（如从 nullable 到 NOT NULL）────────
+        constraint_change_keywords = [
+            'NOT NULL', '非空', '不可为空', 'must be present',
+            'from nullable', 'from optional', '改为必填', '强校验',
+        ]
+        has_constraint_change = any(kw in prd_text for kw in constraint_change_keywords)
+
+        if has_constraint_change and has_db_changes:
+            # 检查是否有存量数据处理方案
+            data_prep_keywords = ['存量', '历史数据', 'backfill', '数据清洗', '数据修复', '补全']
+            has_data_processing = any(kw in prd_text for kw in data_prep_keywords)
+            if not has_data_processing:
+                checks.append({
+                    'rule': 'constraint_change_no_data_prep',
+                    'severity': 'high',
+                    'description': 'PRD 收紧字段约束（如改为 NOT NULL），但未发现存量数据处理方案',
+                    'suggestion': '收紧约束前需先清洗历史数据（backfill 默认值或修正脏数据），再执行 DDL 变更',
+                })
+
         return checks
     
     def _analyze_api_impact(self, ir: IRDocument, prd_text: str) -> List[Dict]:
@@ -1243,83 +1459,7 @@ class ReviewEngine(EngineBase):
                 })
         
         return checks
-    
-    def _assess_performance_risk(self, ir: IRDocument, prd_text: str, profile_data: dict) -> List[Dict]:
-        """性能风险评估"""
-        checks = []
-        
-        # 1. 高并发场景检查
-        perf_keywords = ['高并发', '大量', '批量', 'QPS', 'performance', 'throughput', 
-                        '百万', '千万', '亿', 'massive', 'high concurrency']
-        has_perf_req = any(kw in prd_text for kw in perf_keywords)
-        
-        if has_perf_req:
-            has_cache = any('redis' in str(s).lower() or 'cache' in str(s).lower() 
-                          for s in getattr(ir, 'structs', []))
-            if not has_cache:
-                checks.append({
-                    'rule': 'no_cache_strategy',
-                    'severity': 'high',
-                    'description': 'PRD 提到性能相关需求但代码中未发现缓存策略',
-                    'suggestion': '建议引入 Redis 缓存，考虑缓存穿透/击穿/雪崩防护',
-                })
-            
-            has_async = any('async' in str(f).lower() or 'goroutine' in str(f).lower() or 
-                          'mq' in str(f).lower() or 'kafka' in str(f).lower() or
-                          'rabbitmq' in str(f).lower()
-                          for f in getattr(ir, 'functions', []))
-            if not has_async:
-                checks.append({
-                    'rule': 'no_async_processing',
-                    'severity': 'medium',
-                    'description': '高并发场景未发现有异步处理机制',
-                    'suggestion': '建议引入消息队列（Kafka/RabbitMQ）进行异步解耦',
-                })
-        
-        # 2. 大数据量检查
-        big_data_keywords = ['大数据', '分页', 'page', 'pagination', '导出', 'export', '下载', 'download']
-        has_big_data = any(kw in prd_text for kw in big_data_keywords)
-        
-        if has_big_data:
-            has_pagination = any('page' in str(f).lower() or 'limit' in str(f).lower() or
-                               'offset' in str(f).lower()
-                               for f in getattr(ir, 'functions', []))
-            if not has_pagination:
-                checks.append({
-                    'rule': 'no_pagination_check',
-                    'severity': 'medium',
-                    'description': '大数据量场景未发现有分页查询实现',
-                    'suggestion': '确保所有列表接口都有分页限制，防止 OOM',
-                })
-        
-        # 3. 外部依赖超时/重试/熔断检查
-        external_dep_keywords = ['外部', 'third', 'external', 'API', 'RPC', 'gRPC', 'timeout', '超时', '重试', 'retry', '熔断', 'circuit breaker']
-        has_external_deps = any(kw in prd_text for kw in external_dep_keywords)
-        
-        if has_external_deps:
-            has_timeout_config = any('timeout' in str(c).lower() or 'Timeout' in str(c).lower()
-                                    for c in getattr(ir, 'configs', []))
-            if not has_timeout_config:
-                checks.append({
-                    'rule': 'no_timeout_config',
-                    'severity': 'high',
-                    'description': 'PRD 涉及外部依赖调用但未发现超时配置',
-                    'suggestion': '必须设置合理的超时时间（建议 3-5s），并配置重试和熔断',
-                })
-        
-        # 4. 数据库索引检查
-        db_keywords = ['索引', 'index', 'unique', '联合索引', '复合索引']
-        has_index_req = any(kw in prd_text for kw in db_keywords)
-        if has_index_req:
-            checks.append({
-                'rule': 'index_consideration',
-                'severity': 'medium',
-                'description': 'PRD 涉及索引设计',
-                'suggestion': '索引设计需考虑查询模式，避免过多索引影响写入性能',
-            })
-        
-        return checks
-    
+
     def _detect_security_risks(self, ir: IRDocument, prd_text: str) -> List[Dict]:
         """安全漏洞检测 — 从 PRD 中识别安全风险"""
         checks = []
@@ -1486,6 +1626,740 @@ class ReviewEngine(EngineBase):
         
         return checks
     
+    def _check_external_dependency_risk(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """外部服务依赖风险检查 — 检测支付、短信、推送等外部依赖的容错机制。
+
+        检查项：
+        1. PRD 提到的外部服务（支付网关、短信服务商、推送服务、OSS 等）是否有 fallback 策略
+        2. 调用失败后的 retry 机制是否定义
+        3. 熔断器（circuit breaker）配置是否缺失
+        4. 超时配置是否合理
+        5. 异步解耦方案（MQ/事件）是否考虑
+        """
+        checks = []
+
+        # 检测外部服务依赖关键词
+        external_service_patterns = {
+            'payment': ['支付', '支付网关', 'payment gateway', '支付宝', '微信', 'stripe', 'paypal', '银联'],
+            'sms': ['短信', 'sms', '验证码', 'verification code', '短信服务', 'twilio', '阿里云短信'],
+            'push': ['推送', 'push notification', 'apns', 'fcm', '消息推送', '极光', '个推'],
+            'storage': ['对象存储', 'oss', 's3', 'minio', '文件上传', 'file upload'],
+            'email': ['邮件', 'email', 'smtp', '邮件通知', 'sendgrid'],
+            'third_party_api': ['第三方 API', 'external API', '第三方接口', '对接'],
+            'oauth': ['OAuth', 'SSO', '单点登录', '登录授权', 'google login', '微信登录'],
+            'map': ['地图', 'map', '高德', '百度地图', 'geolocation'],
+            'ocr': ['OCR', '识别', '图像识别', '身份证识别'],
+        }
+
+        detected_services = []
+        for service_name, keywords in external_service_patterns.items():
+            if any(kw in prd_text for kw in keywords):
+                detected_services.append(service_name)
+
+        if not detected_services:
+            return checks
+
+        # 收集代码中的外部依赖配置和实现
+        has_timeout_config = any(
+            'timeout' in str(c).lower() or 'Timeout' in str(c).lower()
+            for c in getattr(ir, 'configs', [])
+        )
+        has_retry_impl = any(
+            'retry' in str(f).lower() or 'retrier' in str(f).lower() or
+            'backoff' in str(f).lower() or 'exponential' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        has_circuit_breaker = any(
+            'circuit' in str(f).lower() or 'breaker' in str(f).lower() or
+            'hystrix' in str(f).lower() or 'resilience' in str(f).lower() or
+            'gobreaker' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        has_fallback = any(
+            'fallback' in str(f).lower() or '降级' in str(f) or
+            'graceful' in str(f).lower() or 'fallback' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        has_mq_async = any(
+            'kafka' in str(i).lower() or 'rabbitmq' in str(i).lower() or
+            'amqp' in str(i).lower() or 'async' in str(f).lower()
+            for i in getattr(ir, 'imports', [])
+            for f in getattr(ir, 'functions', [])
+        )
+
+        # 1. 超时配置检查
+        if not has_timeout_config:
+            checks.append({
+                'rule': 'no_timeout_config',
+                'severity': 'high',
+                'description': f"PRD 涉及外部服务依赖 ({', '.join(detected_services[:4])})，但未发现超时配置",
+                'suggestion': '所有外部服务调用必须设置合理的超时时间（建议 HTTP 3-5s，RPC 1-3s），防止雪崩',
+            })
+
+        # 2. 重试机制检查
+        if not has_retry_impl:
+            checks.append({
+                'rule': 'no_retry_mechanism',
+                'severity': 'high',
+                'description': f"PRD 涉及外部服务依赖，但未发现重试/退避机制实现",
+                'suggestion': '外部服务调用应配置重试策略（如指数退避 3 次），网络抖动时可自动恢复',
+            })
+
+        # 3. 熔断器检查
+        if not has_circuit_breaker:
+            checks.append({
+                'rule': 'no_circuit_breaker',
+                'severity': 'medium',
+                'description': f"PRD 涉及外部服务依赖，但未发现熔断器实现",
+                'suggestion': '关键外部服务应配置熔断器（如 Hystrix/gobreaker），故障时快速失败，避免级联雪崩',
+            })
+
+        # 4. Fallback 降级检查
+        if not has_fallback:
+            checks.append({
+                'rule': 'no_fallback_strategy',
+                'severity': 'medium',
+                'description': f"PRD 涉及外部服务依赖，但未发现降级/回退策略",
+                'suggestion': '外部服务不可用时应提供降级方案（如缓存旧数据、返回默认值、异步补偿）',
+            })
+
+        # 5. 异步解耦检查（对非实时场景）
+        sync_keywords = ['实时', '同步', 'immediately', '立即']
+        is_sync_required = any(kw in prd_text for kw in sync_keywords)
+        if not is_sync_required and not has_mq_async:
+            checks.append({
+                'rule': 'no_async_decoupling',
+                'severity': 'low',
+                'description': f"非实时外部服务调用未使用异步解耦（MQ/事件驱动）",
+                'suggestion': '通知类、日志类等非实时场景建议使用 MQ 异步处理，降低主流程延迟',
+            })
+
+        return checks
+
+    def _check_data_privacy_compliance(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """数据隐私合规检查 — GDPR / 个人信息保护法 (PIPL) 相关需求检测。
+
+        检查项：
+        1. 用户数据删除权（Right to be Forgotten）
+        2. 数据最小化原则
+        3. 数据驻留/跨境传输要求
+        4. 用户同意/授权管理
+        5. 数据访问/导出权利
+        6. 隐私政策声明
+        """
+        checks = []
+
+        # 检测隐私相关关键词
+        privacy_keywords = [
+            '个人信息', 'personal data', '用户数据', '用户信息',
+            '隐私', 'privacy', 'GDPR', 'PIPL', '数据安全法',
+            '数据删除', '删除权', '被遗忘', 'right to be forgotten',
+            '数据最小化', 'data minimization', '数据驻留', 'data residency',
+            '跨境传输', 'data transfer', '数据出境', 'cross-border',
+            '用户同意', 'consent', '授权', 'opt-in', 'opt-out',
+            '数据导出', 'data portability', '可携带权',
+            'cookie', 'tracking', '画像', 'profile', '用户行为',
+            '敏感个人信息', 'special category', '生物识别', 'biometric',
+            '未成年人', 'children', '儿童保护', 'COPPA',
+            '匿名化', 'anonymization', '去标识化', 'pseudonymization',
+        ]
+        has_privacy_req = any(kw in prd_text for kw in privacy_keywords)
+
+        if not has_privacy_req:
+            return checks
+
+        # 收集代码中已有的隐私相关实现
+        has_deletion_endpoint = any(
+            'delete' in str(f).lower() or 'remove' in str(f).lower() or
+            'soft_delete' in str(f).lower() or 'hard_delete' in str(f).lower() or
+            '注销' in str(f) or 'deactivate' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        has_data_export = any(
+            'export' in str(f).lower() or 'download' in str(f).lower() or
+            '数据导出' in str(f) or 'portable' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        has_consent_mgmt = any(
+            'consent' in str(f).lower() or '同意' in str(f) or
+            'opt_in' in str(f).lower() or 'opt_out' in str(f).lower() or
+            '授权管理' in str(f) or 'permission' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        has_anonymization = any(
+            'anonymi' in str(f).lower() or 'pseudonym' in str(f).lower() or
+            '脱敏' in str(f) or 'mask' in str(f).lower() or
+            '匿名' in str(f)
+            for f in getattr(ir, 'functions', [])
+        )
+        has_data_residency = any(
+            'residen' in str(f).lower() or 'local' in str(f).lower() or
+            '境内' in str(f) or '数据本地化' in str(f) or
+            'region' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        has_minimization = any(
+            'minimiz' in str(f).lower() or '只读' in str(f) or
+            '按需' in str(f) or 'least privilege' in str(f).lower() or
+            '最小化' in str(f)
+            for f in getattr(ir, 'functions', [])
+        )
+
+        # 1. 数据删除权检查
+        deletion_mentioned = any(kw in prd_text for kw in ['数据删除', '删除权', '注销', 'deletion', 'delete account'])
+        if deletion_mentioned and not has_deletion_endpoint:
+            checks.append({
+                'rule': 'gdpr_right_to_deletion',
+                'severity': 'critical',
+                'description': 'PRD 涉及用户数据删除权（GDPR Art.17 / PIPL 第47条），但代码中未发现数据删除接口实现',
+                'suggestion': '需要实现：1) 用户主动注销接口 2) 级联删除/匿名化 3) 删除确认流程 4) 审计日志',
+            })
+
+        # 2. 数据最小化原则检查
+        minimization_mentioned = any(kw in prd_text for kw in ['数据最小化', 'data minimization', '最小必要', '只收集'])
+        if minimization_mentioned and not has_minimization:
+            checks.append({
+                'rule': 'data_minimization_violation',
+                'severity': 'high',
+                'description': 'PRD 提到数据最小化原则，但代码中未发现最小化采集/处理实现',
+                'suggestion': '仅收集业务必需的数据字段，避免过度采集；分场景设置不同权限',
+            })
+
+        # 3. 数据驻留/跨境传输检查
+        residency_mentioned = any(kw in prd_text for kw in ['数据驻留', 'data residency', '跨境传输', '数据出境', 'cross-border'])
+        if residency_mentioned and not has_data_residency:
+            checks.append({
+                'rule': 'data_residency_non_compliant',
+                'severity': 'critical',
+                'description': 'PRD 涉及数据驻留/跨境传输要求，但代码中未发现区域化部署或数据隔离实现',
+                'suggestion': '需实现：1) 按区域的数据隔离 2) 跨境传输审批流程 3) 本地化存储',
+            })
+
+        # 4. 用户同意/授权管理检查
+        consent_mentioned = any(kw in prd_text for kw in ['用户同意', 'consent', '授权', 'opt-in', 'opt-out', '勾选'])
+        if consent_mentioned and not has_consent_mgmt:
+            checks.append({
+                'rule': 'no_consent_management',
+                'severity': 'high',
+                'description': 'PRD 涉及用户同意/授权管理，但代码中未发现 consent 管理实现',
+                'suggestion': '需要实现 consent 记录表，支持用户随时撤回同意，保留 consent audit trail',
+            })
+
+        # 5. 数据导出/可携带权检查
+        export_mentioned = any(kw in prd_text for kw in ['数据导出', 'data export', '可携带权', 'portability'])
+        if export_mentioned and not has_data_export:
+            checks.append({
+                'rule': 'no_data_portability',
+                'severity': 'medium',
+                'description': 'PRD 涉及用户数据导出权（GDPR Art.20），但代码中未发现数据导出接口',
+                'suggestion': '实现 JSON/CSV 格式数据导出接口，支持批量导出 + 异步生成',
+            })
+
+        # 6. 匿名化/脱敏检查
+        anonymization_mentioned = any(kw in prd_text for kw in ['匿名化', '去标识化', 'anonymization', 'pseudonymization'])
+        if anonymization_mentioned and not has_anonymization:
+            checks.append({
+                'rule': 'no_anonymization_implementation',
+                'severity': 'high',
+                'description': 'PRD 涉及数据匿名化/去标识化，但代码中未发现相关实现',
+                'suggestion': '用于分析/测试的数据必须经过匿名化处理，不可还原到个人身份',
+            })
+
+        return checks
+
+    def _check_api_versioning_impact(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """API 版本化与变更影响分析 — 检测 API 版本策略和变更兼容性风险。
+
+        检查项：
+        1. API 版本化策略（v1/v2/path/header）
+        2. 接口废弃/迁移计划
+        3. 请求/响应字段变更影响
+        4. 路由路径变更影响范围
+        5. 第三方回调/Webhook 兼容性
+        """
+        checks = []
+
+        # 检测 PRD 是否涉及 API 变更
+        api_change_keywords = [
+            '接口变更', 'API 变更', '接口升级', '接口废弃',
+            'api change', 'api upgrade', 'api deprecat', 'breaking change',
+            '接口迁移', '接口下线', 'deprecated', '弃用',
+            '兼容', 'backward compat', '向后兼容',
+            'version', '版本', 'v1', 'v2',
+            '路由变更', 'path change', 'endpoint change',
+        ]
+        has_api_change = any(kw in prd_text for kw in api_change_keywords)
+        if not has_api_change:
+            return checks
+
+        # 1. 检查是否有 API 版本化策略
+        has_versioning = False
+        routes = getattr(ir, 'routes', [])
+        for route in (routes if isinstance(routes, list) else []):
+            path = route.get('path', '') if isinstance(route, dict) else getattr(route, 'path', '')
+            if '/v' in path or 'version' in path.lower():
+                has_versioning = True
+                break
+        
+        # 检查路由中是否有版本前缀
+        versioned_routes = [r for r in (routes if isinstance(routes, list) else []) 
+                           if isinstance(r, dict) and '/v' in r.get('path', '')]
+        
+        if not has_versioning and len(versioned_routes) == 0:
+            checks.append({
+                'rule': 'no_api_versioning',
+                'severity': 'high',
+                'description': 'PRD 涉及 API 变更但代码库未发现 API 版本化策略',
+                'suggestion': '建议采用 URL 版本化 (/api/v1/, /api/v2/) 或 Header 版本化 (X-API-Version)，确保新旧版本共存过渡',
+            })
+
+        # 2. 检查是否有废弃/迁移机制
+        has_deprecation = any(
+            'deprecat' in str(f).lower() or 'migration' in str(f).lower() or
+            '迁移' in str(f) or '废弃' in str(f) or 'sunrise' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        if not has_deprecation and has_api_change:
+            checks.append({
+                'rule': 'no_deprecation_strategy',
+                'severity': 'medium',
+                'description': 'PRD 涉及 API 变更但未发现废弃/迁移策略实现',
+                'suggestion': '需要：1) 双版本共存 2) 废弃通知机制 3) 迁移文档 4) 过渡期错误码提示',
+            })
+
+        # 3. 检查请求/响应结构变更风险
+        structs = getattr(ir, 'structs', [])
+        struct_names = set()
+        for s in structs:
+            if hasattr(s, 'name'):
+                struct_names.add(s.name.lower())
+            elif isinstance(s, dict):
+                struct_names.add(s.get('name', '').lower())
+        
+        # 从 PRD 提取可能的结构体变更
+        struct_change_patterns = re.findall(r'(?:修改|新增|删除|变更)\s*(?:请求|响应|参数|字段|Request|Response|Struct)\s*([A-Za-z_]+)', prd_text)
+        if struct_change_patterns:
+            changed_structs = [s.lower() for s in struct_change_patterns if s.lower() in struct_names]
+            if changed_structs:
+                checks.append({
+                    'rule': 'struct_field_change_risk',
+                    'severity': 'high',
+                    'description': f'PRD 涉及以下结构体字段变更: {", ".join(changed_structs[:5])}',
+                    'suggestion': '字段变更需考虑：1) 默认值处理 2) 类型变更迁移 3) 约束收紧(如 nullable→NOT NULL)回填',
+                })
+
+        # 4. 路由路径变更风险
+        route_changes = re.findall(r"路由\s+[\"'](.+?)[\"']", prd_text)
+        if route_changes:
+            existing_paths = set()
+            for route in (routes if isinstance(routes, list) else []):
+                if isinstance(route, dict):
+                    existing_paths.add(route.get('path', ''))
+            
+            changed_routes = [rc for rc in route_changes if rc in existing_paths]
+            if changed_routes:
+                checks.append({
+                    'rule': 'route_path_change_risk',
+                    'severity': 'critical',
+                    'description': f'PRD 计划变更以下路由路径: {", ".join(changed_routes[:5])}',
+                    'suggestion': '路由变更影响面广，需要：1) 旧路由重定向到新路由 2) 通知所有调用方 3) 灰度发布 4) 监控告警',
+                })
+
+        return checks
+
+    def _check_cache_penetration_risk(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """缓存穿透/击穿/雪崩风险检测。
+
+        检查项：
+        1. 缓存穿透（不存在的数据请求）
+        2. 缓存击穿（热点 key 过期）
+        3. 缓存雪崩（大量 key 同时过期）
+        4. 缓存一致性策略
+        5. Cache-Aside vs Read-Through vs Write-Behind
+        """
+        checks = []
+
+        # 检测 PRD 是否涉及缓存相关需求
+        cache_keywords = [
+            '缓存', 'cache', 'redis', 'memcached', 'CDN',
+            '热点数据', 'hot data', '缓存穿透', 'cache penetration',
+            '缓存击穿', 'cache breakdown', '缓存雪崩', 'cache avalanche',
+            '缓存过期', 'cache expire', 'TTL', '缓存一致性',
+            'cache consistency', 'Cache-Aside', 'Read-Through', 'Write-Behind',
+            '布隆过滤器', 'bloom filter', '空值缓存', 'null cache',
+        ]
+        has_cache_req = any(kw in prd_text for kw in cache_keywords)
+        if not has_cache_req:
+            return checks
+
+        # 收集现有缓存实现
+        has_redis_impl = any(
+            'redis' in str(c).lower() or 'cache' in str(c).lower()
+            for c in getattr(ir, 'configs', [])
+        )
+        has_cache_functions = any(
+            'cache' in str(f).lower() or 'redis' in str(f).lower() or
+            'GetCache' in str(f) or 'SetCache' in str(f) or
+            '缓存' in str(f)
+            for f in getattr(ir, 'functions', [])
+        )
+        has_bloom_filter = any(
+            'bloom' in str(f).lower() or '布隆' in str(f)
+            for f in getattr(ir, 'functions', [])
+        )
+
+        # 1. 缓存穿透检测
+        penetration_keywords = ['不存在', 'not exist', '空值', 'null value', '缓存穿透', 'cache penetration']
+        has_penetration_risk = any(kw in prd_text for kw in penetration_keywords)
+        if has_penetration_risk and not has_bloom_filter:
+            checks.append({
+                'rule': 'cache_penetration_risk',
+                'severity': 'high',
+                'description': 'PRD 涉及不存在数据的查询场景，但未发现布隆过滤器或空值缓存实现',
+                'suggestion': '使用布隆过滤器拦截无效请求，或对不存在的数据缓存空值（短 TTL）防止穿透',
+            })
+
+        # 2. 缓存击穿检测
+        hot_key_keywords = ['热点', 'hot', '大V', '爆款', '秒杀', 'flash sale', '高并发读取']
+        has_hot_key = any(kw in prd_text for kw in hot_key_keywords)
+        if has_hot_key and not has_cache_functions:
+            checks.append({
+                'rule': 'cache_breakdown_risk',
+                'severity': 'high',
+                'description': 'PRD 涉及热点数据场景，但未发现缓存实现，存在缓存击穿风险',
+                'suggestion': '热点 key 设置互斥锁重建缓存，或使用逻辑过期 + 后台异步更新',
+            })
+
+        # 3. 缓存雪崩检测
+        avalanche_keywords = ['批量过期', '同时过期', '大量过期', 'cache avalanche', '统一过期']
+        has_avalanche_risk = any(kw in prd_text for kw in avalanche_keywords)
+        if has_avalanche_risk:
+            has_random_ttl = any(
+                'random' in str(f).lower() or 'jitter' in str(f).lower() or
+                '随机' in str(f) or '抖动' in str(f)
+                for f in getattr(ir, 'functions', [])
+            )
+            if not has_random_ttl:
+                checks.append({
+                    'rule': 'cache_avalanche_risk',
+                    'severity': 'high',
+                    'description': 'PRD 涉及大量缓存过期场景，但未发现 TTL 随机化策略',
+                    'suggestion': '为缓存 key 添加随机 TTL 偏移（如 base_ttl ± random(0, 300s)），避免集中过期',
+                })
+
+        # 4. 缓存一致性策略
+        consistency_keywords = ['一致性', 'consistency', '双写', 'double write', '先删后更', '延迟双删']
+        has_consistency_req = any(kw in prd_text for kw in consistency_keywords)
+        if has_consistency_req and not has_cache_functions:
+            checks.append({
+                'rule': 'cache_consistency_strategy_missing',
+                'severity': 'medium',
+                'description': 'PRD 要求缓存一致性但未发现缓存实现和一致性策略',
+                'suggestion': '推荐 Cache-Aside 模式：先更新 DB 再删除缓存；或使用 Canal 监听 binlog 异步失效',
+            })
+
+        return checks
+    
+    def _check_backup_recovery_strategy(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """数据备份与恢复策略检查。
+        
+        检查项：
+        1. PRD 涉及重要数据但未发现备份策略
+        2. 缺少 PITR（Point-in-Time Recovery）配置
+        3. 无灾难恢复计划
+        4. 数据归档/冷存储策略缺失
+        """
+        checks = []
+        
+        backup_keywords = [
+            '备份', 'backup', '恢复', 'recovery', 'PITR',
+            '灾备', 'disaster recovery', '快照', 'snapshot',
+            '归档', 'archive', '冷存储', 'cold storage',
+            '数据保留', 'data retention', '备份策略',
+            '定期备份', 'daily backup', 'weekly backup',
+        ]
+        has_backup_req = any(kw in prd_text for kw in backup_keywords)
+        
+        if not has_backup_req:
+            return checks
+        
+        # 检查是否有备份相关配置
+        has_backup_config = any(
+            'backup' in str(c).lower() or 'snapshot' in str(c).lower() or
+            'retention' in str(c).lower() or 'cron' in str(c).lower()
+            for c in getattr(ir, 'configs', [])
+        )
+        
+        # 检查是否有备份相关函数
+        has_backup_funcs = any(
+            'backup' in str(f).lower() or 'restore' in str(f).lower() or
+            'snapshot' in str(f).lower() or 'archive' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        
+        if not (has_backup_config or has_backup_funcs):
+            checks.append({
+                'rule': 'no_backup_strategy',
+                'severity': 'high',
+                'description': 'PRD 涉及数据备份/恢复需求，但代码中未发现备份策略实现',
+                'suggestion': '必须配置：1) 每日全量备份 + 实时 WAL 归档 2) PITR 配置 3) 定期恢复演练 4) 异地容灾',
+            })
+        
+        return checks
+    
+    def _check_config_management(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """配置管理检查 — 检测配置相关风险。
+        
+        检查项：
+        1. 硬编码配置 vs 外部化配置
+        2. 敏感信息是否加密存储
+        3. 配置版本管理
+        4. 配置热更新能力
+        """
+        checks = []
+        
+        config_keywords = [
+            '配置', 'config', 'setting', '环境变量', 'env',
+            '密钥', 'secret', 'api_key', 'token', '密码', 'password',
+            '动态配置', 'hot reload', '配置中心', 'nacos', 'consul',
+            'apollo', 'etcd', 'vault',
+        ]
+        has_config_req = any(kw in prd_text for kw in config_keywords)
+        
+        if not has_config_req:
+            return checks
+        
+        # 检查是否有配置管理实现
+        has_config_mgmt = any(
+            'config' in str(f).lower() or 'setting' in str(f).lower() or
+            'env' in str(f).lower() or 'secret' in str(f).lower() or
+            'vault' in str(f).lower() or 'nacos' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        
+        # 检查是否有敏感信息硬编码风险
+        hardcoded_secrets = []
+        for imp in getattr(ir, 'imports', []):
+            imp_str = str(imp).lower()
+            if any(kw in imp_str for kw in ['dotenv', 'viper', 'conf', 'config']):
+                has_config_mgmt = True
+                break
+        
+        if not has_config_mgmt:
+            checks.append({
+                'rule': 'no_config_management',
+                'severity': 'medium',
+                'description': 'PRD 涉及配置管理但代码中未发现外部化配置实现',
+                'suggestion': '建议：1) 使用配置文件/YAML 替代硬编码 2) 敏感信息使用 Vault/KMS 管理 3) 支持配置热更新',
+            })
+        
+        return checks
+    
+    def _check_multi_tenant_isolation(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """多租户隔离检查。
+        
+        检查项：
+        1. PRD 涉及多租户但未发现 tenant_id 隔离
+        2. 数据泄露风险（跨租户查询）
+        3. 资源隔离策略
+        """
+        checks = []
+        
+        tenant_keywords = [
+            '多租户', 'multi-tenant', 'tenant', '租户',
+            '隔离', 'isolation', 'SaaS', '企业版', 'team',
+            '组织', 'organization', 'workspace', 'account_id',
+        ]
+        has_tenant_req = any(kw in prd_text for kw in tenant_keywords)
+        
+        if not has_tenant_req:
+            return checks
+        
+        # 检查是否有租户隔离实现
+        has_tenant_impl = any(
+            'tenant' in str(f).lower() or 'tenant_id' in str(f).lower() or
+            'account_id' in str(f).lower() or 'organization' in str(f).lower() or
+            'workspace' in str(f).lower()
+            for f in getattr(ir, 'functions', [])
+        )
+        
+        # 检查是否有中间件级别的租户隔离
+        has_middleware_tenant = any(
+            'tenant' in str(m.get('middleware', '')).lower() or
+            'tenant' in str(m.get('logic', '')).lower()
+            for m in getattr(ir, 'auth_models', []) if isinstance(m, dict)
+        )
+        
+        if not (has_tenant_impl or has_middleware_tenant):
+            checks.append({
+                'rule': 'no_tenant_isolation',
+                'severity': 'critical',
+                'description': 'PRD 涉及多租户场景但代码中未发现租户隔离实现，存在数据泄露风险',
+                'suggestion': '必须实现：1) 所有查询自动附加 tenant_id 过滤 2) 中间件级别租户隔离 3) 跨租户访问拦截',
+            })
+        
+        return checks
+
+    def _assess_performance_risk(self, ir: IRDocument, prd_text: str, profile_data: dict) -> List[Dict]:
+        """性能风险评估 — 增强版，新增 N+1 查询、慢查询(OOM)、大批量导出风险检测"""
+        checks = []
+
+        # 1. 高并发场景检查
+        perf_keywords = ['高并发', '大量', '批量', 'QPS', 'performance', 'throughput',
+                        '百万', '千万', '亿', 'massive', 'high concurrency']
+        has_perf_req = any(kw in prd_text for kw in perf_keywords)
+
+        if has_perf_req:
+            has_cache = any('redis' in str(s).lower() or 'cache' in str(s).lower()
+                          for s in getattr(ir, 'structs', []))
+            if not has_cache:
+                checks.append({
+                    'rule': 'no_cache_strategy',
+                    'severity': 'high',
+                    'description': 'PRD 提到性能相关需求但代码中未发现缓存策略',
+                    'suggestion': '建议引入 Redis 缓存，考虑缓存穿透/击穿/雪崩防护',
+                })
+
+            has_async = any('async' in str(f).lower() or 'goroutine' in str(f).lower() or
+                          'mq' in str(f).lower() or 'kafka' in str(f).lower() or
+                          'rabbitmq' in str(f).lower()
+                          for f in getattr(ir, 'functions', []))
+            if not has_async:
+                checks.append({
+                    'rule': 'no_async_processing',
+                    'severity': 'medium',
+                    'description': '高并发场景未发现有异步处理机制',
+                    'suggestion': '建议引入消息队列（Kafka/RabbitMQ）进行异步解耦',
+                })
+
+        # 2. 大数据量检查
+        big_data_keywords = ['大数据', '分页', 'page', 'pagination', '导出', 'export', '下载', 'download']
+        has_big_data = any(kw in prd_text for kw in big_data_keywords)
+
+        if has_big_data:
+            has_pagination = any('page' in str(f).lower() or 'limit' in str(f).lower() or
+                               'offset' in str(f).lower()
+                               for f in getattr(ir, 'functions', []))
+            if not has_pagination:
+                checks.append({
+                    'rule': 'no_pagination_check',
+                    'severity': 'medium',
+                    'description': '大数据量场景未发现有分页查询实现',
+                    'suggestion': '确保所有列表接口都有分页限制，防止 OOM',
+                })
+
+        # 3. 外部依赖超时/重试/熔断检查
+        external_dep_keywords = ['外部', 'third', 'external', 'API', 'RPC', 'gRPC', 'timeout', '超时', '重试', 'retry', '熔断', 'circuit breaker']
+        has_external_deps = any(kw in prd_text for kw in external_dep_keywords)
+
+        if has_external_deps:
+            has_timeout_config = any('timeout' in str(c).lower() or 'Timeout' in str(c).lower()
+                                    for c in getattr(ir, 'configs', []))
+            if not has_timeout_config:
+                checks.append({
+                    'rule': 'no_timeout_config',
+                    'severity': 'high',
+                    'description': 'PRD 涉及外部依赖调用但未发现超时配置',
+                    'suggestion': '必须设置合理的超时时间（建议 3-5s），并配置重试和熔断',
+                })
+
+        # ── 新增：N+1 查询风险检测 ──────────────────────────────
+        n_plus_1_keywords = [
+            'N+1', 'n+1', '批量查询', '循环查询', 'for 循环查库',
+            '逐条查询', 'iterate query', 'loop query', '批量加载',
+            '关联查询', 'join 查询', '懒加载', 'lazy load',
+            '预加载', 'eager load', 'include', 'preload',
+        ]
+        has_n_plus_1_risk = any(kw in prd_text for kw in n_plus_1_keywords)
+
+        if has_n_plus_1_risk:
+            # 检查是否有批量查询/预加载实现
+            has_batch_query = any(
+                'batch' in str(f).lower() or 'preload' in str(f).lower() or
+                'include' in str(f).lower() or 'eager' in str(f).lower() or
+                'joins' in str(f).lower() or 'all_at_once' in str(f).lower() or
+                '批量' in str(f) or 'in (' in str(f)  # SQL IN 批量查询常见模式
+                for f in getattr(ir, 'functions', [])
+            )
+            if not has_batch_query:
+                checks.append({
+                    'rule': 'n_plus_1_query_risk',
+                    'severity': 'high',
+                    'description': 'PRD 涉及批量/关联查询场景，但未发现批量查询或预加载实现，存在 N+1 查询风险',
+                    'suggestion': '使用 JOIN 预加载、IN 批量查询或 Eager Load 替代循环逐条查询，减少 DB 连接次数',
+                })
+
+        # ── 新增：慢查询风险（无索引 JOIN）检测 ───────────────────
+        slow_query_keywords = [
+            'JOIN', 'join', '关联表', '多表关联', '连表查询',
+            '关联查询', '关联操作', 'table join', 'foreign key',
+            '外键关联', '子查询', 'subquery', '嵌套查询',
+        ]
+        has_join_req = any(kw in prd_text for kw in slow_query_keywords)
+
+        if has_join_req:
+            # 检查是否有索引定义
+            has_index_def = any(
+                'index' in str(s).lower() or 'unique' in str(s).lower() or
+                'idx_' in str(s).lower() or '联合索引' in str(s) or
+                '复合索引' in str(s) or '索引设计' in str(s)
+                for s in getattr(ir, 'structs', [])
+            )
+            # 也检查 imports 中是否有 gorm tag 索引
+            has_gorm_index = any(
+                'index' in str(i).lower() or 'gorm' in str(i).lower()
+                for i in getattr(ir, 'imports', [])
+            )
+
+            if not (has_index_def or has_gorm_index):
+                checks.append({
+                    'rule': 'slow_query_no_index',
+                    'severity': 'high',
+                    'description': 'PRD 涉及多表 JOIN/关联查询，但代码中未发现索引定义，存在慢查询风险',
+                    'suggestion': 'JOIN 关联字段必须有索引覆盖；多条件查询建议建立联合索引；避免大表无索引 JOIN',
+                })
+
+        # ── 新增：内存溢出风险（大批量导出无分页）检测 ─────────────
+        oom_export_keywords = [
+            '大批量', '全量导出', '全部导出', '全量下载',
+            '全量同步', 'full export', 'full download',
+            '全量拉取', '全量同步', '全量导入',
+            '全量数据', '全表扫描', '全量备份',
+            '全量迁移', '全量对比', '全量更新',
+            '一次性导出', '全部数据', '全部记录',
+        ]
+        has_oom_risk = any(kw in prd_text for kw in oom_export_keywords)
+
+        if has_oom_risk:
+            # 检查是否有流式导出/分批处理实现
+            has_streaming = any(
+                'stream' in str(f).lower() or 'chunk' in str(f).lower() or
+                '分批' in str(f) or '批量' in str(f) or
+                'cursor' in str(f).lower() or 'iterator' in str(f).lower() or
+                'page_size' in str(f).lower() or 'batch_size' in str(f).lower()
+                for f in getattr(ir, 'functions', [])
+            )
+            if not has_streaming:
+                checks.append({
+                    'rule': 'oom_bulk_export_risk',
+                    'severity': 'critical',
+                    'description': 'PRD 涉及全量/大批量数据导出或同步，但未发现流式处理或分批机制，存在 OOM 风险',
+                    'suggestion': '使用游标/Cursor 分批读取 + 流式写入；单次处理上限建议 1000-5000 条；内存中保持最小数据集',
+                })
+
+        # 4. 数据库索引检查
+        db_keywords = ['索引', 'index', 'unique', '联合索引', '复合索引']
+        has_index_req = any(kw in prd_text for kw in db_keywords)
+        if has_index_req:
+            checks.append({
+                'rule': 'index_consideration',
+                'severity': 'medium',
+                'description': 'PRD 涉及索引设计',
+                'suggestion': '索引设计需考虑查询模式，避免过多索引影响写入性能',
+            })
+
+        return checks
+
     def _build_review_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, cache_dir: str = None) -> str:
         """构建 PRD 审查 prompt — 注入完整 IR 数据
         
@@ -1504,19 +2378,9 @@ class ReviewEngine(EngineBase):
         prompt_parts.append("4. **风险评估** — 实现难度、依赖风险、兼容性风险")
         prompt_parts.append("")
         
-        # 代码库全量摘要
+        # 代码库全量摘要 — 使用 base_engine 共享方法（避免重复）
         prompt_parts.append("## 代码库全量摘要")
-        prompt_parts.append(f"- **业务域**: {self.business_domain}")
-        prompt_parts.append(f"- **仓库**: {', '.join(r['name'] for r in self.repos)}")
-        prompt_parts.append(f"- **语言**: {ir.language}")
-        prompt_parts.append(f"- **Structs**: {len(ir.structs)}")
-        prompt_parts.append(f"- **Functions**: {len(ir.functions)}")
-        prompt_parts.append(f"- **Routes**: {len(ir.routes)}")
-        prompt_parts.append(f"- **Entity Tables**: {len(ir.entity_tables)}")
-        prompt_parts.append(f"- **SQL Operations**: {len(ir.sql_operations)}")
-        prompt_parts.append(f"- **Error Codes**: {len(ir.error_codes)}")
-        prompt_parts.append(f"- **Auth Models**: {len(ir.auth_models)}")
-        prompt_parts.append(f"- **Test Coverage**: {ir.coverage_report.get('coverage_pct', 0)}%")
+        prompt_parts.extend(self._build_ir_summary(ir))
         prompt_parts.append("")
         
         # 使用 base_engine 共享方法生成标准 IR 章节
@@ -1539,12 +2403,6 @@ class ReviewEngine(EngineBase):
                 for field, details in sm.get("Status", {}).items():
                     if isinstance(details, dict) and "values" in details:
                         prompt_parts.append(f"  {field}: {details['values']}")
-            prompt_parts.append("")
-
-        if profile_data.get("business_rules"):
-            prompt_parts.append("## 业务规则（从 profile 配置）")
-            for cat, rules in profile_data["business_rules"].items():
-                prompt_parts.append(f"- **{cat}**: {rules[:5]}")
             prompt_parts.append("")
 
         if profile_data.get("service_topology"):
@@ -1575,52 +2433,13 @@ class ReviewEngine(EngineBase):
 
         prompt_parts.append(self._build_test_coverage_section(ir))
         
-        # 证据查询结果（按类型加权排序：function/route > struct > business_logic > schema）
+        # 证据查询结果（使用 base_engine 共享格式化方法）
         if filtered.get('evidence'):
             prompt_parts.append("## 代码库证据（基于 PRD 关键词查询，按相关度加权）")
             prompt_parts.append("")
             prompt_parts.append("**权重规则**: function/route = 1.5x | struct = 1.2x | entity_table = 1.0x | business_logic = 0.8x")
-            
-            # 计算加权分数
-            weighted_evidence = []
-            for item in filtered.get('evidence', [])[:25]:
-                item_type = item.get('type', '')
-                raw_score = item.get('score', 0)
-                
-                # 类型权重
-                type_weights = {
-                    'function': 1.5,
-                    'route': 1.5,
-                    'struct': 1.2,
-                    'entity_table': 1.0,
-                    'business_logic': 0.8,
-                    'api': 1.3,
-                    'schema': 0.7,
-                }
-                weight = type_weights.get(item_type, 1.0)
-                weighted_score = raw_score * weight
-                
-                weighted_evidence.append({
-                    **item,
-                    'weighted_score': weighted_score,
-                    'type_weight': weight,
-                })
-            
-            # 按加权分数排序
-            weighted_evidence.sort(key=lambda x: x['weighted_score'], reverse=True)
-            
-            # 展示 Top 20
-            for i, item in enumerate(weighted_evidence[:20], 1):
-                title = item.get('title', item.get('path', 'unknown'))
-                score = item.get('score', 0)
-                weighted = item.get('weighted_score', 0)
-                content_text = item.get('content', item.get('text', ''))
-                item_type = item.get('type', '?')
-                prompt_parts.append(f"- **证据{i}** [type={item_type}] (raw={score:.3f}, weighted={weighted:.3f}): {title}")
-                if content_text:
-                    ct = content_text[:200].replace('\n', '\\n')
-                    prompt_parts.append(f"  ```\\n  {ct}\\n  ```")
             prompt_parts.append("")
+            prompt_parts.extend(self._format_weighted_evidence(filtered.get('evidence', []), top_n=20))
         
         # 预检查结果（从 _run_prechecks + _validate_business_rules 自动检测）
         if filtered.get('prechecks'):
@@ -1658,117 +2477,84 @@ class ReviewEngine(EngineBase):
                     prompt_parts.append(f"- **{rule_name}**: {msg}")
             prompt_parts.append("")
         
-        # 业务卡片（从 business_cards.json 加载）
-        # 从 kb_dir 找 business_cards.json
-        bc_file = None
-        if self.kb_dir:
-            candidate = Path(self.kb_dir) / "business_cards.json"
-            if candidate.exists():
-                bc_file = candidate
-        if not bc_file and cache_dir:
-            candidate = Path(cache_dir) / "business_cards.json"
-            if candidate.exists():
-                bc_file = candidate
-        if bc_file and bc_file.exists():
-            try:
-                with open(bc_file) as f:
-                    bc_data = json.load(f)
-                
-                prompt_parts.append("## 业务知识卡片（从代码自动提取）")
+        # 注入业务知识卡片（使用 base_engine._load_business_cards()）
+        bc_data = self._load_business_cards(cache_dir)
+        if bc_data:
+            prompt_parts.append("## 业务知识卡片（从代码自动提取）")
+            prompt_parts.append("")
+            
+            # 场景卡
+            scenarios = bc_data.get('scenario_cards', [])
+            if scenarios:
+                prompt_parts.append(f"### 业务场景（共{len(scenarios)}个）")
+                for sc in scenarios[:10]:
+                    prompt_parts.append(f"- **{sc['scenario']}**: {sc['entry_point']}")
+                    prompt_parts.append(f"  - 描述: {sc.get('description', '')[:200]}")
+                    if sc.get('call_chain'):
+                        prompt_parts.append(f"  - 调用链: {', '.join(sc['call_chain'][:5])}")
+                    if sc.get('data_points'):
+                        prompt_parts.append(f"  - 数据流: {', '.join(sc['data_points'][:3])}")
                 prompt_parts.append("")
-                
-                # 场景卡
-                scenarios = bc_data.get('scenario_cards', [])
-                if scenarios:
-                    prompt_parts.append(f"### 业务场景（共{len(scenarios)}个）")
-                    for sc in scenarios[:10]:
-                        prompt_parts.append(f"- **{sc['scenario']}**: {sc['entry_point']}")
-                        prompt_parts.append(f"  - 描述: {sc.get('description', '')[:200]}")
-                        if sc.get('call_chain'):
-                            prompt_parts.append(f"  - 调用链: {', '.join(sc['call_chain'][:5])}")
-                        if sc.get('data_points'):
-                            prompt_parts.append(f"  - 数据流: {', '.join(sc['data_points'][:3])}")
-                    prompt_parts.append("")
-                
-                # 实体关系
-                entities = bc_data.get('entity_relationships', [])
-                if entities:
-                    prompt_parts.append(f"### 实体关系（共{len(entities)}个）")
-                    for er in entities[:10]:
-                        prompt_parts.append(f"- `{er['entity']}` → `{er['table']}`")
-                    prompt_parts.append("")
-                
-                # 错误分类
-                errors = bc_data.get('error_categories', {})
-                if errors:
-                    prompt_parts.append("### 错误码分类")
-                    for cat, errs in errors.items():
-                        prompt_parts.append(f"- **{cat}**: {len(errs)} 个错误码")
-                        for e in errs[:3]:
-                            prompt_parts.append(f"  - `{e.get('name', '')}`: {e.get('message', '')}")
-                    prompt_parts.append("")
-                
-                # 鉴权模型
-                auths = bc_data.get('auth_models', [])
-                if auths:
-                    prompt_parts.append("### 鉴权模型")
-                    for am in auths:
-                        prompt_parts.append(f"- **{am.get('middleware', '')}**: {am.get('logic', '')}")
-                    prompt_parts.append("")
-            except Exception as e:
-                prompt_parts.append(f"⚠️  Failed to load business_cards.json: {e}")
+            
+            # 实体关系
+            entities = bc_data.get('entity_relationships', [])
+            if entities:
+                prompt_parts.append(f"### 实体关系（共{len(entities)}个）")
+                for er in entities[:10]:
+                    prompt_parts.append(f"- `{er['entity']}` → `{er['table']}`")
                 prompt_parts.append("")
+            
+            # 错误分类
+            errors = bc_data.get('error_categories', {})
+            if errors:
+                prompt_parts.append("### 错误码分类")
+                for cat, errs in errors.items():
+                    prompt_parts.append(f"- **{cat}**: {len(errs)} 个错误码")
+                    for e in errs[:3]:
+                        prompt_parts.append(f"  - `{e.get('name', '')}`: {e.get('message', '')}")
+                prompt_parts.append("")
+            
+            # 鉴权模型
+            auths = bc_data.get('auth_models', [])
+            if auths:
+                prompt_parts.append("### 鉴权模型")
+                for am in auths:
+                    prompt_parts.append(f"- **{am.get('middleware', '')}**: {am.get('logic', '')}")
+                prompt_parts.append("")
+
+        # ── Profile-driven business rules injection (enhancement) ──
+        profile_data = self._normalize_profile(self.profile)
+        if profile_data.get("business_rules"):
+            prompt_parts.append("## 业务规则约束（从 profile 配置，PRD 必须遵守）")
+            for category, rules in profile_data["business_rules"].items():
+                if isinstance(rules, list):
+                    for rule in rules[:5]:
+                        prompt_parts.append(f"- **{category}**: {rule}")
+                elif isinstance(rules, dict):
+                    for key, val in list(rules.items())[:5]:
+                        prompt_parts.append(f"- **{category}.{key}**: {val}")
+                else:
+                    prompt_parts.append(f"- **{category}**: {rules}")
+            prompt_parts.append("")
+            prompt_parts.append("**注意**: 以上规则为硬性约束。如果 PRD 违反任何一条，标记为 P0。")
+            prompt_parts.append("")
 
         # PRD 内容
         prompt_parts.append("## PRD 内容")
         prompt_parts.append(prd_text)
         prompt_parts.append("")
         
-        # 资深工程师思维
-        prompt_parts.append("## 资深工程师思维（必读）")
-        prompt_parts.append("")
-        prompt_parts.append("你是一位拥有 10 年经验的资深广告技术架构师。在审查 PRD 时，请按以下思维框架思考：")
-        prompt_parts.append("")
-        prompt_parts.append("### 1. 先看全局，再看局部")
-        prompt_parts.append("- 先理解整个系统的架构（看包结构、路由、调用链）")
-        prompt_parts.append("- 再看 PRD 提到的功能在系统中的位置")
-        prompt_parts.append("- 最后判断是否合理")
-        prompt_parts.append("")
-        prompt_parts.append("### 2. 数据流向优先")
-        prompt_parts.append("- 用户请求 → API → Service → DAO → DB")
-        prompt_parts.append("- 每个环节都要考虑：数据从哪里来？到哪里去？")
-        prompt_parts.append("- 特别注意：缓存、消息队列、外部 API")
-        prompt_parts.append("")
-        prompt_parts.append("### 3. 异常处理比正常流程更重要")
-        prompt_parts.append("- 正常流程 10 分钟能写完，异常处理要 10 小时")
-        prompt_parts.append("- 必查：网络超时、数据校验失败、权限不足、并发冲突")
-        prompt_parts.append("- 必查：幂等性、重试策略、降级方案")
-        prompt_parts.append("")
-        prompt_parts.append("### 4. 性能意识")
-        prompt_parts.append("- 高并发场景：QPS 多少？现有架构能撑住吗？")
-        prompt_parts.append("- 大数据量：分页查询会不会 OOM？")
-        prompt_parts.append("- 外部依赖：第三方 API 超时怎么处理？")
-        prompt_parts.append("")
-        prompt_parts.append("### 5. 向后兼容")
-        prompt_parts.append("- 新功能不能破坏旧功能")
-        prompt_parts.append("- 旧接口不能突然下线")
-        prompt_parts.append("- 数据库变更要考虑数据迁移")
-        prompt_parts.append("")
-        prompt_parts.append("### 6. 安全底线")
-        prompt_parts.append("- SQL 注入、XSS、越权访问")
-        prompt_parts.append("- 敏感数据加密存储")
-        prompt_parts.append("- 接口鉴权是否到位？")
-        prompt_parts.append("")
-        prompt_parts.append("### 7. 可观测性")
-        prompt_parts.append("- 新功能要有日志、监控、告警")
-        prompt_parts.append("- 关键操作要有审计日志")
-        prompt_parts.append("- 出问题能快速定位吗？")
-        prompt_parts.append("")
-        prompt_parts.append("### 8. 看真实排障案例（从知识库）")
-        prompt_parts.append("- 不要空想，要看别人踩过的坑")
-        prompt_parts.append("- 比如：Redis 内存溢出 → 大 Key 拆分、淘汰策略")
-        prompt_parts.append("- 比如：MySQL 慢查询 → 索引优化、SQL 改写")
-        prompt_parts.append("- 比如：Kafka 消息堆积 → 消费者扩容、批处理")
+        # 资深工程师思维 — 压缩为要点式提示（原 ~46 行 → ~15 行）
+        # 与下方审查维度合并，消除重复
+        prompt_parts.append("## 审查思维框架")
+        prompt_parts.append("- **全局优先**: 先理解系统架构 → 定位 PRD 功能位置 → 判断合理性")
+        prompt_parts.append("- **数据流优先**: 用户请求 → API → Service → DAO → DB，每层检查数据来源和去向")
+        prompt_parts.append("- **异常 > 正常**: 必查网络超时/校验失败/权限不足/并发冲突/幂等性/重试/降级")
+        prompt_parts.append("- **性能意识**: QPS 预估、数据库压力（索引/N+1）、缓存策略、外部依赖超时处理")
+        prompt_parts.append("- **向后兼容**: 不破坏旧功能、不突然下线旧接口、DDL 变更考虑迁移")
+        prompt_parts.append("- **安全底线**: SQL 注入/XSS/越权/敏感数据加密/接口鉴权")
+        prompt_parts.append("- **可观测性**: 结构化日志(traceId)/Prometheus 指标/健康检查/告警规则")
+        prompt_parts.append("- **参考排障案例**: Redis 大 Key → 拆分淘汰；MySQL 慢查询 → 索引优化；Kafka 堆积 → 消费者扩容")
         prompt_parts.append("")
         # 判断 PRD 类型：新功能 vs 现有功能增强
         is_new_feature = True
@@ -1779,36 +2565,13 @@ class ReviewEngine(EngineBase):
                 existing_features.append(route.get('path', ''))
         
         if is_new_feature:
-            prompt_parts.append("## 新功能架构设计（从零开始）")
-            prompt_parts.append("")
-            prompt_parts.append("PRD 描述的是一个全新的功能，现有代码中没有对应的实现。请按以下架构设计原则思考：")
-            prompt_parts.append("")
-            prompt_parts.append("### 1. 模块划分")
-            prompt_parts.append("- **新增模块**: 需要新建哪些模块？（如：handler/service/dao）")
-            prompt_parts.append("- **依赖关系**: 新模块依赖哪些现有模块？")
-            prompt_parts.append("- **职责分离**: 每个模块的职责是什么？")
-            prompt_parts.append("")
-            prompt_parts.append("### 2. 数据模型")
-            prompt_parts.append("- **新增表**: 需要新建哪些数据库表？")
-            prompt_parts.append("- **字段设计**: 每个表的字段定义（类型/约束/索引）")
-            prompt_parts.append("- **关联关系**: 表之间的关联关系（一对多/多对多）")
-            prompt_parts.append("")
-            prompt_parts.append("### 3. 接口设计")
-            prompt_parts.append("- **RESTful API**: 需要新建哪些 HTTP 接口？")
-            prompt_parts.append("- **Request/Response**: 每个接口的请求/响应结构")
-            prompt_parts.append("- **错误码**: 需要定义哪些错误码？")
-            prompt_parts.append("")
-            prompt_parts.append("### 4. 业务流程")
-            prompt_parts.append("- **主流程**: 核心业务流程的步骤")
-            prompt_parts.append("- **异常处理**: 各种异常情况的处理策略")
-            prompt_parts.append("- **幂等性**: 接口是否需要幂等设计？")
-            prompt_parts.append("- **事务**: 哪些操作需要事务保证？")
-            prompt_parts.append("")
-            prompt_parts.append("### 5. 性能与安全")
-            prompt_parts.append("- **缓存策略**: 哪些数据需要缓存？缓存多久？")
-            prompt_parts.append("- **限流策略**: 接口是否需要限流？")
-            prompt_parts.append("- **鉴权**: 接口需要什么权限？")
-            prompt_parts.append("- **数据加密**: 敏感数据是否需要加密？")
+            prompt_parts.append("## 新功能架构设计原则")
+            prompt_parts.append("PRD 描述全新功能，现有代码无对应实现。设计时请考虑：")
+            prompt_parts.append("- **模块**: handler/service/dao 分层，新模块依赖哪些现有模块？")
+            prompt_parts.append("- **数据模型**: 新增表 + 字段定义 + 索引 + 关联关系")
+            prompt_parts.append("- **接口**: RESTful API 路径 + Request/Response struct + 错误码")
+            prompt_parts.append("- **流程**: 主流程步骤 + 异常处理 + 幂等性 + 事务边界")
+            prompt_parts.append("- **非功能**: 缓存策略、限流、鉴权、敏感数据加密")
             prompt_parts.append("")
         else:
             prompt_parts.append("## 功能增强审查")
@@ -1818,67 +2581,10 @@ class ReviewEngine(EngineBase):
             prompt_parts.append("- **兼容性**: 新功能是否与现有接口兼容？")
             prompt_parts.append("- **扩展性**: 现有架构是否支持新功能的扩展？")
             prompt_parts.append("")
-        prompt_parts.append("## 审查规则")
+        # 统一审查规则 + 输出格式 — 合并重复 section，消除冗余
+        prompt_parts.append("## 审查任务与输出格式")
         prompt_parts.append("")
-        prompt_parts.append("### 1. 合理性检查")
-        prompt_parts.append("- PRD 描述的功能是否在现有架构范围内？是否需要新增模块？")
-        prompt_parts.append("- PRD 的数据流向是否与现有表结构/服务接口匹配？")
-        prompt_parts.append("- PRD 提到的术语是否在代码库中有对应实体？")
-        prompt_parts.append("- 是否存在与现有业务逻辑冲突的需求？")
-        prompt_parts.append("")
-        prompt_parts.append("### 2. 场景遗漏")
-        prompt_parts.append("- **正向流程**: 是否覆盖了完整的主流程？")
-        prompt_parts.append("- **异常处理**: 是否考虑了网络超时、数据校验失败、权限不足等异常？")
-        prompt_parts.append("- **边界条件**: 是否考虑了空数据、超限数据、并发冲突等边界？")
-        prompt_parts.append("- **权限控制**: 是否明确了操作者的权限要求？")
-        prompt_parts.append("- **数据迁移**: 如果是新功能，旧数据如何处理？")
-        prompt_parts.append("")
-        prompt_parts.append("### 3. 前后一致性")
-        prompt_parts.append("- PRD 内部的术语是否一致？（如：素材 vs 创意 vs asset）")
-        prompt_parts.append("- 流程描述是否前后矛盾？")
-        prompt_parts.append("- 数据流向是否清晰一致？")
-        prompt_parts.append("- 接口定义是否与其他模块兼容？")
-        prompt_parts.append("")
-        prompt_parts.append("### 4. 风险评估")
-        prompt_parts.append("- **实现难度**: 高/中/低，理由是什么？")
-        prompt_parts.append("- **依赖风险**: 是否依赖其他未就绪的服务/模块？")
-        prompt_parts.append("- **兼容性风险**: 是否影响现有功能？是否需要灰度发布？")
-        prompt_parts.append("")
-        
-        # 新增：兼容性检查（从 profile 读取旧接口列表）
-        # 注意：state_machines/business_rules/service_topology 已在上方注入，这里只补充审查规则提示
-        prompt_parts.append("### 5. 兼容性检查（从 profile 配置）")
-        if profile_data.get("business_rules"):
-            prompt_parts.append("- **约束冲突**: PRD 是否违反了已有的业务规则/约束？")
-        if profile_data.get("service_topology"):
-            prompt_parts.append("- **服务依赖**: PRD 涉及的服务是否会影响上下游依赖？")
-        prompt_parts.append("")
-        
-        # 新增：性能风险评估
-        prompt_parts.append("### 6. 性能风险评估")
-        if hasattr(ir, 'perf_hotspots') and ir.perf_hotspots:
-            prompt_parts.append("- **已知性能热点**（从代码分析）:")
-            for hs in ir.perf_hotspots[:5]:
-                prompt_parts.append(f"  - `{hs.get('func', '?')}` @ {hs.get('file', '?')}: {hs.get('reason', 'N/A')}")
-        prompt_parts.append("- **QPS 评估**: PRD 描述的功能预计 QPS 是多少？现有架构能否支撑？")
-        prompt_parts.append("- **数据库压力**: 新增查询是否走了索引？是否有 N+1 查询风险？")
-        prompt_parts.append("- **缓存策略**: 读多写少的场景是否考虑了缓存？缓存失效策略？")
-        prompt_parts.append("- **外部依赖**: 调用的外部 API 是否有超时/重试/熔断策略？")
-        prompt_parts.append("")
-        
-        # 新增：核心业务流程校验
-        if hasattr(ir, 'core_flows') and ir.core_flows:
-            prompt_parts.append("### 7. 核心业务流程校验")
-            prompt_parts.append("- **流程冲突**: PRD 描述的流程是否与现有核心流程冲突？")
-            for cf in ir.core_flows[:5]:
-                flow_name = cf.get('flow_name', '?')
-                data_flow = cf.get('data_flow', '?')
-                prompt_parts.append(f"  - 现有流程 `{flow_name}`: {data_flow}")
-            prompt_parts.append("")
-        
-        # 输出格式
-        prompt_parts.append("## 输出格式")
-        prompt_parts.append("请按以下 Markdown 格式输出审查报告：")
+        prompt_parts.append("请按以下 Markdown 格式输出审查报告。每个 section 同时是**审查规则**和**输出模板**。")
         prompt_parts.append("")
         prompt_parts.append("```markdown")
         prompt_parts.append("# PRD 审查报告")
@@ -1900,61 +2606,119 @@ class ReviewEngine(EngineBase):
         prompt_parts.append("- **[P2]** [标题] 描述 + 建议")
         prompt_parts.append("- 定义：用户体验优化、性能优化建议、文档完善")
         prompt_parts.append("")
-        prompt_parts.append("## 合理性检查")
-        prompt_parts.append("- [问题1] 描述 + 严重性（P0/P1/P2）+ 建议")
-        prompt_parts.append("- ...")
+
+        # --- 合并后的审查维度（规则 + 输出模板合一） ---
+        prompt_parts.append("## 1. 合理性检查")
+        prompt_parts.append("- PRD 描述的功能是否在现有架构范围内？是否需要新增模块？")
+        prompt_parts.append("- PRD 的数据流向是否与现有表结构/服务接口匹配？")
+        prompt_parts.append("- PRD 提到的术语是否在代码库中有对应实体？")
+        prompt_parts.append("- 是否存在与现有业务逻辑冲突的需求？")
         prompt_parts.append("")
-        prompt_parts.append("## 场景遗漏")
-        prompt_parts.append("- [遗漏1] 描述 + 建议补充的流程/异常/边界")
-        prompt_parts.append("- ...")
+        prompt_parts.append("**输出格式**: - [问题1] 描述 + 严重性（P0/P1/P2）+ 建议")
         prompt_parts.append("")
-        prompt_parts.append("## 前后不一致")
-        prompt_parts.append("- [不一致1] 描述 + 建议修正")
-        prompt_parts.append("- ...")
+
+        prompt_parts.append("## 2. 场景遗漏")
+        prompt_parts.append("- **正向流程**: 是否覆盖了完整的主流程？")
+        prompt_parts.append("- **异常处理**: 是否考虑了网络超时、数据校验失败、权限不足等异常？")
+        prompt_parts.append("- **边界条件**: 是否考虑了空数据、超限数据、并发冲突等边界？")
+        prompt_parts.append("- **权限控制**: 是否明确了操作者的权限要求？")
+        prompt_parts.append("- **数据迁移**: 如果是新功能，旧数据如何处理？")
         prompt_parts.append("")
-        prompt_parts.append("## 风险评估")
-        prompt_parts.append("- **实现难度**: 高/中/低 — 理由")
-        prompt_parts.append("- **依赖风险**: 无/低/中/高 — 说明")
-        prompt_parts.append("- **兼容性风险**: 无/低/中/高 — 说明")
+        prompt_parts.append("**输出格式**: - [遗漏1] 描述 + 建议补充的流程/异常/边界")
         prompt_parts.append("")
-        prompt_parts.append("## 兼容性检查")
-        prompt_parts.append("- **业务规则冲突**: [具体规则] — 违反程度 + 建议")
-        prompt_parts.append("- **服务依赖影响**: [服务名] — 影响范围 + 建议")
-        prompt_parts.append("- **旧接口兼容**: 旧接口是否受影响？是否需要 versioning？")
+
+        prompt_parts.append("## 3. 前后一致性")
+        prompt_parts.append("- PRD 内部的术语是否一致？（如：素材 vs 创意 vs asset）")
+        prompt_parts.append("- 流程描述是否前后矛盾？")
+        prompt_parts.append("- 数据流向是否清晰一致？")
+        prompt_parts.append("- 接口定义是否与其他模块兼容？")
         prompt_parts.append("")
-        prompt_parts.append("## 性能风险评估")
-        prompt_parts.append("- **QPS 预估**: [数值] — 现有架构是否支撑？")
-        prompt_parts.append("- **数据库风险**: [索引/N+1/锁竞争] — 说明")
-        prompt_parts.append("- **缓存策略**: [有/无] — 建议")
-        prompt_parts.append("- **外部依赖风险**: [超时/重试/熔断] — 说明")
+        prompt_parts.append("**输出格式**: - [不一致1] 描述 + 建议修正")
         prompt_parts.append("")
-        prompt_parts.append("## 核心流程校验")
-        prompt_parts.append("- **流程冲突**: PRD 流程是否与现有核心流程冲突？")
-        prompt_parts.append("- **数据流冲突**: PRD 数据流向是否与现有架构一致？")
+
+        prompt_parts.append("## 4. 风险评估")
+        prompt_parts.append("- **实现难度**: 高/中/低，理由是什么？")
+        prompt_parts.append("- **依赖风险**: 是否依赖其他未就绪的服务/模块？")
+        prompt_parts.append("- **兼容性风险**: 是否影响现有功能？是否需要灰度发布？")
         prompt_parts.append("")
-        prompt_parts.append("## 安全检查")
-        prompt_parts.append("- **敏感数据保护**: 密码/token/个人信息是否加密存储和脱敏展示？")
-        prompt_parts.append("- **SQL 注入**: 动态查询是否使用参数化查询？")
-        prompt_parts.append("- **越权访问**: 是否实现 RBAC/ABAC 权限控制？")
-        prompt_parts.append("- **XSS/CSRF**: 前端输入是否经过 sanitization？")
+        prompt_parts.append("**输出格式**: - **实现难度**: 高/中/低 — 理由 | **依赖风险**: 无/低/中/高 — 说明 | **兼容性风险**: 无/低/中/高 — 说明")
         prompt_parts.append("")
-        prompt_parts.append("## 可观测性检查")
-        prompt_parts.append("- **结构化日志**: 是否使用 zap/logrus，包含 traceId/userId？")
-        prompt_parts.append("- **Prometheus 指标**: QPS、延迟、错误率是否暴露？")
-        prompt_parts.append("- **健康检查**: /health (liveness) 和 /ready (readiness) 端点是否存在？")
-        prompt_parts.append("- **告警规则**: 关键指标是否有告警阈值配置？")
+
+        # 兼容性检查（从 profile 配置）
+        compat_items = []
+        if profile_data.get("business_rules"):
+            compat_items.append("- **约束冲突**: PRD 是否违反了已有的业务规则/约束？")
+        if profile_data.get("service_topology"):
+            compat_items.append("- **服务依赖**: PRD 涉及的服务是否会影响上下游依赖？")
+        if compat_items:
+            prompt_parts.append("## 5. 兼容性检查")
+            for item in compat_items:
+                prompt_parts.append(item)
+            prompt_parts.append("- **旧接口兼容**: 旧接口是否受影响？是否需要 versioning/deprecation？")
+            prompt_parts.append("")
+            prompt_parts.append("**输出格式**: - **业务规则冲突**: [具体规则] — 违反程度 + 建议 | **服务依赖影响**: [服务名] — 影响范围 + 建议")
+            prompt_parts.append("")
+
+        # 性能风险评估
+        prompt_parts.append("## 6. 性能风险评估")
+        if hasattr(ir, 'perf_hotspots') and ir.perf_hotspots:
+            prompt_parts.append("- **已知性能热点**（从代码分析）:")
+            for hs in ir.perf_hotspots[:5]:
+                prompt_parts.append(f"  - `{hs.get('func', '?')}` @ {hs.get('file', '?')}: {hs.get('reason', 'N/A')}")
+        prompt_parts.append("- **QPS 评估**: PRD 描述的功能预计 QPS 是多少？现有架构能否支撑？")
+        prompt_parts.append("- **数据库压力**: 新增查询是否走了索引？是否有 N+1 查询风险？")
+        prompt_parts.append("- **缓存策略**: 读多写少的场景是否考虑了缓存？缓存失效策略？")
+        prompt_parts.append("- **外部依赖**: 调用的外部 API 是否有超时/重试/熔断策略？")
         prompt_parts.append("")
-        prompt_parts.append("## 数据合规检查")
-        prompt_parts.append("- **个人数据处理**: 是否涉及个人信息？是否有脱敏/加密？")
-        prompt_parts.append("- **数据保留**: 是否定义了数据保留期限？")
-        prompt_parts.append("- **用户权利**: 是否支持用户数据删除/导出？")
-        prompt_parts.append("- **跨境传输**: 是否涉及数据出境？是否需要合规审批？")
+        prompt_parts.append("**输出格式**: - **QPS 预估**: [数值] — 现有架构是否支撑？ | **数据库风险**: [索引/N+1/锁竞争] — 说明 | **缓存策略**: [有/无] — 建议 | **外部依赖风险**: [超时/重试/熔断] — 说明")
         prompt_parts.append("")
-        prompt_parts.append("## 发布策略检查")
-        prompt_parts.append("- **灰度发布**: 高风险变更是否制定了灰度发布方案？")
-        prompt_parts.append("- **Feature Flag**: 是否使用 Feature Flag 控制功能开关？")
-        prompt_parts.append("- **回滚方案**: 是否有明确的回滚步骤和时间窗口？")
+
+        # 核心业务流程校验
+        if hasattr(ir, 'core_flows') and ir.core_flows:
+            prompt_parts.append("## 7. 核心业务流程校验")
+            prompt_parts.append("- **流程冲突**: PRD 描述的流程是否与现有核心流程冲突？")
+            for cf in ir.core_flows[:5]:
+                flow_name = cf.get('flow_name', '?')
+                data_flow = cf.get('data_flow', '?')
+                prompt_parts.append(f"  - 现有流程 `{flow_name}`: {data_flow}")
+            prompt_parts.append("")
+            prompt_parts.append("**输出格式**: - **流程冲突**: PRD 流程是否与现有核心流程冲突？ | **数据流冲突**: PRD 数据流向是否与现有架构一致？")
+            prompt_parts.append("")
+
+        # 安全检查 — 压缩为要点
+        prompt_parts.append("## 8. 安全检查")
+        prompt_parts.append("- **敏感数据**: 密码/token/个人信息是否加密存储和脱敏展示？")
+        prompt_parts.append("- **注入风险**: 动态查询是否参数化？XSS/CSRF 防护？")
+        prompt_parts.append("- **越权**: RBAC/ABAC 中间件是否覆盖？水平/垂直越权检测？")
+        prompt_parts.append("**输出格式**: [P0/P1] 问题 + 建议")
         prompt_parts.append("")
+
+        # 可观测性 — 压缩
+        prompt_parts.append("## 9. 可观测性检查")
+        prompt_parts.append("- **日志**: zap/logrus + traceId/userId + 结构化 JSON")
+        prompt_parts.append("- **指标**: Prometheus QPS/延迟/错误率暴露")
+        prompt_parts.append("- **健康端点**: /health (liveness) + /ready (readiness)")
+        prompt_parts.append("- **告警**: 关键指标是否有阈值配置？")
+        prompt_parts.append("**输出格式**: [P1/P2] 问题 + 建议")
+        prompt_parts.append("")
+
+        # 合并 Schema迁移 + 分布式锁 + 数据一致性 + API变更影响面 → 单一"架构风险" section
+        prompt_parts.append("## 10. 架构与运维风险")
+        prompt_parts.append("- **Schema 迁移**: 涉及 DDL 变更？大表 online DDL？backfill 策略？")
+        prompt_parts.append("- **分布式锁**: 并发场景有锁实现？Redis TTL 合理？")
+        prompt_parts.append("- **数据一致性**: 事务完整？跨服务 MQ/Saga？补偿/重试策略？")
+        prompt_parts.append("- **API 影响面**: 路由变更影响哪些下游？废弃接口有 deprecation 策略？")
+        prompt_parts.append("**输出格式**: [P1/P2] 问题 + 风险等级 + 建议方案")
+        prompt_parts.append("")
+
+        # 合并数据合规 + 发布策略 → 单一"合规与发布" section
+        prompt_parts.append("## 11. 合规与发布策略")
+        prompt_parts.append("- **数据合规**: 个人信息脱敏？保留期限定义？用户删除/导出权？跨境传输审批？")
+        prompt_parts.append("- **灰度发布**: 高风险变更有 Feature Flag + 金丝雀方案？")
+        prompt_parts.append("- **回滚**: 明确回滚步骤和时间窗口？")
+        prompt_parts.append("**输出格式**: [P0/P1] 合规风险 + 发布策略建议")
+        prompt_parts.append("")
+
         prompt_parts.append("## 结论与建议")
         prompt_parts.append("[总结性建议]")
         prompt_parts.append("```")
@@ -1964,92 +2728,94 @@ class ReviewEngine(EngineBase):
         return prompt
 
     def _get_kb_references(self, prd_text: str) -> List[str]:
-        """根据 PRD 内容，从知识库选择相关知识 — 增强版"""
+        """根据 PRD 内容，从知识库选择相关知识 — 通用版。
+
+        策略：
+        1. 从 profile 的 knowledge_base_paths 读取知识库路径列表
+        2. 对每个目录，按关键词匹配子目录（如 bidding/creative/cache 等）
+        3. 读取匹配的 *-deep.md / *.md 文件前 200 行
+        4. 最多注入 3 个知识文件，避免 prompt 过长
+
+        通用原则：不再硬编码广告平台术语，业务差异通过 profile 配置。
+        """
         references = []
-        
-        # 知识库路径 — 优先使用 EngineBase 推断的 kb_dir，回退到默认路径
-        kb_base = None
+
+        # 知识库路径 — 优先使用 EngineBase 推断的 kb_dir，其次 profile，最后默认路径
+        kb_bases = []
         if self.kb_dir:
-            kb_base = Path(self.kb_dir)
-            if not kb_base.exists():
-                kb_base = None
-        if not kb_base:
-            default_kb = Path.home() / 'ryan-personal-knowledge' / 'knowledge'
-            if default_kb.exists():
-                kb_base = default_kb
-        
-        if not kb_base or not kb_base.exists():
+            kb_bases.append(Path(self.kb_dir))
+        profile_data = self.profile.get('profile', self.profile) if isinstance(self.profile, dict) else self.profile
+        kb_paths = profile_data.get('knowledge_base_paths', []) if isinstance(profile_data, dict) else []
+        for p in kb_paths:
+            pp = Path(p)
+            if pp.exists():
+                kb_bases.append(pp)
+        default_kb = Path.home() / 'ryan-personal-knowledge' / 'knowledge'
+        if default_kb.exists() and default_kb not in kb_bases:
+            kb_bases.append(default_kb)
+
+        if not kb_bases:
             return references
-        
-        # PRD 关键词（按权重排序）
-        high_priority = ['竞价', '出价', 'bidding', '竞价引擎', 'CTR', 'CVR', '排序', '召回', '推荐',
-                        '分享', '素材', '创意', 'creative', 'adgroup', '广告组', 'campaign', '通知', 'notify']
-        medium_priority = ['redis', '缓存', 'kafka', '消息队列', 'mysql', '数据库', 'es', 'elasticsearch', '搜索',
-                          '权限', 'permission', 'role', 'acl', '审核', 'review', 'approve', 'reject', '批量', 'batch']
-        low_priority = ['k8s', 'docker', '部署', '架构', '设计', '高并发', '微服务', 'agent', 'AI',
-                       '性能', 'performance', 'qps', 'tps', '延迟', 'latency', '超时', 'timeout', '重试', 'retry']
-        
-        # 精确匹配（高优先级）
-        for kw in high_priority:
-            if kw.lower() in prd_text.lower():
-                kb_dir = 'advertising'
-                kb_path = kb_base / kb_dir
-                if kb_path.exists():
-                    # 读取前 2 个深度文件 + 1 个排障手册（各 150 行）
-                    md_files = sorted(kb_path.rglob('*-deep.md'))[:2]
-                    # 加上广告排障手册
-                    ad_trouble = kb_base / 'advertising' / 'ad-troubleshooting-manual-deep.md'
-                    if ad_trouble.exists():
-                        md_files.append(ad_trouble)
-                    for md_file in md_files:
-                        try:
-                            content = md_file.read_text(encoding='utf-8', errors='ignore')
-                            lines = content.split('\n')[:150]
-                            references.append(f"### {md_file.relative_to(kb_base)}")
-                            references.append('\n'.join(lines))
-                            references.append("")
-                        except Exception:
-                            pass
-                    break  # 只取最高优先级
-        
-        # 中优先级
-        if not references:
-            for kw in medium_priority:
-                if kw.lower() in prd_text.lower():
-                    kb_dir = 'middleware'
-                    kb_path = kb_base / kb_dir
-                    if kb_path.exists():
-                        md_files = sorted(kb_path.rglob('*-deep.md'))[:2]
-                        for md_file in md_files:
-                            try:
-                                content = md_file.read_text(encoding='utf-8', errors='ignore')
-                                lines = content.split('\n')[:150]
-                                references.append(f"### {md_file.relative_to(kb_base)}")
-                                references.append('\n'.join(lines))
-                                references.append("")
-                            except Exception:
-                                pass
-                        break
-        
-        # 低优先级
-        if not references:
-            for kw in low_priority:
-                if kw.lower() in prd_text.lower():
-                    kb_dir = 'architecture'
-                    kb_path = kb_base / kb_dir
-                    if kb_path.exists():
-                        md_files = sorted(kb_path.rglob('*-deep.md'))[:2]
-                        for md_file in md_files:
-                            try:
-                                content = md_file.read_text(encoding='utf-8', errors='ignore')
-                                lines = content.split('\n')[:150]
-                                references.append(f"### {md_file.relative_to(kb_base)}")
-                                references.append('\n'.join(lines))
-                                references.append("")
-                            except Exception:
-                                pass
-                        break
-        
+
+        # 从 profile 读取业务术语映射（用于知识库子目录匹配）
+        business_terms = {}
+        if isinstance(profile_data, dict):
+            business_terms = profile_data.get('business_terms', {})
+            # 也兼容旧格式：synonym_map 中的中文词作为知识库匹配关键词
+            synonym_map = profile_data.get('synonym_map', {})
+            for cn_term, en_terms in synonym_map.items():
+                if isinstance(en_terms, list):
+                    business_terms[cn_term] = en_terms
+
+        prd_lower = prd_text.lower()
+
+        for kb_base in kb_bases:
+            if not kb_base.exists():
+                continue
+
+            # 策略 A：从 profile business_terms 匹配子目录
+            matched_dirs = set()
+            for term, related in business_terms.items():
+                if term.lower() in prd_lower:
+                    # 将 term 和 related 都作为目录名尝试
+                    candidates = [term]
+                    if isinstance(related, list):
+                        candidates.extend(related)
+                    for candidate in candidates:
+                        sub_dir = kb_base / candidate
+                        if sub_dir.exists() and sub_dir.is_dir():
+                            matched_dirs.add(sub_dir)
+
+            # 策略 B：如果没有业务术语配置，扫描所有子目录并做关键词匹配
+            if not matched_dirs:
+                for sub_dir in kb_base.iterdir():
+                    if not sub_dir.is_dir():
+                        continue
+                    # 用子目录名做 fuzzy 匹配
+                    dir_name = sub_dir.name.lower()
+                    if any(kw.lower() in dir_name for kw in prd_lower.split()[:10]):
+                        matched_dirs.add(sub_dir)
+
+            # 读取匹配目录下的深度文件
+            for kb_path in sorted(matched_dirs):
+                md_files = sorted(kb_path.rglob('*-deep.md'))[:2]
+                # 如果没有 *-deep.md，fallback 到任意 .md
+                if not md_files:
+                    md_files = sorted(kb_path.glob('*.md'))[:2]
+                for md_file in md_files:
+                    try:
+                        content = md_file.read_text(encoding='utf-8', errors='ignore')
+                        lines = content.split('\n')[:200]
+                        references.append(f"### {md_file.relative_to(kb_base)}")
+                        references.append('\n'.join(lines))
+                        references.append("")
+                    except Exception:
+                        pass
+
+            # 最多注入 3 个文件，控制 prompt 长度
+            if len(references) >= 3 * 5:  # each file ~5 lines header+content+blank
+                break
+
         return references
 
 
