@@ -54,8 +54,12 @@ class ReviewEngine(EngineBase):
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "review_prompt.md"
-        prompt_file.write_text(prompt, encoding="utf-8")
-        print(f"✅ Prompt saved to: {prompt_file}")
+        try:
+            prompt_file.write_text(prompt, encoding="utf-8")
+            print(f"✅ Prompt saved to: {prompt_file}")
+        except Exception as e:
+            print(f"❌ Failed to save review prompt: {e}")
+            raise
         
         # Step 4: 返回 prompt 路径（LLM 审查后再生成报告）
         return {
@@ -76,7 +80,12 @@ class ReviewEngine(EngineBase):
             审查报告 dict
         """
         report_file = self.output_dir / "review_report.md"
-        report_file.write_text(llm_response, encoding="utf-8")
+        try:
+            report_file.write_text(llm_response, encoding="utf-8")
+            print(f"✅ Report saved to: {report_file}")
+        except Exception as e:
+            print(f"❌ Failed to save review report: {e}")
+            raise
         
         # 解析 LLM 输出，提取结构化数据
         parsed = self._parse_review_report(llm_response)
@@ -91,49 +100,155 @@ class ReviewEngine(EngineBase):
     def _parse_review_report(self, llm_response: str) -> dict:
         """解析 LLM 审查报告，提取结构化数据。
         
-        从 Markdown 格式的审查报告中提取：
-        - P0/P1/P2 问题清单
-        - 总体评价
-        - 各项检查的结论
+        增强功能：
+        - 提取带评分的完整问题清单（含严重性等级、分类、建议）
+        - 计算整体风险分数
+        - 识别建议行动计划
+        
+        Returns:
+            包含结构化审查数据的字典
         """
         result = {
             'overall_status': 'unknown',
             'p0_issues': [],
             'p1_issues': [],
             'p2_issues': [],
+            'all_issues': [],
             'sections': {},
+            'severity_score': 0,
+            'risk_level': 'medium',
+            'category_coverage': {},
+            'recommendations': [],
         }
         
-        # 提取总体评价
+        priority_to_score = {'P0': 3, 'P1': 2, 'P2': 1}
+        
         status_match = re.search(r'(通过|需修订|阻塞|Approved|Needs Revision|Blocked)', llm_response)
         if status_match:
             result['overall_status'] = status_match.group(1)
+        else:
+            result['overall_status'] = 'unknown'
         
-        # 提取 P0 问题
+        def parse_and_categorize(section_text, priority):
+            issues = []
+            for line in section_text.split('\n'):
+                line = line.strip()
+                if not line or not line.startswith('-'):
+                    continue
+                issue_match = re.match(r'-\s*\[?(P\d)\]?.+(.+)', line)
+                if issue_match:
+                    sep_priority = issue_match.group(1)
+                    content = issue_match.group(2).strip()
+                    title = content.split(' ')[0] if ' ' in content else content[:40]
+                    content_lower = content.lower()
+                    category = self._classify_issue_category(content_lower)
+                    issues.append({
+                        'priority': sep_priority,
+                        'score': priority_to_score.get(sep_priority, 1),
+                        'title': title,
+                        'description': content,
+                        'category': category,
+                        'recommendation': self._generate_recommendation(category, sep_priority),
+                    })
+            return issues
+        
         p0_section = self._extract_section(llm_response, 'P0')
         if p0_section:
-            result['p0_issues'] = self._parse_issue_list(p0_section)
+            p0_issues = parse_and_categorize(p0_section, 'P0')
+            result['p0_issues'] = p0_issues
+            result['all_issues'].extend(p0_issues)
         
-        # 提取 P1 问题
         p1_section = self._extract_section(llm_response, 'P1')
         if p1_section:
-            result['p1_issues'] = self._parse_issue_list(p1_section)
+            p1_issues = parse_and_categorize(p1_section, 'P1')
+            result['p1_issues'] = p1_issues
+            result['all_issues'].extend(p1_issues)
         
-        # 提取 P2 问题
         p2_section = self._extract_section(llm_response, 'P2')
         if p2_section:
-            result['p2_issues'] = self._parse_issue_list(p2_section)
+            p2_issues = parse_and_categorize(p2_section, 'P2')
+            result['p2_issues'] = p2_issues
+            result['all_issues'].extend(p2_issues)
         
-        # 提取各 section 内容
-        for section_name in ['合理性检查', '场景遗漏', '前后一致性', '风险评估', 
-                            '兼容性检查', '性能风险评估', '安全检查', '可观测性检查',
-                            '数据合规检查', '发布策略检查', '结论与建议']:
+        total_score = sum(issue['score'] for issue in result['all_issues'])
+        result['severity_score'] = total_score
+        
+        if total_score >= 6:
+            result['risk_level'] = 'critical'
+        elif total_score >= 3:
+            result['risk_level'] = 'high'
+        elif total_score >= 1:
+            result['risk_level'] = 'medium'
+        else:
+            result['risk_level'] = 'low'
+        
+        from collections import Counter
+        cat_counts = Counter(issue['category'] for issue in result['all_issues'])
+        result['category_coverage'] = dict(cat_counts)
+        
+        if result['all_issues']:
+            most_common_cat = cat_counts.most_common(1)[0][0] if cat_counts else '其他'
+            result['recommendations'].append(f'🎯 重点修复类别: {most_common_cat} ({cat_counts.get(most_common_cat, 0)} 个问题)')
+            result['recommendations'].append(f'⚠️ 最高优先级: {len(result["p0_issues"])} 个 P0 问题需立即处理')
+        
+        result['recommendations'].append('💡 审查完成后请调用 review_with_response() 保存完整报告')
+        
+        section_names = ['合理性检查', '场景遗漏', '前后一致性', '风险评估', 
+                        '兼容性检查', '性能风险评估', '安全检查', '可观测性检查',
+                        '数据合规检查', '发布策略检查', '结论与建议',
+                        '检查项汇总', '改进建议']
+        for section_name in section_names:
             content = self._extract_section(llm_response, section_name)
             if content:
-                result['sections'][section_name] = content.strip()
+                result['sections'][section_name] = content[:800] + '...' if len(content) > 800 else content.strip()
         
         return result
     
+    def _classify_issue_category(self, text: str) -> str:
+        """根据文本内容自动分类问题。"""
+        categories_map = [
+            ('性能缓存', ['cache', 'redis', 'qps', '并发', '性能', 'throughput', 'latency']),
+            ('鉴权权限', ['auth', 'permission', '权限', '鉴权', 'token', 'role', 'rbac', 'oauth']),
+            ('数据安全', ['加密', 'encryption', '脱敏', '敏感', '隐私', 'pipl', 'gdpr', 'data']),
+            ('错误处理', ['error', '异常', 'exception', 'panic', 'try', 'catch', 'error code', '错误码']),
+            ('数据库事务', ['tx', 'transaction', '事务', 'commit', 'rollback', 'acid', 'sql', 'db']),
+            ('配置管理', ['config', '配置', 'env', '环境变量', 'feature flag', '开关']),
+            ('日志监控', ['log', 'logging', '监控', 'observability', 'prometheus', 'zookeeper', 'trace']),
+            ('接口协议', ['api', 'http', 'rpc', 'grpc', '接口', '协议', 'version', '版本']),
+            ('状态机', ['status', '状态', 'transition', '流转', '审批', '审核']),
+            ('备份恢复', ['backup', 'restore', '备份', '恢复', '容灾', '高可用']),
+            ('兼容性', ['compat', '兼容', 'backward', 'forward', '旧版本', '升级']),
+            ('安全漏洞', ['security', '安全', 'xss', 'sql注入', 'csrf', '注入', '攻击']),
+            ('分布式锁', ['lock', '分布式锁', 'mutex', 'semaphore', 'redlock', '并发控制']),
+            ('消息队列', ['mq', 'kafka', 'rabbitmq', '消息队列', 'async', '异步']),
+            ('资源管理', ['memory', '内存', 'gc', '泄漏', 'resource', '资源', '连接池']),
+        ]
+        for cat, keywords in categories_map:
+            if any(kw in text for kw in keywords):
+                return cat
+        return '其他通用'
+    
+    def _generate_recommendation(self, category: str, priority: str) -> str:
+        """为问题类别生成具体改进建议。"""
+        rec_map = {
+            '性能缓存': '建议使用 Redis 缓存热点数据，考虑实现读写分离和预加载机制',
+            '鉴权权限': 'Implement RBAC 模型，添加操作级权限校验和审计日志',
+            '数据安全': '敏感数据必须加密存储，传输层使用 TLS，记录数据访问日志',
+            '错误处理': '建立标准化错误码体系，实现错误分级处理和优雅降级',
+            '数据库事务': '关键业务使用 ACID 事务，跨服务事务采用 Saga 模式补偿',
+            '配置管理': '配置参数应支持动态刷新，重要开关使用 Feature Flag 管理',
+            '日志监控': '统一日志格式，添加请求 ID 追踪链路，设置关键指标告警',
+            '接口协议': '遵循 REST/GraphQL 规范，添加 API 版本化和速率限制',
+            '状态机': '定义明确的状态转换规则，添加非法转换拦截和状态审计',
+            '备份恢复': '制定 RTO/RPO 目标，定期演练恢复流程，实施异地备份',
+            '兼容性': '保持向后兼容，旧接口废弃前提供迁移期和数据转换',
+            '安全漏洞': '立即修复，使用静态扫描工具和代码审查预防同类问题',
+            '分布式锁': '使用 RedLock 算法实现，设置合理 TTL 防止死锁，考虑失败重试',
+            '消息队列': '保证消息不丢失，实现死信队列和重试机制，监控积压情况',
+            '资源管理': '设置连接池上限，检测内存泄漏，配置合理的 GC 策略',
+        }
+        return rec_map.get(category, '建议结合业务场景深入评估该问题影响')
+
     def _extract_section(self, text: str, heading: str) -> Optional[str]:
         """从 Markdown 文本中提取指定 section 的内容。"""
         # 匹配 ### heading 或 ## heading 后面的内容

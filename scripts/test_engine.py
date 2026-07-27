@@ -53,8 +53,12 @@ class TestEngine(EngineBase):
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "test_prompt.md"
-        prompt_file.write_text(prompt, encoding="utf-8")
-        print(f"✅ Prompt saved to: {prompt_file}")
+        try:
+            prompt_file.write_text(prompt, encoding="utf-8")
+            print(f"✅ Prompt saved to: {prompt_file}")
+        except Exception as e:
+            print(f"❌ Failed to save test prompt: {e}")
+            raise
         
         return {
             "status": "prompt_ready",
@@ -73,7 +77,12 @@ class TestEngine(EngineBase):
             测试用例报告 dict
         """
         report_file = self.output_dir / "test_cases.md"
-        report_file.write_text(llm_response, encoding="utf-8")
+        try:
+            report_file.write_text(llm_response, encoding="utf-8")
+            print(f"✅ Test cases saved to: {report_file}")
+        except Exception as e:
+            print(f"❌ Failed to save test cases: {e}")
+            raise
         
         # 解析测试用例报告，提取结构化数据
         parsed = self._parse_test_report(llm_response)
@@ -86,32 +95,135 @@ class TestEngine(EngineBase):
         }
     
     def _parse_test_report(self, llm_response: str) -> dict:
-        """解析测试用例报告，提取结构化数据。"""
+        """解析测试用例报告，提取结构化数据。
+        
+        增强功能：
+        - 从 Markdown 表格完整解析测试用例（ID、场景、步骤、预期结果）
+        - 自动按优先级和业务类型分类
+        - 覆盖率分析和未覆盖场景检测
+        - 生成改进建议
+        
+        Returns:
+            包含结构化测试数据的字典
+        """
         result = {
             'total_cases': 0,
-            'by_category': {},
             'by_priority': {'P0': [], 'P1': [], 'P2': []},
+            'by_category': {},
             'sections': {},
+            'coverage_analysis': {},
+            'recommendations': [],
+            'has_structured_data': False,
         }
         
-        # 统计总用例数
-        tc_matches = re.findall(r'TC\d{3,}', llm_response)
-        result['total_cases'] = len(tc_matches)
+        # 方法A：从 markdown 表格完整解析测试用例
+        tc_table_pattern = r'\|\s*(TC\d+)\s*\|\s*(.*?)\|\s*(.*?)\|\s*(.*?)\|\s*(.*?)\|\s*(P[0-9])\s*\|'
+        table_matches = re.findall(tc_table_pattern, llm_response, re.MULTILINE | re.DOTALL)
         
-        # 按优先级分类
-        for priority in ['P0', 'P1', 'P2']:
-            pattern = rf'\|\s*TC\d+\s*\|.*?\|.*?\|.*?\|.*?\|\s*{priority}\s*\|'
-            matches = re.findall(pattern, llm_response)
-            result['by_priority'][priority] = matches
+        if table_matches:
+            result['has_structured_data'] = True
+            cases_by_priority = {'P0': [], 'P1': [], 'P2': []}
+            cases_by_category = {}
+            
+            for tc_id, scenario, prep, steps, expected, priority in table_matches:
+                priority = priority.upper().strip() if priority.upper() in ['P0', 'P1', 'P2'] else 'P2'
+                
+                case_data = {
+                    'id': tc_id,
+                    'scenario': scenario.strip(),
+                    'precondition': prep.strip(),
+                    'steps': steps.strip(),
+                    'expected': expected.strip(),
+                    'priority': priority,
+                }
+                cases_by_priority[priority].append(case_data)
+                result['total_cases'] += 1
+                
+                # 自动按业务类别分类
+                scenario_lower = scenario.lower()
+                if any(kw in scenario_lower for kw in ['创建', 'add', 'create', '新建']):
+                    category = '创建操作'
+                elif any(kw in scenario_lower for kw in ['查询', 'list', 'get', '读取']):
+                    category = '查询操作'
+                elif any(kw in scenario_lower for kw in ['更新', 'update', 'modify', '修改']):
+                    category = '更新操作'
+                elif any(kw in scenario_lower for kw in ['删除', 'delete', 'remove', '销毁']):
+                    category = '删除操作'
+                elif any(kw in scenario_lower for kw in ['异常', 'error', 'fail', '错误', '边界', 'boundary', '极限']):
+                    category = '异常与边界'
+                elif any(kw in scenario_lower for kw in ['安全', 'security', '注入', '权限', '鉴权']):
+                    category = '安全测试'
+                elif any(kw in scenario_lower for kw in ['并发', 'concurrent', '压力', '高并发']):
+                    category = '性能与并发'
+                else:
+                    category = '其他测试'
+                
+                if category not in cases_by_category:
+                    cases_by_category[category] = []
+                cases_by_category[category].append(case_data)
+            
+            result['by_priority'] = cases_by_priority
+            result['by_category'] = cases_by_category
+            
+            # 覆盖率分析
+            uncovered = self._detect_uncovered_scenarios(cases_by_category, llm_response)
+            result['coverage_analysis'] = {
+                'structured': True,
+                'total_cases': result['total_cases'],
+                'p0_count': len(cases_by_priority.get('P0', [])),
+                'p1_count': len(cases_by_priority.get('P1', [])),
+                'p2_count': len(cases_by_priority.get('P2', [])),
+                'categories_covered': list(cases_by_category.keys()),
+                'uncovered_scenarios': uncovered,
+            }
+            
+            if uncovered:
+                result['recommendations'].append(f"⚠️ 建议补充未覆盖场景: {", ".join(uncovered[:3])}")
+            if result['total_cases'] < 20:
+                result['recommendations'].append(f"ℹ️ 测试用例数量较少({result["total_cases"]}条)，建议补充边界条件和异常场景")
+        else:
+            # 备用方案：仅统计 TC 编号
+            tc_matches = re.findall(r'TC\d{3,}', llm_response)
+            result['total_cases'] = len(tc_matches)
+            result['by_priority']['P2'] = [f'{tc}' for tc in tc_matches]
+            result['coverage_analysis'] = {
+                'structured': False,
+                'estimated_cases': result['total_cases'],
+            }
+            result['recommendations'].append("ℹ️ 未检测到结构化测试用例表格，LLM输出格式不标准")
         
-        # 按分类提取
-        for cat in ['正向流程', '异常分支', '边界条件', '安全测试', '兼容性测试', '状态转换']:
+        # 提取各 section 内容摘要
+        section_names = ['正向流程', '异常分支', '边界条件', '性能测试', '安全测试',
+                        '兼容性测试', '状态转换测试', '压力测试']
+        for cat in section_names:
             content = _extract_section(llm_response, cat)
             if content:
-                result['sections'][cat] = content.strip()
+                result['sections'][cat] = content[:600] + '...' if len(content) > 600 else content.strip()
         
         return result
     
+    def _detect_uncovered_scenarios(self, cases_by_category: dict, text: str) -> list:
+        """检测可能遗漏的业务场景类型。"""
+        patterns = [
+            ('鉴权检查', ['权限', 'auth', '鉴权', 'token', 'role', 'permission', 'login']),
+            ('空值处理', ['空', 'null', 'none', 'empty', 'nil', '空值']),
+            ('数据校验', ['校验', 'validate', 'check', 'valid', 'required', '参数']),
+            ('错误处理', ['错误', 'error', 'fail', 'exception', 'panic', '异常']),
+            ('并发测试', ['并发', 'concurrent', 'race', 'lock', 'mutex', '竞争']),
+            ('性能边界', ['大', '极限', 'max', 'performance', 'high', '批量', '大批量']),
+        ]
+        covered = set()
+        
+        # 检查所有已覆盖的场景描述
+        for category, cases in cases_by_category.items():
+            for case in cases:
+                s = case['scenario'].lower()
+                for name, keywords in patterns:
+                    if any(kw in s for kw in keywords):
+                        covered.add(name)
+                        break
+        
+        return [name for name, ks in patterns if name not in covered]
     def generate_test_code_from_ir(self, handlers: Optional[List[str]] = None, 
                                    test_types: Optional[List[str]] = None,
                                    language: str = "go") -> dict:

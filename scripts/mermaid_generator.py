@@ -340,9 +340,82 @@ class MermaidGenerator:
             'data_model': self.generate_data_model_diagram(),
             'deployment': self.generate_deployment_diagram(),
             'sequence': self.generate_sequence_diagram(),
+            'activity': self.generate_activity_diagram(),
             'state_machine': self.generate_state_machine_diagram(),
             'dependency': self.generate_dependency_diagram(),
+            'api_flow': self.generate_api_flow_diagram(),
+            'error_code_matrix': self.generate_error_code_matrix_diagram(),
         }
+    
+    def generate_activity_diagram(self) -> str:
+        """Generate activity diagram from core flows or business logic.
+        
+        Shows business process flow with decision points, parallel branches,
+        and alternative paths based on core flow analysis results.
+        """
+        if self.core_flows:
+            return self._build_activity_from_flows()
+        
+        # Fallback: build generic activity diagram from available data
+        lines = ["```mermaid", "activityDiagram"]
+        lines.append("")
+        lines.append("* --> Init")
+        lines.append("Init --> Validate: 参数验证")
+        lines.append("Validate --> CheckAuth: 权限校验")
+        lines.append("CheckAuth --> ServiceCall: 执行业务逻辑")
+        lines.append("ServiceCall --> SaveData: 数据持久化")
+        lines.append("SaveData --> Notify: 发送通知")
+        lines.append("Notify --> Response: 返回响应")
+        lines.append("Response --> End")
+        lines.append("End --> *")
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+    
+    def _build_activity_from_flows(self) -> str:
+        """Build activity diagram from core flow analysis data."""
+        lines = ["```mermaid", "activityDiagram"]
+        lines.append("")
+        lines.append("* --> RequestReceived")
+        
+        # Add common steps from core flows
+        flows = self.core_flows[:5]  # Top 5 flows
+        all_steps = set()
+        
+        for flow in flows:
+            for step in flow.get('steps', []):
+                all_steps.add(step)
+        
+        # Build flow with decision points
+        step_list = list(all_steps)
+        
+        if not step_list:
+            lines.append("    RequestProcessing --> Completed")
+            lines.append("    Completed --> *")
+        else:
+            current = "RequestReceived"
+            for i, step in enumerate(step_list[:8]):
+                next_step = step_list[i+1] if i+1 < len(step_list) else "Completed"
+                lines.append(f"    {current} --> {step}: {step}")
+                
+                # Add decision point for certain keywords
+                if any(kw in step.lower() for kw in ['审核', '检查', '判断', 'if', 'condition']):
+                    lines.append(f"    {step} --> Decision: 结果？")
+                    lines.append(f"    Decision -- Success --> {next_step}")
+                    lines.append(f"    Decision -- Failure --> ErrorHandling")
+                    lines.append(f"    ErrorHandling --> RetryOrAbort")
+                    lines.append(f"    RetryOrAbort --> {next_step}")
+                    current = "RetryOrAbort"
+                else:
+                    lines.append(f"    {step} --> {next_step}")
+                    current = step
+            
+            lines.append(f"    {current} --> Completed")
+            lines.append("    Completed --> *")
+        
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
     
     def generate_state_machine_diagram(self) -> str:
         """Generate state machine diagram from IR state transition functions.
@@ -489,3 +562,105 @@ class MermaidGenerator:
         
         lines.append("```")
         return "\n".join(lines)
+
+    def generate_api_flow_diagram(self) -> str:
+        """Generate API flow diagram from routes + call_graph.
+        
+        Shows the end-to-end flow of a typical API request.
+        """
+        if not self.routes and not self.call_graph:
+            return "```mermaid\nflowchart TD\n    [No API data available]\n```"
+        
+        lines = ["```mermaid", "flowchart TD"]
+        lines.append("")
+        lines.append("    participant Client")
+        lines.append("    participant Gateway")
+        lines.append("    participant Handler")
+        lines.append("    participant Service")
+        lines.append("    participant DAO")
+        lines.append("    participant DB")
+        
+        lines.append("")
+        lines.append("    Client->>Gateway: HTTP Request")
+        lines.append("    Gateway->>Handler: Route dispatch")
+        
+        if self.routes:
+            first_route = self.routes[0]
+            if isinstance(first_route, dict):
+                method = first_route.get('method', 'GET').upper()
+                path = first_route.get('path', '?')
+                handler = first_route.get('handler', '?')
+            else:
+                method = getattr(first_route, 'method', 'GET').upper()
+                path = getattr(first_route, 'path', '?')
+                handler = getattr(first_route, 'handler', '?')
+            lines.append(f"    Handler->>Service: {method} {path}")
+        else:
+            lines.append("    Handler->>Service: Business logic")
+        
+        lines.append("    Service->>DAO: Data access")
+        lines.append("    DAO->>DB: SQL query")
+        lines.append("    DB-->>DAO: Result")
+        lines.append("    DAO-->>Service: Data")
+        lines.append("    Service->>Handler: Response")
+        lines.append("    Handler->>Gateway: HTTP Response")
+        lines.append("    Gateway->>Client: Return data")
+        lines.append("")
+        
+        external_calls = set()
+        for edge in self.call_graph[:5]:
+            if isinstance(edge, dict):
+                callee = edge.get('callee', '')
+            else:
+                callee = getattr(edge, 'callee', '')
+            if callee and 'external' in str(callee).lower():
+                external_calls.add(callee)
+        
+        if external_calls:
+            lines.append("    Service->>External: RPC/HTTP calls")
+            for ext in list(external_calls)[:3]:
+                safe_id = str(ext).replace('-', '_').replace('.', '_')
+                lines.append(f"    External-->>{safe_id}: Response")
+        
+        lines.append("```")
+        return "\n".join(lines)
+    
+    def generate_error_code_matrix_diagram(self) -> str:
+        """Generate error code matrix from error_codes IR data."""
+        if not self.error_codes:
+            return "```mermaid\nstateDiagram-v2\n    [*] --> Ready\n    No error codes defined\n```"
+        
+        lines = ["```mermaid", "stateDiagram-v2"]
+        lines.append("")
+        lines.append("* --> Ready")
+        lines.append("")
+        lines.append("## Error Code Matrix")
+        lines.append("")
+        
+        for ec in self.error_codes[:10]:
+            if isinstance(ec, dict):
+                name = ec.get('name', 'UNKNOWN')
+                code = ec.get('code', '000')
+            else:
+                name = getattr(ec, 'name', 'UNKNOWN')
+                code = getattr(ec, 'code', '000')
+            
+            if code.startswith('4'):
+                http_status = '4xx Client Error'
+            elif code.startswith('5'):
+                http_status = '5xx Server Error'
+            elif int(code) < 400:
+                http_status = 'Success'
+            else:
+                http_status = 'Error'
+            
+            lines.append(f"    Ready --> {name}: [{code}] {http_status}")
+        
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+
+
+# ============================================================================
+# End of MermaidGenerator class
+# ============================================================================

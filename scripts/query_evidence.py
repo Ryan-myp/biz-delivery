@@ -15,8 +15,10 @@ import argparse
 import json
 import math
 import re
+import functools
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from functools import lru_cache
 
 
 # ──────────────────────────────────────────────
@@ -41,9 +43,29 @@ for _intent, _patterns in INTENT_PATTERNS.items():
     for _p in _patterns:
         _INTENT_REVERSE_INDEX[_p] = _intent
 
+# Chinese range regex for fuzzy matching
+_RE_CHINESE_RANGE = re.compile(r'[\u4e00-\u9fff]')
+
+# Pre-compiled regex cache — optimize repeated pattern matching
+_RE_CAMEL_SPLIT = re.compile(r'(?<=[a-z])(?=[A-Z])|[_\\-\\s]')
+_RE_UPPER_SEQUENCE = re.compile(r'([A-Z]+)([A-Z][a-z])')
+_RE_LOWER_UPPER = re.compile(r'([a-z\\d])([A-Z])')
+_ROUTE_PARAM_PATTERN = re.compile(r'\\{.*?\\}')
+_WORD_NUMBER_PATTERN = re.compile(r'\\b\\d{3,}\\b')
+_API_PATTERN = re.compile(r'^/api/')
+_CAMEL_FIND = re.compile(r'[A-Z][a-z]+|[a-z]+')
+_NUMBER_SEQ = re.compile(r'\\b\\d{3,}\\b')
+_API_VERSION = re.compile(r'^[A-Z][a-z]+[A-Z]')
+_CROSS_LANG_SPLIT = re.compile(r'(?<=[a-z])(?=[A-Z])|[_\\-\\s]')
+_ENTITY_NAME = re.compile(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*')
+_CN_ENTITY = re.compile(r'[\u4e00-\u9fff]{2,6}')
+_KEYWORDS = re.compile(r'[a-zA-Z]{2,}|[\u4e00-\u9fff]{2,6}')
+
 
 def extract_intent(query: str) -> Tuple[str, float]:
     """意图识别 — 使用反向索引加速匹配。"""
+    if not query or not query.strip():
+        return ("query", 0.0)
     query_lower = query.lower()
     intent_hits: dict[str, int] = {}
     
@@ -123,6 +145,7 @@ def _chinese_to_pinyin_initials(text: str) -> str:
 # Fuzzy Search — Levenshtein 编辑距离
 # ──────────────────────────────────────────────
 
+@lru_cache(maxsize=2048)
 def levenshtein_distance(s1: str, s2: str) -> int:
     """计算两个字符串的 Levenshtein 编辑距离"""
     if len(s1) < len(s2):
@@ -143,6 +166,7 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     return prev_row[-1]
 
 
+@lru_cache(maxsize=1024)
 def fuzzy_match(query: str, target: str, threshold: Optional[float] = None) -> bool:
     """判断 query 和 target 是否 fuzzy 匹配"""
     if threshold is None:
@@ -150,6 +174,7 @@ def fuzzy_match(query: str, target: str, threshold: Optional[float] = None) -> b
     return fuzzy_score(query, target, threshold=threshold) >= threshold
 
 
+@lru_cache(maxsize=512)
 def fuzzy_score(query: str, target: str, threshold: Optional[float] = None) -> float:
     """计算两个字符串的 fuzzy 相似度 [0, 1]
     
@@ -180,7 +205,7 @@ def fuzzy_score(query: str, target: str, threshold: Optional[float] = None) -> f
         return 0.8 + 0.2 * (shorter / longer)
     
     # 检测是否为纯中文或混合文本
-    has_chinese = bool(re.search(r'[\u4e00-\u9fff]', q_lower)) or bool(re.search(r'[\u4e00-\u9fff]', t_lower))
+    has_chinese = bool(_RE_CHINESE_RANGE.search(q_lower)) or bool(_RE_CHINESE_RANGE.search(t_lower))
     
     # 短字符串（<=15字符），用编辑距离
     if max(len(q_lower), len(t_lower)) <= 15:
@@ -267,6 +292,7 @@ def _chinese_word_segment(text: str) -> List[str]:
     return words
 
 
+@lru_cache(maxsize=1024)
 def _chinese_ngram_similarity(s1: str, s2: str, n: int = 2) -> float:
     """计算中文字符 n-gram 相似度，增强版：支持词级别 n-gram"""
     if not s1 or not s2:
@@ -308,6 +334,7 @@ def _chinese_ngram_similarity(s1: str, s2: str, n: int = 2) -> float:
     return char_sim
 
 
+@lru_cache(maxsize=512)
 def _pinyin_similarity(s1: str, s2: str) -> float:
     """拼音首字母相似度 — 解决中文同音/近音词匹配问题。
     
@@ -959,27 +986,32 @@ def expand_query_variants_v2(
 
     # ── Layer A: Synonym Expansion (复用现有 synonym 字典) ──
     synonyms = expand_synonyms(query, profile)
+    seen_lower = {query.lower()}
     for sv in synonyms:
-        if sv != query and sv.lower() not in [v.lower() for v in all_variants]:
+        if sv != query and sv.lower() not in seen_lower:
             all_variants.append(sv)
+            seen_lower.add(sv.lower())
 
     # ── Layer B: Cross-language Term Mapping ──
     cross_lang_terms = _expand_cross_language(query, ir_data)
     for clt in cross_lang_terms:
-        if clt.lower() not in [v.lower() for v in all_variants]:
+        if clt.lower() not in seen_lower:
             all_variants.append(clt)
+            seen_lower.add(clt.lower())
 
     # ── Layer C: Abbreviation Expansion ──
     abbr_terms = _expand_abbreviations(query)
     for at in abbr_terms:
-        if at.lower() not in [v.lower() for v in all_variants]:
+        if at.lower() not in seen_lower:
             all_variants.append(at)
+            seen_lower.add(at.lower())
 
     # ── Layer D: Domain Context Expansion ──
     domain_terms = _expand_domain_context(query)
     for dt in domain_terms:
-        if dt.lower() not in [v.lower() for v in all_variants]:
+        if dt.lower() not in seen_lower:
             all_variants.append(dt)
+            seen_lower.add(dt.lower())
 
     # 去重，保留顺序
     all_variants = list(dict.fromkeys(all_variants))
@@ -1235,6 +1267,7 @@ def _compute_idf(documents: List[List[str]]) -> Dict[str, float]:
     return idf
 
 
+@lru_cache(maxsize=512)
 def _cosine_similarity(vec_a: Dict[str, float], vec_b: Dict[str, float]) -> float:
     """计算两个向量的余弦相似度"""
     if not vec_a or not vec_b:

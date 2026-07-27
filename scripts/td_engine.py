@@ -52,8 +52,12 @@ class TDEngine(EngineBase):
         
         # Step 3: 保存 prompt 供 LLM 调用
         prompt_file = self.output_dir / "td_prompt.md"
-        prompt_file.write_text(prompt, encoding="utf-8")
-        print(f"✅ Prompt saved to: {prompt_file}")
+        try:
+            prompt_file.write_text(prompt, encoding="utf-8")
+            print(f"✅ Prompt saved to: {prompt_file}")
+        except Exception as e:
+            print(f"❌ Failed to save TD prompt: {e}")
+            raise
         
         return {
             "status": "prompt_ready",
@@ -72,12 +76,17 @@ class TDEngine(EngineBase):
             TD 报告 dict
         """
         report_file = self.output_dir / "technical_design.md"
-        report_file.write_text(llm_response, encoding="utf-8")
+        try:
+            report_file.write_text(llm_response, encoding="utf-8")
+            print(f"✅ TD report saved to: {report_file}")
+        except Exception as e:
+            print(f"❌ Failed to save technical design: {e}")
+            raise
         
         return {
             "status": "completed",
             "report_file": str(report_file),
-            "sections": ["架构设计", "接口设计", "数据库设计", "数据迁移", "流程图"],
+            "sections": ["架构设计", "接口设计", "数据库设计", "数据迁移", "流程图", "活动图"],
         }
     
     def _build_td_prompt(self, filtered: dict, ir: IRDocument, prd_text: str, review_report: Optional[str] = None, cache_dir: str = None) -> str:
@@ -194,6 +203,7 @@ class TDEngine(EngineBase):
             })
             diagrams = generator.generate_all_diagrams()
             
+            # Only access diagrams that actually exist
             if diagrams.get('architecture') != '':
                 prompt_parts.append("## 📐 架构图（基于实际包结构自动生成）")
                 prompt_parts.append(diagrams['architecture'])
@@ -217,6 +227,12 @@ class TDEngine(EngineBase):
                 prompt_parts.append(seq_diagram)
                 prompt_parts.append("")
             
+            # Generate activity diagram for business process flows
+            if diagrams.get('activity'):
+                prompt_parts.append("## 📊 业务活动图（基于核心业务流程自动生成）")
+                prompt_parts.append(diagrams['activity'])
+                prompt_parts.append("")
+            
             # Use MermaidGenerator outputs instead of inline broken versions
             if diagrams.get('state_machine'):
                 prompt_parts.append("## 🔄 状态机图（基于 IR 状态转换函数自动生成）")
@@ -227,30 +243,7 @@ class TDEngine(EngineBase):
                 prompt_parts.append("## 🔗 模块依赖图（基于 IR call_graph 自动生成）")
                 prompt_parts.append(diagrams['dependency'])
                 prompt_parts.append("")
-
-            # API flow diagram — new
-            if diagrams.get('api_flow'):
-                prompt_parts.append("## 🔄 API 端到端流程图（基于 routes + call_graph 自动生成）")
-                prompt_parts.append(diagrams['api_flow'])
-                prompt_parts.append("")
-            
-            # Cloud deployment diagram
-            if diagrams.get('cloud_deployment') and 'mermaid' in diagrams['cloud_deployment']:
-                prompt_parts.append("## ☁️ 云部署架构图（自动生成）")
-                prompt_parts.append(diagrams['cloud_deployment'])
-                prompt_parts.append("")
-            
-            # API contract diagram
-            if diagrams.get('api_contract') and 'mermaid' in diagrams['api_contract']:
-                prompt_parts.append("## 📋 API 契约图（基于 routes + request/response struct 自动生成）")
-                prompt_parts.append(diagrams['api_contract'])
-                prompt_parts.append("")
-            
-            # Error code matrix
-            if diagrams.get('error_code_matrix') and 'mermaid' in diagrams['error_code_matrix']:
-                prompt_parts.append("## ⚠️ 错误码矩阵（基于 error_codes 自动生成）")
-                prompt_parts.append(diagrams['error_code_matrix'])
-                prompt_parts.append("")
+                
         except Exception as e:
             prompt_parts.append(f"⚠️  Mermaid diagram generation skipped: {e}")
             prompt_parts.append("")
