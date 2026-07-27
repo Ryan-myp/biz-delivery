@@ -10,14 +10,13 @@
 
 import json
 import re
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # 导入证据查询和 learn_repo
 sys.path.insert(0, str(Path(__file__).parent))
-from learn_repo import GoScanner, IRDocument
+from learn_repo import IRDocument
 from base_engine import EngineBase
 from test_code_generator import TestCodeGenerator
 

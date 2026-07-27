@@ -11,14 +11,13 @@
 
 import json
 import re
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 # 导入 learn_repo 的扫描器和 IR
 sys.path.insert(0, str(Path(__file__).parent))
-from learn_repo import GoScanner, IRDocument
+from learn_repo import IRDocument
 from base_engine import EngineBase
 from query_evidence import fuzzy_score as _fuzzy_score
 
@@ -126,7 +125,7 @@ class ReviewEngine(EngineBase):
             result['p2_issues'] = self._parse_issue_list(p2_section)
         
         # 提取各 section 内容
-        for section_name in ['合理性检查', '场景遗漏', '前后不一致', '风险评估', 
+        for section_name in ['合理性检查', '场景遗漏', '前后一致性', '风险评估', 
                             '兼容性检查', '性能风险评估', '安全检查', '可观测性检查',
                             '数据合规检查', '发布策略检查', '结论与建议']:
             content = self._extract_section(llm_response, section_name)
