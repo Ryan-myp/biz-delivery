@@ -690,31 +690,31 @@ class GoScanner:
     def _parse_rg_json_lines(self, output: str) -> Dict[str, List[Dict]]:
         """解析 rg --json 输出，按文件分组
         同时接受 match 和 context 两种类型（-A 上下文行）
-        
-        注意：rg --json 输出的 lines.text 可能包含 \n \t 等转义字符，
-        需要先修复 JSON 格式再解析。
+
+        注意：rg --json 输出的 lines.text 字段中，
+        换行符和制表符会被序列化为字面量的 \\n 和 \\t（两个字符）。
+        Python 的 json.loads 默认不允许 JSON 字符串中有未转义的控制字符，
+        所以需要先将这些字面量转义序列替换为真正的控制字符。
         """
         by_file = {}
         for line in output.strip().split('\n'):
             if not line.strip():
                 continue
-            # rg --json 的 lines.text 里的 \n \t 是字面量（两个字符），
-            # 但 Python json.loads 要求它们是真正的控制字符，否则会报 Invalid control character
-            # 解决方案：把 \\n \\t 替换成真正的换行/制表符
             try:
-                # 先尝试直接解析（有些行不包含转义字符）
                 data = json.loads(line)
             except json.JSONDecodeError:
-                # 解析失败，尝试修复转义字符
+                # rg 输出的是合法的 JSON，但某些 text 字段里可能包含
+                # 字面量的反斜杠+n（即 JSON 字符串中的 \\n，表示两个字符）
+                # 这种情况下需要把 \\n 替换为真正的换行符（\n）再解析
                 try:
-                    # 用正则把 \n \t 替换成实际的控制字符
-                    fixed = re.sub(r'\\n', '\n', line)
-                    fixed = re.sub(r'\\t', '\t', fixed)
+                    # 使用负向后瞻，只替换不在反斜杠后的 \n 和 \t
+                    # 这样可以保留其他合法的 JSON 转义序列
+                    fixed = re.sub(r'(?<!\\)\\n', '\n', line)
+                    fixed = re.sub(r'(?<!\\)\\t', '\t', fixed)
                     data = json.loads(fixed)
                 except json.JSONDecodeError:
-                    # 还是失败就跳过
                     continue
-            
+
             # 接受 match 和 context 两种类型
             data_type = data.get("type")
             if data_type not in ("match", "context"):
