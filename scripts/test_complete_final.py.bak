@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""
+完整测试套件 - 最终版
+
+覆盖所有核心引擎和边界情况
+"""
+
+import unittest
+import sys
+import os
+import tempfile
+import shutil
+from pathlib import Path
+from typing import Dict, List, Any
+from dataclasses import dataclass
+
+
+# 添加 biz-delivery 路径
+BIZ_DIR = os.path.expanduser("~/biz-delivery/scripts")
+sys.path.insert(0, BIZ_DIR)
+
+# 导入核心引擎
+from learn_repo import GoScanner
+from review_engine import ReviewEngine
+from td_engine_v2 import TDEngine
+from test_engine import TestEngine
+from query_evidence import fuzzy_score, levenshtein_distance
+
+
+@dataclass
+class TestCase:
+    """测试用例"""
+    name: str
+    prd_content: str
+    expected_fields: List[str]
+
+
+class TestRepoScanner(unittest.TestCase):
+    """测试仓库扫描器"""
+    
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.scanner = GoScanner(self.tmp_dir)
+    
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir)
+    
+    def test_scan_go_repo(self):
+        """测试 Go 仓库扫描"""
+        test_file = Path(self.tmp_dir) / "main.go"
+        test_file.write_text("""
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("hello")
+}
+""")
+        result = self.scanner.scan()
+        self.assertIn("files", result)
+        self.assertEqual(result["files"][0]["name"], "main.go")
+
+
+class TestReviewEngine(unittest.TestCase):
+    """测试 PRD 审查引擎"""
+    
+    def test_review_prd(self):
+        """测试 PRD 审查"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = ReviewEngine({}, tmpdir)
+            prd = "实现一个用户登录功能，支持手机号和邮箱登录"
+            result = engine.review(prd)
+            
+            self.assertIn("status", result)
+            self.assertIn("score", result)
+    
+    def test_review_empty_prd(self):
+        """测试空 PRD"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = ReviewEngine({}, tmpdir)
+            result = engine.review("")
+            self.assertIn("status", result)
+
+
+class TestTDEngine(unittest.TestCase):
+    """测试 TD 生成引擎"""
+    
+    def test_generate_td(self):
+        """测试 TD 生成"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = TDEngine({}, tmpdir)
+            prd = "实现一个电商订单系统"
+            result = engine.generate_td(prd)
+            
+            self.assertEqual(result["status"], "completed")
+            self.assertIn("design", result)
+            self.assertIn("ir_cache_key", result)
+    
+    def test_generate_td_with_context(self):
+        """测试带上下文的 TD 生成"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = TDEngine({}, tmpdir)
+            prd = "实现一个用户管理系统"
+            context = {"repository": "test-repo"}
+            result = engine.generate_td(prd, context=context)
+            
+            self.assertEqual(result["status"], "completed")
+
+
+class TestTestEngine(unittest.TestCase):
+    """测试测试用例生成引擎"""
+    
+    def test_generate_test_cases(self):
+        """测试测试用例生成"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = TestEngine({}, tmpdir)
+            td = "实现用户登录功能"
+            result = engine.generate_tests(td)
+            
+            self.assertIn("status", result)
+    
+    def test_generate_test_cases_empty(self):
+        """测试空 TD"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = TestEngine({}, tmpdir)
+            result = engine.generate_tests("")
+            self.assertIn("status", result)
+
+
+class TestQueryEvidence(unittest.TestCase):
+    """测试查询证据功能"""
+    
+    def test_fuzzy_score(self):
+        """测试模糊匹配分数"""
+        score = fuzzy_score("用户登录功能", "用户登录")
+        self.assertGreaterEqual(score, 0)
+        self.assertLessEqual(score, 1)
+    
+    def test_levenshtein_distance(self):
+        """测试编辑距离"""
+        dist = levenshtein_distance("hello", "hallo")
+        self.assertEqual(dist, 1)
+    
+    def test_chinese_similarity(self):
+        """测试中文相似度"""
+        score = fuzzy_score("缓存穿透", "Redis缓存穿透")
+        self.assertGreater(score, 0)
+
+
+class TestIntegration(unittest.TestCase):
+    """集成测试"""
+    
+    def test_full_pipeline(self):
+        """测试完整流程"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 1. 审查 PRD
+            review_engine = ReviewEngine({}, tmpdir)
+            review_result = review_engine.review("实现用户登录功能")
+            
+            # 2. 生成 TD
+            td_engine = TDEngine({}, tmpdir)
+            td_result = td_engine.generate_td("实现用户登录功能")
+            
+            # 3. 生成测试用例
+            test_engine = TestEngine({}, tmpdir)
+            test_result = test_engine.generate_tests(td_result.get("design", ""))
+            
+            # 验证所有步骤都成功
+            self.assertEqual(review_result.get("status"), "completed")
+            self.assertEqual(td_result["status"], "completed")
+            self.assertEqual(test_result.get("status"), "completed")
+
+
+class TestEdgeCases(unittest.TestCase):
+    """边界情况测试"""
+    
+    def test_long_prd(self):
+        """测试超长 PRD"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = ReviewEngine({}, tmpdir)
+            long_prd = "a" * 10000
+            result = engine.review(long_prd)
+            self.assertIn("status", result)
+    
+    def test_special_characters(self):
+        """测试特殊字符"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = ReviewEngine({}, tmpdir)
+            prd = "实现\n用户\r登录\t功能"
+            result = engine.review(prd)
+            self.assertIn("status", result)
+    
+    def test_unicode_prd(self):
+        """测试 Unicode"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engine = ReviewEngine({}, tmpdir)
+            prd = "实现用户登录功能（中文测试）"
+            result = engine.review(prd)
+            self.assertIn("status", result)
+
+
+def run_all_tests():
+    """运行所有测试"""
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    
+    # 添加所有测试
+    suite.addTests(loader.loadTestsFromTestCase(TestRepoScanner))
+    suite.addTests(loader.loadTestsFromTestCase(TestReviewEngine))
+    suite.addTests(loader.loadTestsFromTestCase(TestTDEngine))
+    suite.addTests(loader.loadTestsFromTestCase(TestTestEngine))
+    suite.addTests(loader.loadTestsFromTestCase(TestQueryEvidence))
+    suite.addTests(loader.loadTestsFromTestCase(TestIntegration))
+    suite.addTests(loader.loadTestsFromTestCase(TestEdgeCases))
+    
+    # 运行测试
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    
+    return result
+
+
+if __name__ == "__main__":
+    run_all_tests()

@@ -10,6 +10,7 @@ except ImportError:
 
 # RRF 融合参数
 RRF_K = 60
+RRF_D = 1.2  # Decay factor for rank weighting
 
 
 # Source type weights — code matches should rank higher than schema/business
@@ -35,6 +36,7 @@ def _source_weight(item: Dict[str, Any]) -> float:
 def rrf_ranks(
     candidates: List[Dict[str, Any]],
     k: int = RRF_K,
+    d: float = RRF_D,
     weighted: bool = True,
 ) -> List[Dict[str, Any]]:
     """Reciprocal Rank Fusion 融合多个排序结果，支持 source_type 加权。
@@ -44,6 +46,7 @@ def rrf_ranks(
     - API docs 权重 1.2x
     - schema 权重 1.0x
     - business 权重 0.8x
+    - 可配置衰减因子 d (默认 1.2)
     """
     rank_scores = {}
 
@@ -53,7 +56,10 @@ def rrf_ranks(
             w = _source_weight(item) if weighted else 1.0
             if item_id not in rank_scores:
                 rank_scores[item_id] = {"score": 0, "item": item, "sources": []}
-            rank_scores[item_id]["score"] += w * 1.0 / (k + rank + 1)
+            # RRF score with decay factor: w * 1 / (k + rank * d)
+            # rank is 0-based, so we use rank+1 for 1-based positioning
+            rank_score = w * 1.0 / (k + (rank + 1) * d)
+            rank_scores[item_id]["score"] += rank_score
             rank_scores[item_id]["sources"].append("query")
     
     # 排序

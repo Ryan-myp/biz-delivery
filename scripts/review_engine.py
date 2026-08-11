@@ -227,9 +227,16 @@ class ReviewEngine(EngineBase):
             ('架构设计', ['arch', '架构', '微服务', '单体', '拆分', '耦合', '内聚']),
             ('成本优化', ['cost', '成本', '优化', '预算', '付费', '限流', 'auto_scale', '弹性伸缩']),
         ]
+        text_lower = text.lower()
         for cat, keywords in categories_map:
-            if any(kw.lower() in text.lower() for kw in keywords):
-                return cat
+            for kw in keywords:
+                kw_lower = kw.lower()
+                # First try word-boundary match for English keywords
+                if re.search(r"\b" + re.escape(kw_lower) + r"\b", text_lower):
+                    return cat
+                # Fallback to substring match for Chinese/edge cases
+                if kw_lower in text_lower:
+                    return cat
         return '其他通用'
     def _generate_recommendation(self, category: str, priority: str) -> str:
         """为问题类别生成具体改进建议。"""

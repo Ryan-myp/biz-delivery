@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""biz-delivery 端到端流程测试与优化
+
+测试流程：PRD → 审查 → 技术方案 → 测试用例
+"""
+
+import json
+import sys
+from pathlib import Path
+
+# 添加 biz-delivery 路径
+sys.path.insert(0, str(Path(__file__).parent))
+
+from review_engine import ReviewEngine
+from td_engine_v2 import TDEngine
+from test_engine import TestEngine
+
+
+def create_test_profile(repo_path: str = "") -> dict:
+    """创建测试用的 profile"""
+    return {
+        "name": "test-project",
+        "repositories": [{"path": repo_path}] if repo_path else [],
+        "business_domain": "ad-tech",
+    }
+
+
+def test_review_engine():
+    """测试 PRD 审查引擎"""
+    print("=" * 60)
+    print("测试 PRD 审查引擎")
+    print("=" * 60)
+    
+    prd_text = """
+# 功能需求：竞价系统优化
+
+## 背景
+当前竞价系统 P99 延迟 350ms，需要优化到 100ms 以内。
+
+## 需求
+1. 并行调用多个 DSP
+2. 增加缓存层
+3. 优化超时策略
+
+## 验收标准
+- P99 < 100ms
+- 可用性 > 99.9%
+"""
+    
+    profile = create_test_profile()
+    engine = ReviewEngine(profile, output_dir="/tmp/biz_test")
+    
+    result = engine.review(prd_text)
+    print(f"状态: {result.get('status')}")
+    print(f"PRD 长度: {result.get('prd_length')}")
+    
+    return result
+
+
+def test_td_engine():
+    """测试 TD 引擎 v2"""
+    print("\n" + "=" * 60)
+    print("测试 TD 引擎 v2")
+    print("=" * 60)
+    
+    prd_text = """
+# 功能需求：广告归因系统
+
+## 背景
+需要支持多触点归因，当前只支持 Last Click。
+
+## 需求
+1. 支持 Shapley Value 归因
+2. 支持 Markov 链归因
+3. 归因窗口期可配置
+
+## 数据模型
+- 转化事件表
+- 触点序列表
+- 归因结果表
+"""
+    
+    profile = create_test_profile()
+    engine = TDEngine(profile, output_dir="/tmp/biz_test")
+    
+    result = engine.generate_td(prd_text, use_llm=False)
+    print(f"状态: {result.get('status')}")
+    print(f"PRD 长度: {result.get('prd_length')}")
+    
+    if result.get('prompt_file'):
+        print(f"Prompt 文件: {result['prompt_file']}")
+    
+    return result
+
+
+def test_test_engine():
+    """测试测试用例生成引擎"""
+    print("\n" + "=" * 60)
+    print("测试测试用例生成引擎")
+    print("=" * 60)
+    
+    prd_text = """
+# 功能需求：竞价系统优化
+"""
+    
+    profile = create_test_profile()
+    engine = TestEngine(profile, output_dir="/tmp/biz_test")
+    
+    result = engine.generate_tests(prd_text)
+    print(f"状态: {result.get('status')}")
+    print(f"PRD 长度: {result.get('prd_length')}")
+    
+    return result
+
+
+def main():
+    """主入口"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="biz-delivery 端到端测试")
+    parser.add_argument("--step", choices=["review", "td", "test", "all"], default="all")
+    parser.add_argument("--prd", help="PRD 文件路径")
+    parser.add_argument("--output-dir", default="/tmp/biz_test")
+    
+    args = parser.parse_args()
+    
+    # 创建输出目录
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    
+    if args.step in ["review", "all"]:
+        test_review_engine()
+    
+    if args.step in ["td", "all"]:
+        test_td_engine()
+    
+    if args.step in ["test", "all"]:
+        test_test_engine()
+    
+    print("\n" + "=" * 60)
+    print("测试完成")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
