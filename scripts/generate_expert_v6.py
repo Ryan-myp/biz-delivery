@@ -219,7 +219,7 @@ def main():
         ('thrift/thrift-rpc-deep.md', 'Thrift RPC'),
         ('avro/avro-serialization-deep.md', 'Avro序列化'),
         ('protobuf/protobuf-encoding-deep.md', 'Protobuf编码'),
-        ('capnproto/capnproto-deep.md', 'Cap'n Proto'),
+        ('capnproto/capnproto-deep.md', 'CapnProto'),
         ('msgpack/msgpack-format-deep.md', 'MessagePack'),
         ('cbor/cbor-encoding-deep.md', 'CBOR编码'),
     ]
