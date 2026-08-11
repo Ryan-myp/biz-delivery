@@ -68,7 +68,8 @@ def generate_real_source_content(domain: str, title: str, keywords: list) -> str
     lines.append("    metrics  *Metrics")
     lines.append("}")
     lines.append("")
-    lines.append(f"func New{name := title.split()[0]}() *{name} {{")
+    name = title.split()[0]
+    lines.append(f"func New{name}() *{name} {{")
     lines.append("    return &{name}{")
     lines.append("        state: make(map[string]interface{}),")
     lines.append("        cache: lru.New(1000),")
