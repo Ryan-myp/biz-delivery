@@ -83,6 +83,8 @@ def generate_expert_files(target_path: str, count: int = 10) -> List[str]:
     generated = []
     for filename, category, title in topics[:count]:
         file_path = kb / category / filename
+        # 确保目录存在
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         if not file_path.exists():
             # 创建示例内容
             content = f'''# {title}
@@ -97,9 +99,9 @@ def generate_expert_files(target_path: str, count: int = 10) -> List[str]:
 
 ```c
 // 核心数据结构定义
-typedef struct {
+typedef struct {{
     // 字段定义
-} CoreStruct;
+}} CoreStruct;
 ```
 
 ### 2.2 关键算法
