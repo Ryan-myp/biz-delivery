@@ -690,22 +690,31 @@ class GoScanner:
     def _parse_rg_json_lines(self, output: str) -> Dict[str, List[Dict]]:
         """解析 rg --json 输出，按文件分组
         同时接受 match 和 context 两种类型（-A 上下文行）
+        
+        注意：rg --json 输出的 lines.text 可能包含 \n \t 等转义字符，
+        需要先修复 JSON 格式再解析。
         """
         by_file = {}
         for line in output.strip().split('\n'):
             if not line.strip():
                 continue
-            # rg --json 输出的 lines.text 可能包含转义的 \n 和 \t
-            # 先尝试直接解析
+            # rg --json 的 lines.text 里的 \n \t 是字面量（两个字符），
+            # 但 Python json.loads 要求它们是真正的控制字符，否则会报 Invalid control character
+            # 解决方案：把 \\n \\t 替换成真正的换行/制表符
             try:
+                # 先尝试直接解析（有些行不包含转义字符）
                 data = json.loads(line)
             except json.JSONDecodeError:
-                # 尝试修复：把 \n 替换为实际换行
+                # 解析失败，尝试修复转义字符
                 try:
-                    fixed = line.replace('\\n', '\n').replace('\\t', '\t')
+                    # 用正则把 \n \t 替换成实际的控制字符
+                    fixed = re.sub(r'\\n', '\n', line)
+                    fixed = re.sub(r'\\t', '\t', fixed)
                     data = json.loads(fixed)
                 except json.JSONDecodeError:
+                    # 还是失败就跳过
                     continue
+            
             # 接受 match 和 context 两种类型
             data_type = data.get("type")
             if data_type not in ("match", "context"):
@@ -714,11 +723,6 @@ class GoScanner:
             file_path = raw.get("path", {}).get("text", "")
             line_num = raw.get("line_number", 0)
             line_text = raw.get("lines", {}).get("text", "")
-            # 解码转义字符
-            try:
-                line_text = line_text.encode().decode('unicode_escape')
-            except:
-                pass
             if file_path not in by_file:
                 by_file[file_path] = []
             by_file[file_path].append({"line": line_num, "text": line_text, "type": data_type})
@@ -756,7 +760,7 @@ class GoScanner:
     
     def _parse_rg_struct_fields(self, output: str, ir: IRDocument, dir_path: Path, max_files: int):
         """从 rg -A 30 的输出中提取 struct 字段
-        
+
         rg -A 30 输出每行都有 type: match 或 context，
         其中 match 行是 type XXX struct {，
         context 行是 struct body 里的字段定义。
@@ -769,49 +773,59 @@ class GoScanner:
                 break
             rel_path = Path(file_path).relative_to(dir_path.parent)
             count += 1
-            
+
             # 按行号排序
             lines_sorted = sorted(lines, key=lambda x: x["line"])
-            
+
             # 遍历，用栈追踪当前 struct
             struct_stack = []  # [(struct_name, fields_list)]
             for line_info in lines_sorted:
-                text = line_info["text"].strip()
-                if not text:
-                    continue
-                
+                text = line_info["text"]
+                # 去掉行首的 tab
+                text_stripped = text.lstrip('\t')
+
                 # 匹配 type XXX struct {
-                m = re.search(r'type\s+(\w+)\s+struct\s*\{', text)
+                m = re.search(r'type\s+(\w+)\s+struct\s*\{', text_stripped)
                 if m:
                     struct_stack.append((m.group(1), []))
                     continue
-                
-                # 匹配结束括号 -> 弹出 struct
-                if text == '}' and struct_stack:
+
+                # 匹配结束括号（可能是单独的 } 或者 } 后面有空格）
+                if text_stripped.strip() == '}' and struct_stack:
                     struct_stack.pop()
                     continue
-                
+
                 # 匹配字段行: FieldName Type `tag`
                 if struct_stack:
-                    # 更宽松的字段匹配
-                    field_m = re.match(r'(\w+)\s+(\S+)', text)
+                    # 跳过空行和注释
+                    if not text_stripped or text_stripped.startswith('//'):
+                        continue
+                    # 匹配字段定义: 字段名 + 类型
+                    # 支持带 tag: FieldName Type `tag`
+                    field_m = re.match(r'(\w+)\s+(\S+?)(?:\s+`(.+?)`)?\s*$', text_stripped)
                     if field_m:
                         field_name = field_m.group(1)
                         # 跳过关键字
-                        if field_name in ('type', 'func', 'var', 'const', 'return', 'if', 'for', 'switch'):
+                        if field_name in ('type', 'func', 'var', 'const', 'return', 'if', 'for', 'switch', 'struct'):
                             continue
                         field_type = field_m.group(2).rstrip(',')
                         field = {"name": field_name, "type": field_type}
+                        # 如果有 tag，保存
+                        if field_m.group(3):
+                            field["tag"] = field_m.group(3)
                         struct_stack[-1][1].append(field)
-            
+
             # 将提取的字段写入 IR
             for struct_name, fields in struct_stack:
+                # 先尝试找到匹配的 struct
+                found = False
                 for s in ir.structs:
                     if s.name == struct_name and s.file == str(rel_path):
                         s.fields = fields[:30]
+                        found = True
                         break
                 # 如果没有找到匹配的 struct，创建新的
-                if not any(s.name == struct_name and s.file == str(rel_path) for s in ir.structs):
+                if not found:
                     ir.structs.append(StructDef(
                         name=struct_name,
                         file=str(rel_path),
@@ -990,66 +1004,17 @@ class GoScanner:
     
     def scan_directory(self, dir_path: Path, max_files: int = 500,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
-        """扫描整个目录 — 使用 CodeKnowledgeExtractor（快速）+ GoScanner 轻量提取
+        """扫描整个目录 — 使用 ripgrep 批量扫描（加速版）
         
         支持增量扫描：当 incremental=True 时，只扫描变更文件。
         changed_files 参数应包含自上次扫描以来变更的文件列表。
         """
-        ir = IRDocument(
-            repo_name=dir_path.name,
-            repo_path=str(dir_path),
-            language="go",
-        )
-        
-        # 1. 通用代码知识提取（快速，不依赖 HTTP routes）
+        # 使用 ripgrep 批量扫描（加速版）
         try:
-            extractor = CodeKnowledgeExtractor(str(dir_path), "go")
-            pkg_data = extractor.extract()
-            ir.packages = pkg_data.get('packages', {})
-            ir.language = pkg_data.get('language', 'go')
-            ir.flow = pkg_data.get('flow', {})  # 核心流程逻辑
-            print(f"  Universal code analysis: {pkg_data.get('package_count', 0)} packages extracted")
+            return self._scan_with_rgrep(dir_path, max_files)
         except Exception as e:
-            print(f"  WARNING: Universal code analysis failed ({e})")
-        
-        # 2. 轻量提取 structs/functions（只扫描前 100 个文件）
-        try:
-            all_go_files = list(dir_path.rglob("**/*.go"))[:100]
-            scanned_count = 0
-            skipped_count = 0
-            
-            for go_file in all_go_files:
-                # 增量扫描：跳过未变更文件
-                if incremental and changed_files is not None:
-                    if go_file not in changed_files:
-                        skipped_count += 1
-                        continue
-                
-                try:
-                    text = go_file.read_text(encoding="utf-8", errors="ignore")
-                except Exception:
-                    continue
-                
-                rel_path = str(go_file.relative_to(dir_path.parent))
-                
-                # 提取 struct
-                structs = re.findall(r"type\s+(\w+)\s+struct\s*{(.*?)^\}", text, re.MULTILINE | re.DOTALL)
-                for name, body in structs:
-                    ir.structs.append(StructDef(name=name, file=rel_path, fields=[]))
-                
-                # 提取函数
-                funcs = re.findall(r"func\s+(\w+)\s*\(", text)
-                for name in funcs:
-                    if name[0].isupper():
-                        ir.functions.append(FuncDef(name=name, file=rel_path))
-                
-                scanned_count += 1
-            
-            print(f"  Light extraction: {len(ir.structs)} structs, {len(ir.functions)} functions (scanned={scanned_count}, skipped={skipped_count})")
-        except Exception as e:
-            print(f"  WARNING: Light extraction failed ({e})")
-        
-        return ir
+            print(f"  WARNING: ripgrep scan failed ({e}), fallback to Python re")
+            return self._scan_with_python_re(dir_path, max_files, incremental, changed_files)
     
     def _scan_with_python_re(self, dir_path: Path, max_files: int,
                               incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
