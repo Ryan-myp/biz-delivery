@@ -92,7 +92,7 @@ def extract_intent(query: str) -> Tuple[str, float]:
 
 def get_scope_weights(intent: str) -> Dict[str, float]:
     """获取意图对应的范围权重"""
-    return SCOPE_WEIGHTS.get(intent, SCOPE_WEIGHTS["unknown"])
+    return SCOPE_WEIGHTS.get(intent, {"code": 0.7, "api_docs": 0.7, "schema": 0.6, "callgraph": 0.4, "dataflow": 0.4})
 
 
 def get_query_type(intent: str) -> str:
