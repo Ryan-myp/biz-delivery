@@ -19,14 +19,31 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio
+          pip install tree-sitter tree-sitter-go
       
       - name: Run tests
         run: |
-          pytest scripts/test_core_functions.py -v
-          pytest scripts/test_e2e.py -v
+          python -m pytest scripts/test_core_functions.py scripts/test_e2e.py scripts/test_workflows.py -v
       
-      - name: Check code quality
+      - name: Check code coverage
         run: |
-          pylint scripts/ --disable=C0114,C0115,C0116
-          flake8 scripts/
+          pip install coverage
+          coverage run -m pytest scripts/
+          coverage report --fail-under=80
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run flake8
+        run: |
+          pip install flake8
+          flake8 scripts/ --max-line-length=120
+      
+      - name: Run mypy
+        run: |
+          pip install mypy
+          mypy scripts/ --ignore-missing-imports

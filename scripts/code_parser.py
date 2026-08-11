@@ -4,8 +4,50 @@ Code Parser - 代码解析器模块
 从 learn_repo.py 拆分出来的核心数据结构定义
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from enum import Enum
+
+
+class NodeType(Enum):
+    """节点类型"""
+    STRUCT = "struct"
+    FUNCTION = "function"
+    ROUTE = "route"
+    IMPORT = "import"
+    COMMUNITY = "community"
+    NODE = "node"
+    EDGE = "edge"
+
+
+class EdgeType(Enum):
+    """边类型"""
+    DEPENDS_ON = "DEPENDS_ON"
+    CALLS = "CALLS"
+    CONTAINS = "CONTAINS"
+    IMPORTS = "IMPORTS"
+    BELONGS_TO = "BELONGS_TO"
+
+
+@dataclass
+class Node:
+    """图节点"""
+    id: str
+    label: str
+    node_type: NodeType
+    source_file: str = ""
+    source_location: str = ""
+    properties: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Edge:
+    """图边"""
+    source: str
+    target: str
+    edge_type: EdgeType
+    confidence: float = 1.0
 
 
 # ============================================================================
