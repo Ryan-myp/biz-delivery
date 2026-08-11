@@ -399,29 +399,56 @@ class JavaScanner:
 
 
 class TypeScriptScanner:
-    """TypeScript 代码扫描器（基于 tree-sitter-typescript）"""
+    """TypeScript 代码扫描器（基于正则 fallback）"""
     
     @classmethod
     def scan(cls, repo_path: Path) -> ScanResult:
-        if not HAS_TREE_SITTER:
-            return cls._fallback_scan(repo_path)
-        
+        result = cls._fallback_scan(repo_path)
+        return result
+    
+    @classmethod
+    def _fallback_scan(cls, repo_path: Path) -> ScanResult:
         result = ScanResult(repo_path.name, str(repo_path), "typescript")
-        try:
-            import tree_sitter_typescript as tsts
-            parser = Parser(Language(tsts.language()))
-        except ImportError:
-            return cls._fallback_scan(repo_path)
+        
+        # 匹配 class 定义
+        class_pattern = re.compile(r'(?:export\s+)?(?:abstract\s+)?class\s+(\w+)')
+        # 匹配 interface 定义
+        interface_pattern = re.compile(r'(?:export\s+)?interface\s+(\w+)')
+        # 匹配 function 定义
+        func_pattern = re.compile(r'(?:export\s+)?function\s+(\w+)')
         
         for ts_file in repo_path.rglob("*.ts"):
             try:
                 content = ts_file.read_text(encoding='utf-8', errors='ignore')
-                tree = parser.parse(content.encode('utf-8'))
-                cls._extract_nodes(tree, ts_file, result)
-            except Exception as e:
-                print(f"  ⚠️  {ts_file.name}: {e}")
+                rel_path = str(ts_file.relative_to(repo_path.parent))
+                
+                for m in class_pattern.finditer(content):
+                    result.structs.append({
+                        "name": m.group(1),
+                        "file": rel_path,
+                        "line": content[:m.start()].count('\n') + 1,
+                        "type": "CLASS",
+                    })
+                
+                for m in interface_pattern.finditer(content):
+                    result.structs.append({
+                        "name": m.group(1),
+                        "file": rel_path,
+                        "line": content[:m.start()].count('\n') + 1,
+                        "type": "INTERFACE",
+                    })
+                
+                for m in func_pattern.finditer(content):
+                    result.functions.append({
+                        "name": m.group(1),
+                        "file": rel_path,
+                        "line": content[:m.start()].count('\n') + 1,
+                        "type": "FUNCTION",
+                    })
+                    
+            except Exception:
+                pass
         
-        result.edges = cls._compute_edges(result)
         return result
     
     @classmethod
