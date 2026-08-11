@@ -190,9 +190,12 @@ def generate_expert_file(topic: str, category: str, version: str) -> str:
             # 添加表格
             lines.append("| 参数 | 类型 | 默认值 | 说明 |")
             lines.append("|------|------|--------|------|")
-            lines.append(f"| param{i} | string | \"default\" | 参数{i}说明 |")
-            lines.append(f"| param{j} | int | 0 | 参数{j}说明 |")
-            lines.append(f"| param{k} | bool | false | 参数{k}说明 |")
+            param_i = f"param{i}"
+            param_j = f"param{j}" if 'j' in dir() else f"param{j+1}"
+            param_k = f"param{k}" if 'k' in dir() else f"param{k+1}"
+            lines.append(f"| {param_i} | string | \"default\" | 参数{i}说明 |")
+            lines.append(f"| {param_j} | int | 0 | 参数{j}说明 |")
+            lines.append(f"| {param_k} | bool | false | 参数{k}说明 |")
             lines.append("")
         
         lines.append("---")
