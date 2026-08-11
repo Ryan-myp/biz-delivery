@@ -407,7 +407,11 @@ class TypeScriptScanner:
             return cls._fallback_scan(repo_path)
         
         result = ScanResult(repo_path.name, str(repo_path), "typescript")
-        parser = Parser(Language(tsts.language()))
+        try:
+            import tree_sitter_typescript as tsts
+            parser = Parser(Language(tsts.language()))
+        except ImportError:
+            return cls._fallback_scan(repo_path)
         
         for ts_file in repo_path.rglob("*.ts"):
             try:
