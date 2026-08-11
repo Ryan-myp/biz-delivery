@@ -689,18 +689,23 @@ class GoScanner:
     
     def _parse_rg_json_lines(self, output: str) -> Dict[str, List[Dict]]:
         """解析 rg --json 输出，按文件分组
-        同时接受 match 和 context 类型（-A 上下文行）
+        同时接受 match 和 context 两种类型（-A 上下文行）
         """
         by_file = {}
         for line in output.strip().split('\n'):
             if not line.strip():
                 continue
-            # rg --json 输出的 lines.text 可能包含换行符，导致 json.loads 失败
-            cleaned = line.replace('\\n', '\\n').replace('\\t', '\\t')
+            # rg --json 输出的 lines.text 可能包含转义的 \n 和 \t
+            # 先尝试直接解析
             try:
-                data = json.loads(cleaned)
+                data = json.loads(line)
             except json.JSONDecodeError:
-                continue
+                # 尝试修复：把 \n 替换为实际换行
+                try:
+                    fixed = line.replace('\\n', '\n').replace('\\t', '\t')
+                    data = json.loads(fixed)
+                except json.JSONDecodeError:
+                    continue
             # 接受 match 和 context 两种类型
             data_type = data.get("type")
             if data_type not in ("match", "context"):
@@ -709,6 +714,11 @@ class GoScanner:
             file_path = raw.get("path", {}).get("text", "")
             line_num = raw.get("line_number", 0)
             line_text = raw.get("lines", {}).get("text", "")
+            # 解码转义字符
+            try:
+                line_text = line_text.encode().decode('unicode_escape')
+            except:
+                pass
             if file_path not in by_file:
                 by_file[file_path] = []
             by_file[file_path].append({"line": line_num, "text": line_text, "type": data_type})
@@ -766,26 +776,32 @@ class GoScanner:
             # 遍历，用栈追踪当前 struct
             struct_stack = []  # [(struct_name, fields_list)]
             for line_info in lines_sorted:
-                text = line_info["text"]
+                text = line_info["text"].strip()
+                if not text:
+                    continue
                 
-                # 匹配 type XXX struct
-                m = re.search(r'type\s+(\w+)\s+struct', text)
+                # 匹配 type XXX struct {
+                m = re.search(r'type\s+(\w+)\s+struct\s*\{', text)
                 if m:
                     struct_stack.append((m.group(1), []))
                     continue
                 
+                # 匹配结束括号 -> 弹出 struct
+                if text == '}' and struct_stack:
+                    struct_stack.pop()
+                    continue
+                
                 # 匹配字段行: FieldName Type `tag`
                 if struct_stack:
-                    field_m = re.search(r'^\s+(\w+)\s+(\S+?)(?:\s+`(.+)`)?\s*$', text.lstrip('\t'))
-                    if field_m and field_m.group(1) not in ('type', 'func', 'var', 'const'):
-                        tag = field_m.group(3) or ""
-                        field = {"name": field_m.group(1), "type": field_m.group(2)}
-                        gorm = re.search(r'gorm:"([^"]*)"', tag)
-                        json = re.search(r'json:"([^"]*)"', tag)
-                        if gorm:
-                            field["gorm_tag"] = gorm.group(1)
-                        if json:
-                            field["json_tag"] = json.group(1)
+                    # 更宽松的字段匹配
+                    field_m = re.match(r'(\w+)\s+(\S+)', text)
+                    if field_m:
+                        field_name = field_m.group(1)
+                        # 跳过关键字
+                        if field_name in ('type', 'func', 'var', 'const', 'return', 'if', 'for', 'switch'):
+                            continue
+                        field_type = field_m.group(2).rstrip(',')
+                        field = {"name": field_name, "type": field_type}
                         struct_stack[-1][1].append(field)
             
             # 将提取的字段写入 IR
@@ -794,6 +810,13 @@ class GoScanner:
                     if s.name == struct_name and s.file == str(rel_path):
                         s.fields = fields[:30]
                         break
+                # 如果没有找到匹配的 struct，创建新的
+                if not any(s.name == struct_name and s.file == str(rel_path) for s in ir.structs):
+                    ir.structs.append(StructDef(
+                        name=struct_name,
+                        file=str(rel_path),
+                        fields=fields[:30],
+                    ))
 
     def _parse_rg_table_names(self, output: str, ir: IRDocument):
         """从 rg 输出提取 TableName — 读取上下文行找 return "xxx" """
