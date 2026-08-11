@@ -17,8 +17,8 @@ class TestBizDeliveryWorkflow(unittest.TestCase):
     def setUp(self):
         """设置测试环境"""
         self.test_dir = Path(tempfile.mkdtemp(prefix="biz-test-"))
-        self.b dir = Path.home() / "biz-delivery" / "scripts"
-        sys.path.insert(0, str(self.b_dir))
+        self.biz_dir = Path.home() / "biz-delivery" / "scripts"
+        sys.path.insert(0, str(self.biz_dir))
     
     def tearDown(self):
         """清理测试环境"""
