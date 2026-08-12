@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime
-import json
+import glob
 
 
 class AutoOptimizer:
@@ -46,18 +46,36 @@ class AutoOptimizer:
     
     def _check_code_quality(self):
         """检查代码质量"""
-        # Python 语法检查
+        # 使用 find 查找所有 Python 文件
         result = subprocess.run(
-            ["python3", "-m", "py_compile", "skills/**/*.py"],
+            ["find", "skills", "-name", "*.py", "-type", "f"],
             cwd=self.project_root,
             capture_output=True,
             text=True
         )
         
         if result.returncode == 0:
-            print("  ✅ Python 语法检查通过")
+            files = result.stdout.strip().split('\n')
+            print(f"  📁 发现 {len(files)} 个 Skill 文件")
+            
+            # 对每个文件进行语法检查
+            errors = []
+            for file in files:
+                if file:
+                    check = subprocess.run(
+                        ["python3", "-m", "py_compile", file],
+                        capture_output=True,
+                        text=True
+                    )
+                    if check.returncode != 0:
+                        errors.append(f"  ❌ {file}: {check.stderr}")
+            
+            if errors:
+                print("\n".join(errors))
+            else:
+                print("  ✅ Python 语法检查通过")
         else:
-            print(f"  ❌ 语法错误:\n{result.stderr}")
+            print("  ⚠️ 无法扫描文件")
     
     def _run_tests(self):
         """运行测试"""
@@ -95,7 +113,7 @@ class AutoOptimizer:
 ### 状态
 - 代码质量: ✅ 通过
 - 测试覆盖: 运行中...
-- Skill 数量: 6 个核心 Skill
+- Skill 数量: {len(list((self.project_root / 'skills').glob('**/*.py')))} 个文件
 
 ### 下一步建议
 1. 增强 Skill 边界条件覆盖
