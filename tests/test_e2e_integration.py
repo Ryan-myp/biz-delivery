@@ -141,15 +141,11 @@ class TestAgentPhase:
         
         generator = AgentPromptGenerator(profile={"language": "go"})
         
-        # 生成任务提示词
-        task = {
-            "id": "T1",
-            "title": "实现 JWT Token",
-            "description": "生成和验证 JWT Token",
-            "priority": "P0",
-        }
-        
-        prompt = generator.generate_task_prompt(task)
+        # 使用 generate_impl_prompt 生成提示词
+        prompt = generator.generate_impl_prompt(
+            requirements="实现 JWT Token 生成功能",
+            technical_design="## JWT 模块\n- Token 生成\n- Token 验证"
+        )
         
         assert len(prompt) > 50
         assert "JWT" in prompt or "Token" in prompt
