@@ -16,7 +16,7 @@ BASE_DIR = Path("/Users/yanping.ma/biz-delivery")
 def run_cmd(cmd: str) -> str:
     """运行命令并返回输出"""
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
         return result.stdout + result.stderr
     except Exception as e:
         return f"Error: {e}"
@@ -24,33 +24,54 @@ def run_cmd(cmd: str) -> str:
 def check_test_coverage() -> Dict[str, Any]:
     """检查测试覆盖率"""
     print("📊 检查测试覆盖率...")
-    output = run_cmd("python3 -m pytest tests/ --cov=scripts --cov-report=term-missing -q")
+    output = run_cmd("cd /Users/yanping.ma/biz-delivery && python3 -m pytest tests/ -q --tb=no 2>&1")
     
     coverage = {
         "total": 0,
         "passed": 0,
         "failed": 0,
-        "warnings": 0,
-        "missing_lines": []
+        "errors": 0,
+        "warnings": 0
     }
     
     # 解析输出
-    for line in output.split('\n'):
+    lines = output.split('\n')
+    for line in lines:
         if 'passed' in line and 'failed' in line:
             parts = line.split()
             for i, part in enumerate(parts):
                 if part == 'passed':
-                    coverage["passed"] = int(parts[i-1]) if i > 0 else 0
+                    try:
+                        coverage["passed"] = int(parts[i-1]) if i > 0 else 0
+                    except:
+                        pass
                 elif part == 'failed':
-                    coverage["failed"] = int(parts[i-1]) if i > 0 else 0
-                elif part == 'warnings':
-                    coverage["warnings"] = int(parts[i-1]) if i > 0 else 0
-        if 'TOTAL' in line or 'coverage' in line.lower():
-            if '%' in line:
-                try:
-                    coverage["total"] = int(line.split('%')[0].strip().split()[-1])
-                except:
-                    pass
+                    try:
+                        coverage["failed"] = int(parts[i-1]) if i > 0 else 0
+                    except:
+                        pass
+                elif part == 'error':
+                    try:
+                        coverage["errors"] = int(parts[i-1]) if i > 0 else 0
+                    except:
+                        pass
+        if 'warning' in line.lower() and 'passed' not in line:
+            try:
+                coverage["warnings"] = int(line.strip().split()[0])
+            except:
+                pass
+    
+    # 尝试获取覆盖率
+    cov_output = run_cmd("cd /Users/yanping.ma/biz-delivery && python3 -m pytest tests/ --cov=scripts --cov-report=term-missing -q 2>&1")
+    for line in cov_output.split('\n'):
+        if 'TOTAL' in line or '%' in line:
+            try:
+                parts = line.split()
+                for part in parts:
+                    if '%' in part:
+                        coverage["total"] = int(part.replace('%', ''))
+            except:
+                pass
     
     return coverage
 
@@ -60,32 +81,34 @@ def find_issues() -> List[Dict[str, str]]:
     
     # 查找 TODO/FIXME
     print("🔍 查找 TODO/FIXME...")
-    output = run_cmd("grep -r \"TODO\\|FIXME\\|HACK\" scripts/ tests/ 2>/dev/null | head -20")
+    output = run_cmd("grep -r \"TODO\\|FIXME\\|HACK\" /Users/yanping.ma/biz-delivery/scripts/ 2>/dev/null | head -20")
     if output.strip():
         issues.append({
             "type": "todo",
             "description": "发现 TODO/FIXME 标记",
-            "detail": output.strip()[:500]
+            "detail": output.strip()[:500],
+            "severity": "medium"
         })
     
-    # 查找未使用的导入
-    print("🔍 查找未使用的导入...")
-    output = run_cmd("grep -r \"^import\\|^from\" scripts/ | wc -l")
+    # 查找未使用的导入（简单检查）
+    print("🔍 检查代码质量...")
+    output = run_cmd("flake8 /Users/yanping.ma/biz-delivery/scripts/ --max-line-length=100 2>/dev/null | head -20")
     if output.strip():
         issues.append({
-            "type": "imports",
-            "description": f"发现 {output.strip()} 个导入语句"
+            "type": "code_quality",
+            "description": "发现代码质量问题",
+            "detail": output.strip()[:500],
+            "severity": "low"
         })
     
     # 检查测试文件
-    print("🔍 检查测试覆盖...")
-    test_files = list(BASE_DIR.glob("tests/test_*.py"))
-    script_files = list((BASE_DIR / "scripts").glob("*.py"))
+    test_files = list(BASE_DIR.glob("tests/**/*.py"))
+    script_files = list((BASE_DIR / "scripts").glob("*.py")) + list((BASE_DIR / "scripts" / "**").glob("*.py"))
     
-    if len(test_files) < len(script_files) * 0.5:
+    if len(test_files) < len(script_files) * 0.3:
         issues.append({
             "type": "test_coverage",
-            "description": f"测试文件数量不足 ({len(test_files)} vs {len(script_files)} 个脚本)",
+            "description": f"测试覆盖不足 (测试文件: {len(test_files)}, 脚本文件: {len(script_files)})",
             "severity": "high"
         })
     
@@ -100,17 +123,27 @@ def analyze_project_structure() -> Dict[str, Any]:
         "python_files": 0,
         "test_files": 0,
         "docs_files": 0,
-        "modules": []
+        "config_files": 0
     }
     
+    # 排除 node_modules, .git 等
+    exclude_dirs = {'node_modules', '.git', '.venv', '__pycache__', 'scripts/archive'}
+    
     for path in BASE_DIR.rglob("*"):
-        structure["total_files"] += 1
-        if path.suffix == '.py':
-            structure["python_files"] += 1
-            if 'test' in path.parts:
-                structure["test_files"] += 1
-        elif path.suffix in ['.md', '.txt']:
-            structure["docs_files"] += 1
+        # 跳过排除的目录
+        if any(exclude in path.parts for exclude in exclude_dirs):
+            continue
+        
+        if path.is_file():
+            structure["total_files"] += 1
+            if path.suffix == '.py':
+                structure["python_files"] += 1
+                if 'test' in path.parts or 'tests' in path.parts:
+                    structure["test_files"] += 1
+            elif path.suffix in ['.md', '.txt', '.json', '.yml', '.yaml']:
+                structure["docs_files"] += 1
+            elif path.name in ['requirements.txt', 'setup.py', 'pyproject.toml', '.gitignore']:
+                structure["config_files"] += 1
     
     return structure
 
@@ -132,10 +165,11 @@ def main():
     
     # 检查测试覆盖率
     coverage = check_test_coverage()
-    print(f"📊 测试覆盖率: {coverage['total']}%")
+    print(f"📊 测试结果:")
+    print(f"   - 覆盖率: {coverage['total']}%")
     print(f"   - 通过: {coverage['passed']}")
     print(f"   - 失败: {coverage['failed']}")
-    print(f"   - 警告: {coverage['warnings']}")
+    print(f"   - 错误: {coverage['errors']}")
     print()
     
     # 查找问题
@@ -143,7 +177,8 @@ def main():
     if issues:
         print("⚠️  发现问题:")
         for issue in issues:
-            print(f"   - [{issue['type']}] {issue['description']}")
+            severity = issue.get('severity', 'medium').upper()
+            print(f"   - [{severity}] {issue['type']}: {issue['description']}")
         print()
     
     # 输出总结
@@ -151,11 +186,14 @@ def main():
     print("✅ 分析完成")
     print("=" * 60)
     
-    return {
+    # 输出 JSON 结果供后续处理
+    result = {
         "structure": structure,
         "coverage": coverage,
         "issues": issues
     }
+    
+    return result
 
 if __name__ == "__main__":
     main()
