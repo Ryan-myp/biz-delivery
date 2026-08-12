@@ -45,7 +45,6 @@ class TestAgentPromptGenerator:
         assert len(prompt) > 100
         assert "Auth" in prompt or "auth" in prompt
     
-    @pytest.mark.skip(reason="Known bug: KeyError 'case_name' in generate_test_prompt")
     def test_generate_test_prompt(self):
         """测试生成测试提示词"""
         generator = AgentPromptGenerator(profile={"language": "go"})
@@ -57,6 +56,39 @@ class TestAgentPromptGenerator:
         )
         
         assert len(prompt) > 50
+        assert "Login" in prompt or "login" in prompt
+    
+    def test_generate_review_prompt(self):
+        """测试生成审查提示词"""
+        generator = AgentPromptGenerator(profile={"language": "go"})
+        
+        prompt = generator.generate_review_prompt("修改了 auth.go")
+        
+        assert len(prompt) > 50
+        assert "auth.go" in prompt
+    
+    def test_generate_task_prompt_setup(self):
+        """测试生成环境准备任务提示词"""
+        generator = AgentPromptGenerator(profile={"language": "go"})
+        
+        task = {"type": "setup", "repo_path": "/tmp/test"}
+        prompt = generator.generate_task_prompt(task)
+        
+        assert "环境准备" in prompt or "DevOps" in prompt
+    
+    def test_generate_task_prompt_implement(self):
+        """测试生成实现任务提示词"""
+        generator = AgentPromptGenerator(profile={"language": "go"})
+        
+        task = {
+            "type": "implement",
+            "requirements": "实现登录功能",
+            "technical_design": "## 登录模块",
+            "code_context": ""
+        }
+        prompt = generator.generate_task_prompt(task)
+        
+        assert "登录" in prompt or "login" in prompt.lower()
 
 
 class TestTaskDecomposer:
@@ -106,6 +138,19 @@ class TestPromptContent:
         # 检查提示词包含基本结构
         assert "功能需求" in prompt or "requirement" in prompt.lower()
         assert "技术方案" in prompt or "td" in prompt.lower()
+    
+    def test_test_prompt_has_requirements(self):
+        """测试测试提示词包含需求"""
+        generator = AgentPromptGenerator(profile={"language": "go"})
+        
+        prompt = generator.generate_test_prompt(
+            feature_description="User login",
+            test_cases=["TestLoginSuccess", "TestLoginFailure"],
+            test_file="login_test.go"
+        )
+        
+        assert "User login" in prompt or "login" in prompt.lower()
+        assert "TestLoginSuccess" in prompt
 
 
 if __name__ == "__main__":

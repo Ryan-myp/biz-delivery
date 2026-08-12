@@ -89,12 +89,12 @@ PROMPT_TEMPLATES = {
 ```markdown
 ## 测试文件: {test_file}
 
-### 测试用例 1: {case_name}
+### 测试用例 1: 
 \`\`\`{language}
-{test_code}
+
 \`\`\`
 
-**预期结果**: {expected}
+**预期结果**: 
 """,
     
     "review": """# 代码审查任务
