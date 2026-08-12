@@ -28,7 +28,7 @@ class PRDReviewSkill(SkillBase):
         },
         "missing_goals": {
             "name": "缺少业务目标",
-            "pattern": r"##\s*(目标|goal|目的|背景)",
+            "pattern": r"##\s*(业务目标|目标|goal|目的|背景)",
             "severity": "P0",
             "message": "PRD 应说明业务目标和背景",
         },
