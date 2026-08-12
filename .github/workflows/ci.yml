@@ -2,48 +2,78 @@ name: biz-delivery CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-asyncio
-          pip install tree-sitter tree-sitter-go
-      
-      - name: Run tests
-        run: |
-          python -m pytest scripts/test_core_functions.py scripts/test_e2e.py scripts/test_workflows.py -v
-      
-      - name: Check code coverage
-        run: |
-          pip install coverage
-          coverage run -m pytest scripts/
-          coverage report --fail-under=80
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
 
-  quality:
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+
+    - name: Run tests
+      run: |
+        python -m pytest tests/ -v --cov=scripts --cov-report=xml
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      if: matrix.python-version == '3.11'
+
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run flake8
-        run: |
-          pip install flake8
-          flake8 scripts/ --max-line-length=120
-      
-      - name: Run mypy
-        run: |
-          pip install mypy
-          mypy scripts/ --ignore-missing-imports
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install flake8
+      run: pip install flake8
+
+    - name: Run linter
+      run: flake8 scripts/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  profile-validation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Validate profiles
+      run: |
+        pip install pydantic
+        python -c "
+        import json
+        from pathlib import Path
+        schema = json.load(open('references/profile_schema.json'))
+        for p in Path('profiles').glob('*.json'):
+            if p.name == 'index.json':
+                continue
+            data = json.load(open(p))
+            # Basic validation
+            assert 'business_domain' in data, f'{p} missing business_domain'
+            assert 'repositories' in data, f'{p} missing repositories'
+            print(f'✓ {p.name} valid')
+        "

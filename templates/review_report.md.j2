@@ -1,0 +1,12 @@
+{%- for section in review.sections %}
+## {{ section.title }}
+
+{{ section.content }}
+{%- endfor %}
+
+---
+**Status**: {{ review.status }}
+**Confidence**: {{ review.confidence }}
+**P0 Issues**: {{ review.p0_count }}
+**P1 Issues**: {{ review.p1_count }}
+**P2 Issues**: {{ review.p2_count }}

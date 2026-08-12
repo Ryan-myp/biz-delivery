@@ -1,0 +1,58 @@
+# Technical Design Document
+
+## 1. Design Decision
+
+**Type**: {{ td.design_type }}
+**Rationale**: {{ td.rationale }}
+
+## 2. Architecture Design
+
+### 2.1 Module Structure
+{%- for module in td.modules %}
+- `{{ module.path }}` — {{ module.description }}
+{%- endfor %}
+
+### 2.2 Component Diagram
+```mermaid
+{{ td.component_diagram }}
+```
+
+## 3. Data Model Changes
+
+### 3.1 Database Schema
+{%- for table in td.schema_changes %}
+#### {{ table.name }}
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+{%- for col in table.columns %}
+| {{ col.name }} | {{ col.type }} | {{ col.nullable }} | {{ col.default }} |
+{%- endfor %}
+{%- endfor %}
+
+### 3.2 Go Struct Definitions
+```go
+{%- for struct in td.structs %}
+{{ struct.definition }}
+{%- endfor %}
+```
+
+## 4. API Design
+
+| Method | Path | Handler | Auth |
+|--------|------|---------|------|
+{%- for api in td.apis %}
+| {{ api.method }} | {{ api.path }} | {{ api.handler }} | {{ api.auth }} |
+{%- endfor %}
+
+## 5. Implementation Plan
+
+| File | Action | Description |
+|------|--------|-------------|
+{%- for change in td.implementation_plan %}
+| {{ change.file }} | {{ change.action }} | {{ change.description }} |
+{%- endfor %}
+
+## 6. Risk & Mitigation
+{%- for risk in td.risks %}
+| {{ risk.risk }} | {{ risk.impact }} | {{ risk.likelihood }} | {{ risk.mitigation }} |
+{%- endfor %}

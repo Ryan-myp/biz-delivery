@@ -1,0 +1,30 @@
+# Test Cases
+
+## Summary
+- **Total Cases**: {{ test_cases.total }}
+- **P0 (Core)**: {{ test_cases.p0_count }}
+- **P1 (Important)**: {{ test_cases.p1_count }}
+- **P2 (Nice-to-have)**: {{ test_cases.p2_count }}
+
+## Test Cases Table
+
+| TC# | Category | Priority | Title | Preconditions | Steps | Expected Result | Error Code |
+|-----|----------|----------|-------|---------------|-------|-----------------|------------|
+{%- for tc in test_cases.cases %}
+| {{ tc.id }} | {{ tc.category }} | {{ tc.priority }} | {{ tc.title }} | {{ tc.preconditions }} | {{ tc.steps }} | {{ tc.expected }} | {{ tc.error_code }} |
+{%- endfor %}
+
+## Boundary Tests
+{%- for bc in test_cases.boundary_tests %}
+- **{{ bc.title }}**: {{ bc.description }}
+{%- endfor %}
+
+## Security Tests
+{%- for sc in test_cases.security_tests %}
+- **{{ sc.title }}**: {{ sc.description }}
+{%- endfor %}
+
+## Performance Tests
+{%- for pc in test_cases.performance_tests %}
+- **{{ pc.title }}**: {{ pc.description }}
+{%- endfor %}

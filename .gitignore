@@ -1,6 +1,61 @@
+# Dependencies
+requirements.txt
+venv/
+.venv/
+env/
 
-# knowledge-search cache
-knowledge-search/.cache/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Per-project knowledge outputs (generated, not source)
-knowledge/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Knowledge cache
+knowledge/**/ir_cache.json
+knowledge/**/__pycache__/
+
+# Output
+delivery/
+output/
+result/
+
+# Environment
+.env
+.env.local
+
+# Archive
+scripts/archive/

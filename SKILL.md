@@ -1,77 +1,77 @@
 ---
 name: biz-delivery
-description: "通用业务交付框架：PRD评审→证据查询→TD→开发计划→测试用例。业务差异通过 Profile + Hooks 配置，不修改核心引擎。"
-version: 0.1.0
+description: "端到端智能业务交付框架：PRD审查→技术方案→Agent开发→测试生成→自动化执行。一套完整的从需求到交付的自动化流程。"
+version: 3.0.0
 author: ryan
 platforms: [linux, macos]
 metadata:
   hermes:
-    tags: [delivery, prd-review, td, test-case, profile, hooks, generic]
+    tags: [delivery, prd-review, td, agent, test-case, automation, quality-gate, generic]
 ---
 
-# 通用业务交付框架
+# biz-delivery v3.0 — 智能业务交付框架
 
 ## 概述
 
-一套通用的业务交付引擎，从 PRD 到测试用例的全链路自动化。
+一套完整的端到端业务交付框架，从 PRD 到自动化执行的完整链路。
 
-**核心原则：流程通用，业务通过 profile 和 hooks 扩展。**
+**核心原则：流程通用，业务通过 Profile + Hooks 配置扩展。**
+
+## 完整交付链路
+
+```
+PRD → Review → TD → Agent Tasks → Implementation → Test → Automation → Quality Gate
+ │       │       │         │             │            │          │            │
+ ▼       ▼       ▼         ▼             ▼            ▼          ▼            ▼
+文本    报告     设计       任务列表       代码        用例       执行结果     质量评分
+                                    (AI Agent)   (自动生成)   (自动验证)
+```
 
 ## 快速开始
 
+### 1. 初始化业务 Profile
+
 ```bash
-# 1. 初始化业务 Profile
 python3 scripts/init_profile.py \
   --business-domain "my-service" \
   --repository "/path/to/repo" \
   --output profiles/my-service.json
+```
 
-# 2. 按需实现 Hooks（最少实现 fetch_prd.py）
-# 编辑 hooks/fetch_prd.py — 定义如何获取 PRD
-# 编辑 hooks/validate.py — 定义业务校验规则
+### 2. 实现 Hooks（按业务需求）
 
-# 3. 开始使用
-python3 scripts/run_pipeline.py \
+编辑 `hooks/` 下的文件：
+- `fetch_prd.py` — 定义如何获取 PRD（Confluence/Wiki/本地文件）
+- `map_terms.py` — 业务术语映射到代码关键词
+- `validate.py` — 业务专属校验规则
+- `post_review.py` — 评审后处理
+- `test_dimensions.py` — 业务专属测试维度
+
+### 3. 运行完整流水线
+
+```bash
+# 一键运行所有阶段
+python3 scripts/delivery_pipeline.py \
   --profile "profiles/my-service.json" \
-  --text "<PRD内容>" \
-  --output-dir delivery/my-feature
+  --prd "prd.md" \
+  --output-dir "delivery/my-feature" \
+  --stages learn,review,td,tasks,agent,test,automation,quality
 ```
 
-## 三层架构
+### 4. 运行部分阶段
 
-```
-┌─ Layer 1: 知识提取引擎 ───────────────────┐
-│  (把代码/文档变成结构化知识)               │
-│                                            │
-│  AST Parser    — 语法结构提取              │
-│  CFG Builder   — 控制流图                 │
-│  DFG Analyzer  — 数据流分析               │
-│  Flow Builder  — 业务流发现               │
-└────────────────────────────────────────────┘
-                     │ 结构化知识
-                     ▼
-┌─ Layer 2: 核心引擎 (scripts/) ────────────┐
-│  query_evidence.py   — 通用证据查询        │
-│  review_engine.py    — PRD评审引擎         │
-│  td_engine.py        — TD生成引擎          │
-│  test_engine.py      — 测试用例引擎        │
-│  profile_registry.py — 业务Profile管理     │
-│  benchmark.py        — 回归测试            │
-└────────────────────────────────────────────┘
-                     ▲
-                     │ Profile 配置
-┌─ Layer 3: 业务 Profile (profiles/) ────────┐
-│  定义业务域：仓库路径、术语、证据源、规则    │
-└────────────────────────────────────────────┘
-                     ▲
-                     │ 实现差异
-┌─ Layer 4: 业务 Hook (hooks/) ──────────────┐
-│  fetch_prd.py      — 如何获取 PRD          │
-│  map_terms.py      — 业务术语映射          │
-│  validate.py       — 业务校验规则          │
-│  post_review.py    — 评审后处理            │
-│  test_dimensions.py— 业务专属测试维度       │
-└────────────────────────────────────────────┘
+```bash
+# 仅运行 PRD 审查
+python3 scripts/delivery_pipeline.py \
+  --profile "profiles/my-service.json" \
+  --prd "prd.md" \
+  --output-dir "delivery/my-feature" \
+  --stages review
+
+# 仅运行自动化执行
+python3 scripts/automation.py \
+  --work-dir "delivery/my-feature" \
+  --language go
 ```
 
 ## 目录结构
@@ -80,37 +80,63 @@ python3 scripts/run_pipeline.py \
 biz-delivery/
 ├── SKILL.md                    # 本文件
 ├── scripts/
-│   ├── _common.py              # 通用工具函数
-│   ├── query_evidence.py       # 通用证据查询
-│   ├── review_engine.py        # PRD评审引擎
-│   ├── td_engine.py            # TD生成引擎
-│   ├── test_engine.py          # 测试用例引擎
-│   ├── run_pipeline.py         # 端到端流水线
-│   ├── init_profile.py         # 初始化业务Profile
-│   ├── profile_registry.py     # 业务Profile注册表
-│   ├── benchmark.py            # 回归测试
-│   ├── knowledge_extractor.py  # ★ 知识提取引擎 (AST/CFG/DFG/Flow)
-│   ├── smart_routing.py        # ★ 意图识别 + 智能路由
-│   ├── query_cache.py          # ★ 查询缓存
-│   └── rrf_fusion.py           # ★ RRF 融合查询
-├── profiles/
-│   ├── default.json            # 默认配置
-│   └── index.json              # 业务注册表
-├── hooks/
-│   ├── fetch_prd.py            # Hook: 获取PRD
-│   ├── map_terms.py            # Hook: 术语映射
-│   ├── validate.py             # Hook: 校验规则
-│   ├── post_review.py          # Hook: 评审后处理
-│   └── test_dimensions.py      # Hook: 测试维度
-├── references/
-│   ├── profile_schema.json     # Profile Schema定义
-│   ├── extension_guide.md      # 扩展指南
-│   ├── input_contract.md       # 输入契约
-│   └── output_contract.md      # 输出契约
-└── templates/
-    ├── review_report.md.j2     # 评审报告模板
-    ├── td.md.j2               # TD模板
-    └── test_cases.md.j2       # 测试用例模板
+│   ├── delivery_pipeline.py    # [v3.0] 端到端流水线
+│   ├── automation.py           # [v3.0] 自动化执行引擎
+│   ├── review_engine.py        # PRD 审查引擎
+│   ├── td_engine.py            # 技术方案生成引擎
+│   ├── test_engine.py          # 测试用例生成引擎
+│   ├── learn_repo.py           # 知识提取引擎
+│   ├── query/                  # 查询模块（v2.0 拆分）
+│   │   ├── intent.py           # 意图识别
+│   │   ├── fuzzy_match.py      # 模糊匹配
+│   │   ├── synonym_expansion.py # 同义词扩展
+│   │   ├── multi_path_query.py # 多路查询
+│   │   ├── rrf_fusion.py       # RRF 融合
+│   │   └── wiki_query.py       # Wiki 查询
+│   ├── review/                 # [v2.0] 审查能力增强
+│   │   ├── cross_module_analysis.py # 跨模块影响分析
+│   │   ├── field_conflict.py      # 字段级冲突检测
+│   │   ├── incremental_ir.py      # 增量 IR 更新
+│   │   └── multi_repo_deps.py     # 多仓库依赖追踪
+│   └── agent/                  # [v3.0] Agent 支持
+│       └── prompt_generator.py  # Agent 提示词生成
+├── profiles/                   # 业务 Profile 配置
+├── hooks/                      # 业务专属 Hook 实现
+├── templates/                  # Jinja2 模板
+├── knowledge/                  # 知识库（learn 模式输出）
+├── delivery/                   # 交付产物（auto 模式输出）
+├── tests/                      # 测试套件
+└── references/                 # 参考文档
+```
+
+## 三层架构
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                    biz-delivery v3.0                       │
+└────────────────────────────────────────────────────────────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│ Layer 1       │   │ Layer 2       │   │ Layer 3       │
+│ 知识提取层     │   │ 引擎层         │   │ Agent 执行层   │
+│               │   │               │   │               │
+│ • learn_repo  │   │ • review      │   │ • Setup Agent │
+│ • wiki_engine │   │ • td_engine   │   │ • Implement   │
+│ • query/      │   │ • test_engine │   │ • Test Agent  │
+│               │   │               │   │ • Review Agent│
+│               │   │ • delivery    │   │               │
+│               │   │   _pipeline   │   │ • automation  │
+└───────────────┘   └───────────────┘   └───────────────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│ Layer 4       │   │ Layer 5       │   │ Layer 6       │
+│ 业务配置层     │   │ 质量门禁层     │   │ 输出层         │
+│               │   │               │   │               │
+│ • profiles/   │   │ • quality_gate│   │ • delivery/   │
+│ • hooks/      │   │ • validator   │   │ • reports/    │
+└───────────────┘   └───────────────┘   └───────────────┘
 ```
 
 ## 业务 Profile 格式
@@ -118,26 +144,37 @@ biz-delivery/
 ```json
 {
   "business_domain": "my-service",
+  "language": "go",
   "repositories": [
     {
       "name": "my-service",
       "path": "/path/to/repo",
-      "language": "python",
+      "language": "go",
       "entry_keywords": ["handler", "service", "controller"],
       "exclude_patterns": ["test_*", "fixtures"]
     }
   ],
-  "evidence_sources": ["code", "schema", "api_docs"],
+  "modules": [
+    {"name": "AdGroup / 广告组", "keywords": ["adgroup", "广告组"]},
+    {"name": "Creative / 素材", "keywords": ["creative", "素材", "review"]}
+  ],
   "domain_terms": {
-    "术语1": "解释1",
-    "术语2": "解释2"
+    "审核": "review",
+    "发布": "publish"
   },
-  "review_rules": {
-    "must_check": ["正向流程", "异常处理", "权限控制"],
-    "quality_gate": "needs_revision"
+  "state_machines": {
+    "Creative": {
+      "states": ["DRAFT", "PENDING_APPROVAL", "APPROVED", "REJECTED", "LIVE"],
+      "transitions": [
+        {"from": "DRAFT", "to": "PENDING_APPROVAL", "action": "Submit"}
+      ]
+    }
   },
-  "test_dimensions": ["正向", "边界", "异常", "兼容"],
-  "scenario_cards": "path/to/scenarios.json"
+  "quality_gate": {
+    "required_coverage": 0.7,
+    "required_pass_rate": 0.9,
+    "required_files": ["handler.go", "service.go", "dao.go"]
+  }
 }
 ```
 
@@ -152,7 +189,7 @@ biz-delivery/
        ...
    ```
 
-2. **map_terms.py** (可选) — 业务术语映射到代码关键词
+2. **map_terms.py** (可选) — 业务术语映射
    ```python
    def map_terms(terms):
        """业务词 → 代码关键词"""
@@ -166,49 +203,17 @@ biz-delivery/
        ...
    ```
 
-## 端到端流水线
+## 版本演进
 
-```bash
-# 完整链路：PRD → 评审 → TD → 开发计划 → 测试用例 → 自动化计划
-python3 scripts/run_pipeline.py \
-  --profile "profiles/my-service.json" \
-  --text "<PRD内容或URL>" \
-  --output-dir "delivery/my-feature" \
-  --stages review,td,plan,test,automation
-```
+| 版本 | 能力 | 说明 |
+|------|------|------|
+| v1.0 | PRD Review + TD + Test | 基础三阶段 |
+| v2.0 | 查询模块拆分 + 审查能力增强 | 跨模块分析、字段冲突检测 |
+| v3.0 | 端到端完整交付 | Agent 任务生成 + 执行 + 自动化 + 质量门禁 |
 
-## 维护
+## 详细文档
 
-- 与 ad-ai-coding/business-delivery 对比：本 skill 更通用，ad-ai-coding 是广告专用版本
-- 业务接入指南: references/abstraction-process.md
-## 与 ad-ai-coding 的关系
-
-biz-delivery 从 ad-ai-coding 的业务-delivery skill 抽象而来：
-
-| 维度 | ad-ai-coding | biz-delivery |
-|------|-------------|--------------|
-| 广告场景卡 | 内置 | Profile 配置 |
-| Provider映射 | 内置 | Hooks 实现 |
-| Confluence PRD | 内置 | fetch_prd.py Hook |
-| 流程引擎 | 硬编码 | 通用脚本 |
-| 新业务接入 | 修改脚本 | 新增 Profile + Hooks |
-
-## 输出状态
-
-所有结构化产物统一使用：
-```
-ready | needs_revision | blocked | partial | degraded | missing
-```
-
-## 常见错误
-
-- 修改核心引擎而不是新增 Profile
-- 把某个业务的 profile 术语当成通用规则
-- 查询命中一个文件名就断言完整流程已实现
-- 跳过证据直接从 PRD 生成 TD
-- PRD 有 blocker 仍输出可直接编码的 handoff
-
-## 参考文档
-
-- `references/abstraction-process.md` — 从 ad-ai-coding 抽象为通用 skill 的完整流程
-- `references/extension_guide.md` — 如何为新业务添加 Profile 和 Hook
+- [DOCS_V3.md](DOCS_V3.md) — v3.0 完整文档
+- [references/extension_guide.md](references/extension_guide.md) — 扩展指南
+- [references/profile_schema.json](references/profile_schema.json) — Profile Schema
+- [CAPABILITY_ASSESSMENT.md](CAPABILITY_ASSESSMENT.md) — 能力评估

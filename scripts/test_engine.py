@@ -178,9 +178,9 @@ class TestEngine(EngineBase):
             }
             
             if uncovered:
-                result['recommendations'].append(f"⚠️ 建议补充未覆盖场景: {", ".join(uncovered[:3])}")
+                result['recommendations'].append(f"⚠️ 建议补充未覆盖场景: {', '.join(uncovered[:3])}")
             if result['total_cases'] < 20:
-                result['recommendations'].append(f"ℹ️ 测试用例数量较少({result["total_cases"]}条)，建议补充边界条件和异常场景")
+                result['recommendations'].append(f"ℹ️ 测试用例数量较少({result['total_cases']}条)，建议补充边界条件和异常场景")
         else:
             # 备用方案：仅统计 TC 编号
             tc_matches = re.findall(r'TC\d{3,}', llm_response)
@@ -755,14 +755,11 @@ def main():
 
 def _extract_section(text: str, heading: str) -> Optional[str]:
     """从 Markdown 文本中提取指定 section 的内容。"""
-    pattern = rf'(?:#{1,2}\s+)?{re.escape(heading)}.*?\n((?:[^\n]*\n?)*)'
-    match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+    pattern = rf'##?\s+{re.escape(heading)}[^\n]*\n(.*?)(?=\n##?\s+|\Z)'
+    match = re.search(pattern, text, re.DOTALL)
     if match:
         content = match.group(1).strip()
-        next_heading = re.search(r'\n###?\s+\w', content)
-        if next_heading:
-            content = content[:next_heading.start()]
-        return content
+        return content if content else None
     return None
 
 

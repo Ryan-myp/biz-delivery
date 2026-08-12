@@ -2,82 +2,116 @@
 
 ## 📚 文档分类
 
-### 1. API文档
-- `API_REFERENCE.md` - API接口参考
-- `SCRIPTS_GUIDE.md` - 脚本使用说明
+### 1. 核心文档
+- `README.md` — 项目概述与快速开始
+- `SKILL.md` — Skill 元数据与架构说明
+- `USAGE.md` — 使用手册
+- `DOCS.md` — 本文档索引
 
-### 2. 架构文档
-- `ARCHITECTURE.md` - 系统架构设计
-- `DESIGN_PATTERNS.md` - 设计模式
+### 2. 参考文档
+- `references/profile_schema.json` — Profile JSON Schema
+- `references/input_contract.md` — 输入契约
+- `references/output_contract.md` — 输出契约
+- `references/extension_guide.md` — 扩展指南
+- `references/learn_repo-notes.md` — 代码学习笔记
+- `references/learn-quantitative-analysis.md` — 量化分析
 
-### 3. 用户手册
-- `USER_GUIDE.md` - 快速开始指南
-- `FAQ.md` - 常见问题解答
+### 3. 知识库
+- `knowledge/*/` — 各业务域的编译式知识库
+- `wiki_engine/` — Wiki 引擎实现
 
-### 4. 开发指南
-- `DEVELOPER_GUIDE.md` - 开发者指南
-- `CONTRIBUTING.md` - 贡献指南
+### 4. 测试
+- `tests/` — pytest 测试套件
+- `scripts/benchmark.py` — 性能基准测试
 
 ---
 
-## 📖 API文档
+## 📖 API 参考
 
 ### 核心引擎
 
-#### GraphifyEngine
+#### ReviewEngine
 ```python
-from unified_api import GraphifyEngine
+from scripts.review_engine import ReviewEngine
 
-engine = GraphifyEngine()
-result = engine.execute(ir_document)
+engine = ReviewEngine(profile, output_dir, wiki_path)
+result = engine.review(prd_text)
+# result: {status, prompt_file, prd_length}
 ```
 
-**输入**: IRDocument
-**输出**: IRDocument (增强版)
-
-#### CommunityEngine
+#### TDEngine
 ```python
-from unified_api import CommunityEngine
+from scripts.td_engine import TDEngine
 
-engine = CommunityEngine()
-result = engine.execute(ir_document)
+engine = TDEngine(profile, output_dir, wiki_path)
+result = engine.generate_td(prd_text, review_report)
+# result: {status, prompt_file}
 ```
 
-#### PromptEngine
+#### TestEngine
 ```python
-from unified_api import PromptEngine
+from scripts.test_engine import TestEngine
 
-engine = PromptEngine()
-result = engine.execute(ir_document)
+engine = TestEngine(profile, output_dir, wiki_path)
+result = engine.generate_tests(prd_text, td_text)
+# result: {status, prompt_file}
+```
+
+### 流水线
+
+#### run_pipeline.py
+```bash
+# Learn 模式
+python3 scripts/run_pipeline.py --profile profiles/my-service.json --mode learn --output-dir knowledge/my-service
+
+# PRD-TDD 模式
+python3 scripts/run_pipeline.py --profile profiles/my-service.json --mode prdtdd --text "<PRD>" --output-dir delivery/my-feature
+
+# Auto 模式（全自动）
+python3 scripts/run_pipeline.py --profile profiles/my-service.json --mode auto --text "<PRD>" --output-dir delivery/my-feature
 ```
 
 ---
 
-## 🚀 快速开始
+## 🔧 架构文档
 
-### 安装依赖
-```bash
-pip install tree-sitter tree-sitter-go pytest
-```
+### 知识提取引擎
+- `scripts/knowledge_extractor.py` — AST/CFG/DFG 分析
+- `scripts/code_graph_builder.py` — 代码图谱构建
+- `scripts/core_flow_analyzer.py` — 核心流程分析
 
-### 运行测试
-```bash
-python -m pytest scripts/ -v
-```
+### 证据查询
+- `scripts/query_evidence.py` — 多路融合查询
+- `scripts/smart_routing.py` — 意图识别 + 路由
+- `scripts/rrf_fusion.py` — RRF 融合算法
 
-### 分析代码仓库
-```bash
-python scripts/learn_repo_v2.py --repo /path/to/repo --lang go --output ./output
-```
+### Wiki 引擎
+- `wiki_engine/ingest.py` — 知识摄入
+- `wiki_engine/query.py` — 知识问答
+- `wiki_engine/lint.py` — 知识审计
 
 ---
 
-## 📊 核心能力
+## 📊 业务 Profile
 
-| 能力 | 描述 | 状态 |
-|------|------|------|
-| 代码图谱分析 | Tree-sitter AST解析 | ✅ |
-| 社区检测 | Louvain算法 | ✅ |
-| 多语言扫描 | Go/Python/Java/TS | ✅ |
-| HTML可视化 | D3.js图表 | ✅ |
-| Prompt生成 | 紧凑化设计 | ✅ |
+### 已配置的业务域
+- `creative-platform` — 创意平台
+- `ad-platform` — 广告投放平台
+- `sponge` — 海绵平台
+- `conc` — conciliation 服务
+- `eino` — EINO 框架
+
+### Profile 结构
+```json
+{
+  "business_domain": "my-service",
+  "repositories": [...],
+  "modules": [...],
+  "query_aliases": {...},
+  "state_machines": {...},
+  "business_rules": {...},
+  "service_topology": {...}
+}
+```
+
+详细 Schema 见 `references/profile_schema.json`

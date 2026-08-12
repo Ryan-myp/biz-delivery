@@ -21,6 +21,17 @@ from learn_repo import IRDocument
 from base_engine import EngineBase
 from query_evidence import fuzzy_score as _fuzzy_score
 
+# 导入新增的审查能力
+try:
+    from review.cross_module_analysis import analyze_cross_module_impact
+    from review.field_conflict import detect_field_conflicts
+    from review.incremental_ir import IncrementalIRUpdater, IRCacheManager
+    from review.multi_repo_deps import analyze_multi_repo_dependencies
+    HAS_NEW_REVIEW = True
+except ImportError:
+    HAS_NEW_REVIEW = False
+    print("⚠️  新审查模块未找到，使用原有审查逻辑")
+
 
 class ReviewEngine(EngineBase):
     """PRD 审查引擎"""
@@ -263,17 +274,17 @@ class ReviewEngine(EngineBase):
         default_rec = f'{category} 相关问题：建议参考行业最佳实践，结合当前架构深入评估影响范围与风险等级；可参考 GitHub Stars 高的开源实现方案'
         return rec_map.get(category, default_rec)
     def _extract_section(self, text: str, heading: str) -> Optional[str]:
-        """从 Markdown 文本中提取指定 section 的内容。"""
-        # 匹配 ### heading 或 ## heading 后面的内容
-        pattern = rf'(?:#{1,2}\s+)?{re.escape(heading)}.*?\n((?:[^\n]*\n?)*)'
-        match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+        """从文本中提取指定 section 的内容。
+
+        支持 Markdown heading 格式: "## heading\\ncontent"
+        也支持 heading 前缀匹配 (如 "P0" 匹配 "## P0 Issues")
+        """
+        # 匹配 ## heading 或 # heading，支持 heading 后跟其他文字
+        pattern = rf'##?\s+{re.escape(heading)}[^\n]*\n(.*?)(?=\n##?\s+|\Z)'
+        match = re.search(pattern, text, re.DOTALL)
         if match:
             content = match.group(1).strip()
-            # 截断到下一个 ### 或 ## heading
-            next_heading = re.search(r'\n###?\s+\w', content)
-            if next_heading:
-                content = content[:next_heading.start()]
-            return content
+            return content if content else None
         return None
     
     def _parse_issue_list(self, section_text: str) -> List[Dict]:
@@ -323,7 +334,7 @@ class ReviewEngine(EngineBase):
     def _run_prechecks(self, ir: IRDocument, prd_text: str, evidence: list) -> List[Dict]:
         """运行预检查 — 在 LLM 审查前先标记明显问题
         
-        优化：使用缓存避免重复 fuzzy 计算
+        增强功能：集成跨模块影响分析和字段级冲突检测
         """
         checks = []
         
@@ -426,6 +437,92 @@ class ReviewEngine(EngineBase):
         if cross_repo_checks:
             checks.extend(cross_repo_checks)
         
+        # 6. 跨模块影响分析（新增能力）
+        if HAS_NEW_REVIEW:
+            try:
+                cross_module_checks = self._analyze_cross_module_impact(ir, prd_text)
+                if cross_module_checks:
+                    checks.extend(cross_module_checks)
+            except Exception as e:
+                print(f"⚠️  跨模块分析失败: {e}")
+        
+        # 7. 字段级冲突检测（新增能力）
+        if HAS_NEW_REVIEW:
+            try:
+                field_conflicts = self._detect_field_conflicts(ir, prd_text)
+                if field_conflicts:
+                    checks.extend(field_conflicts)
+            except Exception as e:
+                print(f"⚠️  字段冲突检测失败: {e}")
+        
+        return checks
+    
+    def _analyze_cross_module_impact(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """跨模块影响分析 — 检测 PRD 涉及的隐式模块依赖"""
+        checks = []
+        if not HAS_NEW_REVIEW:
+            return checks
+        try:
+            ir_dict = {
+                "functions": [{"name": f.name, "file": getattr(f, 'file', ''), "calls": getattr(f, 'calls', [])}
+                             for f in ir.functions] if hasattr(ir, 'functions') else [],
+                "core_flows": getattr(ir, 'core_flows', []),
+                "structs": [{"name": s.name, "fields": getattr(s, 'fields', [])}
+                           for s in ir.structs] if hasattr(ir, 'structs') else [],
+                "entity_tables": getattr(ir, 'entity_tables', []),
+            }
+            result = analyze_cross_module_impact(prd_text, ir_dict, self.profile)
+            for missing in result.get("missing_modules", []):
+                checks.append({
+                    "check": "missing_module",
+                    "severity": missing.get("severity", "medium"),
+                    "message": missing.get("suggestion", ""),
+                    "suggestion": missing.get("suggestion", "")
+                })
+            for risk in result.get("cross_module_risks", []):
+                checks.append({
+                    "check": "cross_module_risk",
+                    "severity": risk.get("severity", "medium"),
+                    "message": risk.get("description", ""),
+                    "suggestion": risk.get("suggestion", "")
+                })
+        except Exception as e:
+            print(f"⚠️  跨模块分析异常: {e}")
+        return checks
+    
+    def _detect_field_conflicts(self, ir: IRDocument, prd_text: str) -> List[Dict]:
+        """字段级冲突检测 — 检测 PRD 与现有实现的字段级冲突"""
+        checks = []
+        if not HAS_NEW_REVIEW:
+            return checks
+        try:
+            ir_dict = {
+                "structs": [{"name": s.name, "fields": getattr(s, 'fields', [])}
+                           for s in ir.structs] if hasattr(ir, 'structs') else [],
+                "functions": [{"name": f.name, "struct": getattr(f, 'struct', ''), 
+                              "fields_used": getattr(f, 'fields_used', [])}
+                             for f in ir.functions] if hasattr(ir, 'functions') else [],
+                "entity_tables": getattr(ir, 'entity_tables', []),
+            }
+            result = detect_field_conflicts(prd_text, ir_dict)
+            for conflict in result.get("field_conflicts", []):
+                checks.append({
+                    "check": "field_conflict",
+                    "severity": conflict.get("severity", "medium"),
+                    "field": conflict.get("field", ""),
+                    "table": conflict.get("table", ""),
+                    "message": conflict.get("message", ""),
+                    "suggestion": conflict.get("suggestion", "")
+                })
+            for risk in result.get("schema_risks", []):
+                checks.append({
+                    "check": "schema_risk",
+                    "severity": risk.get("severity", "medium"),
+                    "message": risk.get("message", ""),
+                    "suggestion": risk.get("suggestion", "")
+                })
+        except Exception as e:
+            print(f"⚠️  字段冲突检测异常: {e}")
         return checks
     
     def _analyze_cross_repo_deps(self, ir: IRDocument, prd_text: str) -> List[Dict]:

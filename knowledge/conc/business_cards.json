@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "scenario_cards": [],
+  "entity_relationships": [],
+  "error_categories": {},
+  "auth_models": [
+    {
+      "middleware": "__protected_routes__",
+      "file": "api_spec",
+      "logic": "0 routes protected by LoginCheck",
+      "description": "",
+      "protected_routes": {}
+    }
+  ],
+  "llm_analyses": []
+}

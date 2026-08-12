@@ -1,0 +1,1451 @@
+{
+  "version": "2.0",
+  "scenario_cards": [
+    {
+      "scenario": "ShareResend",
+      "entry_point": "POST /share/resend",
+      "description": "ShareResend → [AdGroupList, BatchSaveTaskWithRelations, ClassifyGroupsOnPartnerLevelForResend, ConstructAdGroupPartnerRelations, GetUniqueGroupIds]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if len(adGroupList) == 0 {",
+        "return resp.WithError(ctx, errors.AD_GROUP_NOT_EXIST)",
+        "for _, adGroupEntity := range adGroupList {"
+      ],
+      "data_points": [
+        "adGroupList, err := dao.QueryAdGroupsByCondition(ctx, adGroupCond, nil)",
+        "shareGroups := make([]*model.AdGroupModel, 0, len(adGroupList))",
+        "for _, adGroupEntity := range adGroupList {",
+        "adGroupModel, isValid, err := m.AdGroupMgr.ValidateAdGroupForShare(ctx, adGroupEntity, shareOperation)",
+        "if err != nil || adGroupModel == nil {"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/share/resend",
+      "method": "POST"
+    },
+    {
+      "scenario": "Hello",
+      "entry_point": "GET /hello/:operation",
+      "description": "Hello → []",
+      "call_chain": [],
+      "control_points": [
+        "return resp.WithSuccess(ctx, rsp)"
+      ],
+      "data_points": [],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/hello/:operation",
+      "method": "GET"
+    },
+    {
+      "scenario": "CreateAdGroup",
+      "entry_point": "POST /create",
+      "description": "CreateAdGroup → [CreateAdGroup, RequestToModel, ToEntity, VerifyAdGroupName]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {"
+      ],
+      "data_points": [
+        "adGroupModel, err := req.RequestToModel(ctx)",
+        "err = util.VerifyAdGroupName(ctx, adGroupModel, \"create\")",
+        "adGroupEntity, err := adGroupModel.ToEntity(ctx)",
+        "adGroupEntity.Creator = c.User().Email",
+        "adGroupEntity.CreateTime = currentTime"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/create",
+      "method": "POST"
+    },
+    {
+      "scenario": "EditAdGroup",
+      "entry_point": "POST /:group_id/edit",
+      "description": "EditAdGroup → [AddMissingCreativeDetail, BuildQueryCreativesCondition, CompareAdGroupEndTimeEdit, CompareAdGroupWithLock, CreativeEntityList]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if groupStatus == constant.AD_GROUP_STATUS_PAUSED_CODE ||",
+        "return resp.WithError(ctx, errors.AD_GROUP_CANNOT_EDIT)",
+        "if err != nil {"
+      ],
+      "data_points": [
+        "userLockInfo := &model.UserLockInfo{",
+        "adGroup, err := util.CompareAdGroupWithLock(ctx, *req.AdGroup.GroupId, userLockInfo)",
+        "currentGroupModel := &model.AdGroupModel{}",
+        "groupStatus := currentGroupModel.GetAdGroupStatus(ctx)",
+        "currentGroupModel.OpStatus == constant.AD_GROUP_OP_STATUS_PENDING_SHARE_CODE ||"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/:group_id/edit",
+      "method": "POST"
+    },
+    {
+      "scenario": "GetAdGroupDetail",
+      "entry_point": "GET /:group_id/detail",
+      "description": "GetAdGroupDetail → [ConstructAdGroupModel, ConstructResponse, CreativeEntityList, Equal, FromEntity]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {"
+      ],
+      "data_points": [
+        "adGroupEntity, err := util.VerifyAdGroup(ctx, req.GroupId)",
+        "adGroupModel, err := model.ConstructAdGroupModel(ctx, adGroupEntity)",
+        "creatives, err := dao.QueryCreativesByCondition(ctx, cond, nil, nil)",
+        "creativeIds := entity.CreativeEntityList(creatives).GetCreativeIds()",
+        "adShareRecordMap, err := util.GetCreativeShareRecordMap(ctx, creativeIds)"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/:group_id/detail",
+      "method": "GET"
+    },
+    {
+      "scenario": "DeleteAdGroup",
+      "entry_point": "DELETE /:group_id/delete",
+      "description": "DeleteAdGroup → [DeleteAdGroup, FromEntity, GetRootOpStatus, Response, VerifyAdGroup]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if group.OpStatus == constant.AD_GROUP_OP_STATUS_PENDING_SHARE_CODE ||",
+        "return resp.WithError(ctx, errors.AD_GROUP_SHARED)",
+        "if err != nil {"
+      ],
+      "data_points": [
+        "adGroupEntity, err := util.VerifyAdGroup(ctx, req.GroupId)",
+        "group := &model.AdGroupModel{}",
+        "rootOpStatus := group.GetRootOpStatus(ctx)",
+        "rsp := &DeleteAdGroupResponse{",
+        "userLockInfo, err := util.VerifyAdGroupIsLock(ctx, req.GroupId)"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/:group_id/delete",
+      "method": "DELETE"
+    },
+    {
+      "scenario": "ListAdGroups",
+      "entry_point": "GET /adgroup/list",
+      "description": "ListAdGroups → [BuildAdShareQueryCondition, BuildQueryCondition, BuildQueryPaging, CountListAdGroupsByCondition, ListAdGroupsByCondition]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {"
+      ],
+      "data_points": [
+        "cond := req.BuildQueryCondition(ctx)",
+        "adShareCond, err := req.BuildAdShareQueryCondition(ctx, cond)",
+        "paging := req.BuildQueryPaging(ctx)",
+        "adGroupCount, err := dao.CountListAdGroupsByCondition(ctx, cond, adShareCond)",
+        "innerOrder := condition.AdGroupInnerQueryOrder"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/adgroup/list",
+      "method": "GET"
+    },
+    {
+      "scenario": "ListPartners",
+      "entry_point": "GET /partner/list",
+      "description": "ListPartners → [BuildQueryPaging, BuildQueryPartnerCondition, ConstructResponse, CountPartnersByCondition, QueryPartnersByCondition]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "return resp.WithSuccess(ctx, rsp)"
+      ],
+      "data_points": [
+        "paging := req.BuildQueryPaging(ctx)",
+        "partnerCond := req.BuildQueryPartnerCondition(ctx)",
+        "partners, err := dao.QueryPartnersByCondition(ctx, partnerCond, paging)",
+        "partnerCount, err := dao.CountPartnersByCondition(ctx, partnerCond)"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/partner/list",
+      "method": "GET"
+    },
+    {
+      "scenario": "GetAdGroupRequirement",
+      "entry_point": "GET /requirement",
+      "description": "GetAdGroupRequirement → [BuildQueryCondition, ConstructResponse, FromEntity, GetCreativeRequirementByCondition, GinError]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if requirement == nil {",
+        "return ginweb.JSONResponse(http.StatusOK, errors.GinError(errors.PARTNER_REQUIREMENT_NOT_EXIST), nil)",
+        "return resp.WithSuccess(ctx, rsp)"
+      ],
+      "data_points": [
+        "identity := req.BuildQueryCondition(ctx)",
+        "requirement, err := dao.GetCreativeRequirementByCondition(ctx, identity)",
+        "if requirement == nil {",
+        "requirementModel := &model.CreativeRequirementModel{}",
+        "rsp := &GetAdGroupRequirementResponse{}"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/requirement",
+      "method": "GET"
+    },
+    {
+      "scenario": "LockAdGroup",
+      "entry_point": "POST /lock",
+      "description": "LockAdGroup → [GetGroupId, GetLockSequence, heartbeatAdGroup]",
+      "call_chain": [],
+      "control_points": [
+        "if len(lockUserInfo.LockSequence) == 0 {",
+        "return webResponse",
+        "return m.heartbeatAdGroup(ctx, groupId, lockUserInfo)"
+      ],
+      "data_points": [
+        "groupId := req.GetGroupId()",
+        "lockUserInfo := &model.UserLockInfo{"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/lock",
+      "method": "POST"
+    },
+    {
+      "scenario": "UnLockAdGroup",
+      "entry_point": "POST /unlock",
+      "description": "UnLockAdGroup → [GetGroupId, GetLockSequence, UnlockAdGroup]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "return resp.WithSuccess(ctx, rsp)"
+      ],
+      "data_points": [
+        "groupId := req.GetGroupId()",
+        "lockUserInfo := &model.UserLockInfo{"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/unlock",
+      "method": "POST"
+    },
+    {
+      "scenario": "ListAdGroupSharePartners",
+      "entry_point": "GET /:group_id/partners",
+      "description": "ListAdGroupSharePartners → [BuildPartner, BuildPartnerGroupRelation, CompleteAdGroupDetail, ConstructResponse, FromEntityWithOutNewRecord]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {",
+        "if err != nil {",
+        "return resp.WithError(ctx, err)"
+      ],
+      "data_points": [
+        "adGroupEntity, err := util.VerifyAdGroup(ctx, *req.AdGroupId)",
+        "adGroupModel := &model.AdGroupModel{}",
+        "err = adGroupModel.CompleteAdGroupDetail(ctx)",
+        "partnerCond := req.BuildPartner(ctx)",
+        "groupPartnerRelationCond := req.BuildPartnerGroupRelation(ctx)"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/:group_id/partners",
+      "method": "GET"
+    },
+    {
+      "scenario": "ShareNew",
+      "entry_point": "POST /share/new",
+      "description": "ShareNew → [AdGroupList, ClassifyGroupById, ConstructAdGroupPartnerRelations, Equal, GetGroupIds]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if len(shareGroupId) == 0 {",
+        "return resp.WithSuccess(ctx, rsp)",
+        "for _, adGroup := range classifyResult.ShareGroup {"
+      ],
+      "data_points": [
+        "classifyResult, err := m.AdGroupMgr.ClassifyGroupById(ctx, req.GroupIdList, constant.AD_SHARE_CREATE_CODE)",
+        "shareGroupId := model.AdGroupList(classifyResult.ShareGroup).GetGroupIds()",
+        "user := &model.User{",
+        "shareTaskEntity, adShareTaskGroupRelationEntities, err := classifyResult.GetTaskAndRelation(ctx, req.GroupIdList, user, constant.AD_SHARE_CREATE_CODE)",
+        "err = dao.SaveTask(ctx, shareTaskEntity, adShareTaskGroupRelationEntities)"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/share/new",
+      "method": "POST"
+    },
+    {
+      "scenario": "ShareAddOn",
+      "entry_point": "POST /share/add",
+      "description": "ShareAddOn → [AdGroupList, ClassifyGroupById, Equal, GetGroupIds, GetShareStatusMap]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if len(shareGroupId) == 0 {",
+        "return resp.WithSuccess(ctx, rsp)",
+        "if err != nil {"
+      ],
+      "data_points": [
+        "classifyResult, err := m.AdGroupMgr.ClassifyGroupById(ctx, req.GroupIdList, constant.AD_SHARE_ADD_CODE)",
+        "shareGroupId := model.AdGroupList(classifyResult.ShareGroup).GetGroupIds()",
+        "user := &model.User{",
+        "shareTaskEntity, adShareTaskGroupRelationEntities, err := classifyResult.GetTaskAndRelation(ctx, req.GroupIdList, user, constant.AD_SHARE_ADD_CODE)",
+        "err = dao.SaveTask(ctx, shareTaskEntity, adShareTaskGroupRelationEntities)"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/share/add",
+      "method": "POST"
+    },
+    {
+      "scenario": "ShareEmergencyPause",
+      "entry_point": "POST /share/emergencypause",
+      "description": "ShareEmergencyPause → [AdGroupList, AsString, ClassifyGroupById, Equal, ExistAdGroupLock]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if err != nil {",
+        "return resp.WithError(ctx, err)",
+        "if isLock {"
+      ],
+      "data_points": [
+        "groupId := req.GroupIdList[0]",
+        "adGroupCurrentEntity, err := util.VerifyAdGroup(ctx, groupId)",
+        "classifyResult, err := m.AdGroupMgr.ClassifyGroupById(ctx, req.GroupIdList, constant.AD_SHARE_MANUAL_PAUSED_CODE)",
+        "user := &model.User{",
+        "editTaskEntity, editTaskGroupRelation, err := classifyResult.GetTaskAndRelation(ctx, req.GroupIdList, user, constant.AD_SHARE_EDIT_CODE)"
+      ],
+      "file": "creative-platform/app/adminapi/adgroup/adgroup_module.go",
+      "route": "/share/emergencypause",
+      "method": "POST"
+    },
+    {
+      "scenario": "Login",
+      "entry_point": "GET /login",
+      "description": "Login → []",
+      "call_chain": [],
+      "control_points": [],
+      "data_points": [],
+      "file": "creative-platform/app/adminapi/auth/auth_module.go",
+      "route": "/login",
+      "method": "GET"
+    },
+    {
+      "scenario": "GetPermissions",
+      "entry_point": "GET /permissions",
+      "description": "GetPermissions → [GetPermission, JSONResponse]",
+      "call_chain": [],
+      "control_points": [
+        "if permission == nil {",
+        "return ginweb.JSONResponse(http.StatusOK, gerrors.Success, CreativePlatformPermissions{",
+        "return ginweb.JSONResponse(http.StatusOK, gerrors.Success, permission)"
+      ],
+      "data_points": [
+        "permission := soup.GetPermission(c)"
+      ],
+      "file": "creative-platform/app/adminapi/auth/auth_module.go",
+      "route": "/permissions",
+      "method": "GET"
+    },
+    {
+      "scenario": "LogOut",
+      "entry_point": "POST /logout",
+      "description": "LogOut → [Cookie, Del, DeleteSession, Err, GetCacheCmder]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "return ginweb.JSONResponse(http.StatusUnauthorized, errors.GinError(errors.USER_NOT_LOGIN), nil)",
+        "if err == nil && len(sessionID.Value) > 0 {",
+        "return ginweb.JSONResponse(http.StatusOK, gerrors.Success, gin.H{\"msg\": \"user logged out\"})"
+      ],
+      "data_points": [
+        "ctx := ginbase.GetContext(c)",
+        "client := m.cli",
+        "_, err := c.Request.Cookie(m.cfg.SessionKey)",
+        "sessionID, err := c.Request.Cookie(constant.TOKEN)",
+        "_ = client.DeleteSession(sessionID.Value)"
+      ],
+      "file": "creative-platform/app/adminapi/auth/auth_module.go",
+      "route": "/logout",
+      "method": "POST"
+    },
+    {
+      "scenario": "LoginCallback",
+      "entry_point": "GET /login_callback",
+      "description": "LoginCallback → [AbortWithStatusJSON, Cookie, Duration, GetCacheCmder, GetContext]",
+      "call_chain": [],
+      "control_points": [
+        "if err != nil {",
+        "if err != nil || ssoSession.Userinfo.Userid == 0 {",
+        "if err != nil {",
+        "if ssoSession.Userinfo.Userid != 0 && ssoSession.Userinfo.Email != \"\" {",
+        "if err != nil {"
+      ],
+      "data_points": [
+        "ctx := ginbase.GetContext(c)",
+        "soupClient := m.cli",
+        "anonymousIDCookie, err := c.Request.Cookie(constant.ANONYMOUS_TOKEN_NAME)",
+        "ssoSession, err := soupClient.GetSession(ssoAnonymousKey)",
+        "destURL := c.Query(\"callback\")"
+      ],
+      "file": "creative-platform/app/adminapi/auth/auth_module.go",
+      "route": "/login_callback",
+      "method": "GET"
+    },
+    {
+      "scenario": "SaveConfigs",
+      "entry_point": "POST configs/:module/save",
+      "description": "SaveConfigs → [BatchSaveConfigItems, BuildOperationForCreate, BuildOperationForDelete, BuildOperationForEdit, CheckConfigModuleExist]",
+      "call_chain": [],
+      "control_points": [
+        "if len(req.AddConfigList) == 0 && len(req.DeleteConfigList) == 0 && len(req.EditConfigList) == 0 {",
+        "return resp.WithSuccess(ctx, &SaveConfigsResponse{})",
+        "if len(req.configModuleMap) == 0 {",
+        "return resp.WithSuccess(ctx, &SaveConfigsResponse{})",
+        "for moduleCode, moduleSave := range req.configModuleMap {"
+      ],
+      "data_points": [
+        "user := model.User{",
+        "if len(req.AddConfigList) == 0 && len(req.DeleteConfigList) == 0 && len(req.EditConfigList) == 0 {",
+        "if len(req.configModuleMap) == 0 {",
+        "deleteItemMap := make(map[string]struct{}, 0)",
+        "deleteItems := make([]*model.ConfigItem, 0, 10)"
+      ],
+      "file": "creative-platform/app/adminapi/cpconfig/cpconfig_module.go",
+      "route": "configs/:module/save",
+      "method": "POST"
+    }
+  ],
+  "entity_relationships": [
+    {
+      "entity": "TaskAdGroupRelationEntity",
+      "table": "cp_task_ad_group_relation_tab",
+      "file": "creative-platform/dao/entity/task_adgroup_relation.go"
+    },
+    {
+      "entity": "AdminOperationLogEntity",
+      "table": "cp_admin_operation_log",
+      "file": "creative-platform/dao/entity/admin_operation_log.go"
+    },
+    {
+      "entity": "LibraryMediaTagRelationEntity",
+      "table": "cp_library_media_tag_relation_tab",
+      "file": "creative-platform/dao/entity/library_media_tag_log.go"
+    },
+    {
+      "entity": "AdShareRecordEntity",
+      "table": "cp_ad_share_record_tab",
+      "file": "creative-platform/dao/entity/adshare_record.go"
+    },
+    {
+      "entity": "AdGroupEntity",
+      "table": "cp_ad_group_tab",
+      "file": "creative-platform/dao/entity/adgroup.go"
+    },
+    {
+      "entity": "OperationLogEntity",
+      "table": "cp_operation_log_tab",
+      "file": "creative-platform/dao/entity/operation_log.go"
+    },
+    {
+      "entity": "MediaEntity",
+      "table": "cp_media_tab",
+      "file": "creative-platform/dao/entity/media.go"
+    },
+    {
+      "entity": "CreativeRequirementEntity",
+      "table": "cp_creative_requirement_tab",
+      "file": "creative-platform/dao/entity/creative_requirement.go"
+    },
+    {
+      "entity": "ConfigModuleEntity",
+      "table": "cp_config_module_tab",
+      "file": "creative-platform/dao/entity/config_module.go"
+    },
+    {
+      "entity": "ConfigItemEntity",
+      "table": "cp_config_item_tab",
+      "file": "creative-platform/dao/entity/config_item.go"
+    },
+    {
+      "entity": "PartnerEntity",
+      "table": "cp_partner_tab",
+      "file": "creative-platform/dao/entity/partner.go"
+    },
+    {
+      "entity": "LibraryMediaVideoEntity",
+      "table": "cp_library_media_video_tab",
+      "file": "creative-platform/dao/entity/library_media_video.go"
+    },
+    {
+      "entity": "PermissionConfigEntity",
+      "table": "cp_permission_config_tab",
+      "file": "creative-platform/dao/entity/permission_config.go"
+    },
+    {
+      "entity": "LibraryMediaImageEntity",
+      "table": "cp_library_media_image_tab",
+      "file": "creative-platform/dao/entity/library_media_image.go"
+    },
+    {
+      "entity": "AdGroupPartnerRelationEntity",
+      "table": "cp_ad_group_partner_relation_tab",
+      "file": "creative-platform/dao/entity/adgroup_partner_relation.go"
+    },
+    {
+      "entity": "AdShareTaskGroupRelationEntity",
+      "table": "cp_ad_share_task_group_relation_tab",
+      "file": "creative-platform/dao/entity/adshare_task_group_relation.go"
+    },
+    {
+      "entity": "CreativeEntity",
+      "table": "cp_creative_tab",
+      "file": "creative-platform/dao/entity/creative.go"
+    },
+    {
+      "entity": "LibraryMediaContentEntity",
+      "table": "cp_library_media_content_tab",
+      "file": "creative-platform/dao/entity/library_media_content.go"
+    },
+    {
+      "entity": "AdShareSubTaskEntity",
+      "table": "cp_ad_share_sub_task_tab",
+      "file": "creative-platform/dao/entity/ad_share_sub_task.go"
+    },
+    {
+      "entity": "AdGroupPartnerTaskEntity",
+      "table": "cp_ad_group_partner_task_tab",
+      "file": "creative-platform/dao/entity/adgroup_partner_task.go"
+    },
+    {
+      "entity": "NotificationRecordEntity",
+      "table": "cp_notification_record_tab",
+      "file": "creative-platform/dao/entity/notification_record.go"
+    },
+    {
+      "entity": "AdShareSubTaskModuleEntity",
+      "table": "cp_ad_share_sub_task_module_tab",
+      "file": "creative-platform/dao/entity/ad_share_sub_task_module.go"
+    },
+    {
+      "entity": "RequestLogEntity",
+      "table": "cp_request_log_tab",
+      "file": "creative-platform/dao/entity/request_log.go"
+    },
+    {
+      "entity": "PartnerRequirementEntity",
+      "table": "cp_partner_requirement_tab",
+      "file": "creative-platform/dao/entity/partner_requirement.go"
+    }
+  ],
+  "error_categories": {
+    "general": [
+      {
+        "name": "SUCCESS",
+        "code": 0,
+        "message": "success"
+      },
+      {
+        "name": "UNKOWN_ERROR",
+        "code": 1,
+        "message": "unknown error"
+      },
+      {
+        "name": "INVALID_PARAMS",
+        "code": 2,
+        "message": "invalid params"
+      },
+      {
+        "name": "NETWORK_ERROR",
+        "code": 3,
+        "message": "network error"
+      },
+      {
+        "name": "SERVER_BUSY",
+        "code": 4,
+        "message": "server busy"
+      },
+      {
+        "name": "SERVER_ERROR_AND_TRY_LATER",
+        "code": 5,
+        "message": "Server error, please try again later"
+      },
+      {
+        "name": "EMPTY_PARAMS",
+        "code": 6,
+        "message": "empty params"
+      },
+      {
+        "name": "SERVER_ERROR",
+        "code": 7,
+        "message": "server error"
+      },
+      {
+        "name": "THIRD_SERVER_ERROR",
+        "code": 8,
+        "message": "third server error"
+      },
+      {
+        "name": "API_PARTIALLY_FAILED",
+        "code": 9,
+        "message": "api response got partially failed"
+      }
+    ],
+    "database": [
+      {
+        "name": "DB_NOT_FOUND",
+        "code": 101,
+        "message": "not found from database"
+      },
+      {
+        "name": "DB_DATA_DUPLICATE",
+        "code": 102,
+        "message": "insert data exists"
+      },
+      {
+        "name": "DB_QUERY_FAIL",
+        "code": 103,
+        "message": "database query failed"
+      },
+      {
+        "name": "DB_EXCUTE_FAIL",
+        "code": 104,
+        "message": "database execute failed"
+      },
+      {
+        "name": "DB_TRANSACTION_FAIL",
+        "code": 105,
+        "message": "database transaction failed"
+      },
+      {
+        "name": "DB_INVALID_PARAMS",
+        "code": 106,
+        "message": "database parameters is invalid"
+      }
+    ],
+    "redis": [
+      {
+        "name": "RDS_INCR_FAIL",
+        "code": 201,
+        "message": "redis incr failed"
+      },
+      {
+        "name": "RDS_LOCK_IS_LOCKING",
+        "code": 202,
+        "message": "redis lock is locking by others"
+      },
+      {
+        "name": "RDS_SET_FAIL",
+        "code": 203,
+        "message": "redis set failed"
+      },
+      {
+        "name": "RDS_GET_FAIL",
+        "code": 204,
+        "message": "redis get failed"
+      },
+      {
+        "name": "RDS_DEL_FAIL",
+        "code": 205,
+        "message": "redis del failed"
+      },
+      {
+        "name": "RDS_EXPIRE_FAIL",
+        "code": 206,
+        "message": "redis expire failed"
+      },
+      {
+        "name": "RDS_GET_EMPTY",
+        "code": 207,
+        "message": "redis get empty"
+      },
+      {
+        "name": "RDS_DATA_NOT_EXIST",
+        "code": 208,
+        "message": "redis data does not exist"
+      },
+      {
+        "name": "RDS_SMEM_FAIL",
+        "code": 209,
+        "message": "redis smembers failed"
+      },
+      {
+        "name": "RDS_SADD_FAIL",
+        "code": 210,
+        "message": "redis sadd failed"
+      },
+      {
+        "name": "RDS_SREM_FAIL",
+        "code": 211,
+        "message": "redis srem failed"
+      },
+      {
+        "name": "RDS_ZADD_FAIL",
+        "code": 212,
+        "message": "redis zadd failed"
+      },
+      {
+        "name": "RDS_ZREM_FAIL",
+        "code": 213,
+        "message": "redis zrem failed"
+      },
+      {
+        "name": "RDS_ZRANGE_FAIL",
+        "code": 214,
+        "message": "redis zrange failed"
+      },
+      {
+        "name": "RDS_ZCOUNT_FAIL",
+        "code": 215,
+        "message": "redis zcount failed"
+      },
+      {
+        "name": "RDS_TTL_FAIL",
+        "code": 216,
+        "message": "redis ttl failed"
+      },
+      {
+        "name": "RDS_SCRIPT_FAIL",
+        "code": 217,
+        "message": "redis script failed"
+      },
+      {
+        "name": "RDS_LOCK_FAIL",
+        "code": 218,
+        "message": "redis lock failed"
+      },
+      {
+        "name": "RDS_LOCK_EXPIRED",
+        "code": 219,
+        "message": "redis lock expired"
+      },
+      {
+        "name": "RDS_SCRIPT_CHECK_FAIL",
+        "code": 220,
+        "message": "redis script check failed"
+      },
+      {
+        "name": "RDS_CLIENT_INVALID",
+        "code": 221,
+        "message": "redis client invalid"
+      }
+    ],
+    "http": [
+      {
+        "name": "HTTP_REQUEST_FAIL",
+        "code": 301,
+        "message": "http request failed"
+      },
+      {
+        "name": "HTTP_READ_BODY_FAIL",
+        "code": 302,
+        "message": "http read body failed"
+      },
+      {
+        "name": "HTTP_REQUEST_NO_BODY",
+        "code": 303,
+        "message": "http request no body"
+      },
+      {
+        "name": "HTTP_NEW_REQUEST_FAIL",
+        "code": 304,
+        "message": "http new request fail"
+      },
+      {
+        "name": "HTTP_INVALID_STATUS",
+        "code": 305,
+        "message": "http invalid status"
+      },
+      {
+        "name": "HTTP_AUTH_FAILED",
+        "code": 306,
+        "message": "http auth failed"
+      },
+      {
+        "name": "HTTP_RATE_LIMIT_EXCEED",
+        "code": 307,
+        "message": "http rate limit exceeded (429)"
+      },
+      {
+        "name": "HTTP_REQUEST_TIMEOUT",
+        "code": 308,
+        "message": "http request timeout"
+      }
+    ],
+    "creative": [
+      {
+        "name": "USER_NOT_LOGIN",
+        "code": 601,
+        "message": "user not login"
+      },
+      {
+        "name": "USER_NOT_FOUND",
+        "code": 602,
+        "message": "user not found"
+      }
+    ],
+    "imagestop": [
+      {
+        "name": "USER_NOT_PERMISSION",
+        "code": 701,
+        "message": "user no permission"
+      },
+      {
+        "name": "WRONG_URL_PATH_TO_PREMISSION",
+        "code": 702,
+        "message": "wrong url path to error"
+      },
+      {
+        "name": "PERMISSION_INVALID",
+        "code": 703,
+        "message": "user permission invalid"
+      }
+    ],
+    "other": [
+      {
+        "name": "JSON_FORMAT_ERROR",
+        "code": 20004,
+        "message": "request json format error"
+      },
+      {
+        "name": "S3_CLIENT_INVALID",
+        "code": 1100,
+        "message": "s3 client invalid"
+      },
+      {
+        "name": "S3_UPLOAD_FAIL",
+        "code": 1101,
+        "message": "s3 upload failed"
+      },
+      {
+        "name": "S3_DOWNLOAD_FAIL",
+        "code": 1102,
+        "message": "s3 download failed"
+      },
+      {
+        "name": "S3_DELETE_FAIL",
+        "code": 1103,
+        "message": "s3 delete failed"
+      },
+      {
+        "name": "S3_LIST_FAIL",
+        "code": 1104,
+        "message": "s3 list failed"
+      },
+      {
+        "name": "S3_MULTIPART_COMPLETION_ALREADY_IN_PROGRESS",
+        "code": 1105,
+        "message": "this multipart completion is already in progress"
+      },
+      {
+        "name": "S3_FILE_NOT_EXIST",
+        "code": 1106,
+        "message": "s3 file not exists"
+      },
+      {
+        "name": "HTTP_STATUS_NON_AUTHORITATIVE_INFO",
+        "code": 901,
+        "message": "http non authoritative info"
+      },
+      {
+        "name": "HTTP_STATUS_UNAUTHORIZED",
+        "code": 902,
+        "message": "http unauthorized"
+      },
+      {
+        "name": "HTTP_STATUS_INTERNAL_SERVER_ERROR",
+        "code": 903,
+        "message": "http internal server error"
+      },
+      {
+        "name": "HTTP_STATUS_TOO_MANY_REQUESTS",
+        "code": 904,
+        "message": "too many requests"
+      },
+      {
+        "name": "ENCODE_ERROR",
+        "code": 1001,
+        "message": "encode string error"
+      },
+      {
+        "name": "MSG_ENCODE_FAIL",
+        "code": 1011,
+        "message": "message encode failed"
+      },
+      {
+        "name": "MSG_DECODE_FAIL",
+        "code": 1012,
+        "message": "message decode failed"
+      },
+      {
+        "name": "JSON_MARSHAL_FAIL",
+        "code": 1021,
+        "message": "json marshal fail"
+      },
+      {
+        "name": "JSON_UNMARSHAL_FAIL",
+        "code": 1022,
+        "message": "json unmarshal fail"
+      },
+      {
+        "name": "PROTO_MARSHAL_FAIL",
+        "code": 1023,
+        "message": "proto marshal fail"
+      },
+      {
+        "name": "PROTO_UNMARSHAL_FAIL",
+        "code": 1024,
+        "message": "proto unmarshal fail"
+      },
+      {
+        "name": "FILE_CREATE_FAILED",
+        "code": 1200,
+        "message": "create file failed"
+      },
+      {
+        "name": "FILE_WRITE_FAILED",
+        "code": 1201,
+        "message": "create write failed"
+      },
+      {
+        "name": "AD_GROUP_INVALID",
+        "code": 100001,
+        "message": "ad group invalid"
+      },
+      {
+        "name": "AD_GROUP_NOT_EXIST",
+        "code": 100002,
+        "message": "ad group not exists"
+      },
+      {
+        "name": "AD_GROUP_EDIT_TIMEOUT",
+        "code": 100003,
+        "message": "Timeout, please go back and re-enter to edit"
+      },
+      {
+        "name": "AD_GROUP_NOT_SHARE",
+        "code": 100004,
+        "message": "ad group has not been shared"
+      },
+      {
+        "name": "AD_GROUP_SHARE_FAILED_FOR_GSHEET",
+        "code": 100005,
+        "message": "Write gsheet failed, pls try again later"
+      },
+      {
+        "name": "AD_GROUP_DOWNLOAD_HASH_WRONG",
+        "code": 100006,
+        "message": "ad group download hash wrong"
+      },
+      {
+        "name": "AD_GROUP_DUPLICATE",
+        "code": 100007,
+        "message": "ad group duplicate"
+      },
+      {
+        "name": "AD_GROUP_PAUSED",
+        "code": 100008,
+        "message": "ad group already paused"
+      },
+      {
+        "name": "AD_GROUP_SHARED",
+        "code": 100009,
+        "message": "ad group already shared or live to partners"
+      },
+      {
+        "name": "AD_GROUP_EMERGERNCY_INVALID",
+        "code": 100010,
+        "message": "Please only select one 'shared' & 'live' ad to send emergency&pause email"
+      },
+      {
+        "name": "AD_GROUP_SHARE_EXTERNAL_EMPTY",
+        "code": 100011,
+        "message": "ad group share external task empty"
+      },
+      {
+        "name": "AD_GROUP_SHARE_TASK_SKIP",
+        "code": 100012,
+        "message": "ad group share condition not match"
+      },
+      {
+        "name": "AD_GROUP_DELETED",
+        "code": 100013,
+        "message": "ad group already deleted"
+      },
+      {
+        "name": "AD_GROUP_CREATIVE_EMPTY",
+        "code": 100014,
+        "message": "ad group creative empty"
+      },
+      {
+        "name": "AD_GROUP_EDIT_LOCKED",
+        "code": 100015,
+        "message": "ad group is on edit locked"
+      },
+      {
+        "name": "AD_GROUP_CANNOT_EDIT",
+        "code": 100016,
+        "message": "ad group cannot edit"
+      },
+      {
+        "name": "AD_GROUP_SHARE_TASK_NOT_FOUND",
+        "code": 100017,
+        "message": "ad group share task not found"
+      },
+      {
+        "name": "AD_GROUP_EXPIRE",
+        "code": 100018,
+        "message": "ad group is expire "
+      }
+    ],
+    "adshare": [
+      {
+        "name": "BUSINESS_CONFIG_NOT_FOUND",
+        "code": 801,
+        "message": "business config not found"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MODULE_DUPLICATE",
+        "code": 802,
+        "message": "business config module duplicate"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MODULE_NOT_DEFINE",
+        "code": 803,
+        "message": "business config module not defined"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MUDULE_ITEM_DUPLICATE",
+        "code": 804,
+        "message": "business config module item duplicate"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MUDULE_ITEM_NOT_FOUND",
+        "code": 805,
+        "message": "business config module item not found"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MUDULE_NOT_SUPPORT_ADD",
+        "code": 806,
+        "message": "business config module not support add operation"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MUDULE_NOT_SUPPORT_EDIT",
+        "code": 807,
+        "message": "business config module not support edit operation"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MUDULE_NOT_SUPPORT_DELETE",
+        "code": 808,
+        "message": "business config module not support delete operation"
+      },
+      {
+        "name": "BUSINESS_CONFIG_MUDULE_GEO_BINDING_FAILED",
+        "code": 809,
+        "message": "All partners are not available, please try again later"
+      },
+      {
+        "name": "BUSINESS_CONFIG_SET_LAST_UPDATE_TIME_FAILED",
+        "code": 810,
+        "message": "business config set last updated time failed"
+      },
+      {
+        "name": "BUSINESS_CONFIG_CAMPAIGN_PURPOSE_INVAILD",
+        "code": 811,
+        "message": "campaign purpose invalid"
+      }
+    ]
+  },
+  "auth_models": [
+    {
+      "middleware": "PermissionCheck",
+      "file": "creative-platform/app/adminapi/middleware/permission.go",
+      "logic": "cookie-based; redis-cache; token-validation; sso-integration; permission-check",
+      "description": ""
+    },
+    {
+      "middleware": "AdminPermissionCheck",
+      "file": "creative-platform/app/adminapi/middleware/permission.go",
+      "logic": "cookie-based; redis-cache; token-validation; sso-integration; permission-check",
+      "description": ""
+    },
+    {
+      "middleware": "Context",
+      "file": "creative-platform/app/adminapi/middleware/ctx_midware.go",
+      "logic": "unknown",
+      "description": ""
+    },
+    {
+      "middleware": "AuthAccountCheck",
+      "file": "creative-platform/app/adminapi/middleware/auth.go",
+      "logic": "token-validation; sso-integration; permission-check",
+      "description": ""
+    },
+    {
+      "middleware": "AdminOperationLogInit",
+      "file": "creative-platform/app/adminapi/middleware/admin_operation.go",
+      "logic": "unknown",
+      "description": ""
+    },
+    {
+      "middleware": "RequestLog",
+      "file": "creative-platform/app/adminapi/middleware/request_log.go",
+      "logic": "unknown",
+      "description": ""
+    },
+    {
+      "middleware": "LoginCheck",
+      "file": "creative-platform/app/adminapi/middleware/login.go",
+      "logic": "cookie-based; redis-cache; token-validation; sso-integration; permission-check",
+      "description": ""
+    },
+    {
+      "middleware": "__protected_routes__",
+      "file": "api_spec",
+      "logic": "37 routes protected by LoginCheck",
+      "description": "",
+      "protected_routes": {
+        "Group /api/adgroup": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "POST /share/resend": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "ShareResend"
+        },
+        "GET /hello/:operation": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "Hello"
+        },
+        "POST /create": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "CreateTemplate"
+        },
+        "POST /:group_id/edit": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "EditAdGroup"
+        },
+        "Group /api/auth": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "GET /login": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "Login"
+        },
+        "GET /permissions": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "GetPermissions"
+        },
+        "POST /logout": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "LogOut"
+        },
+        "Group /api/cp": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "POST configs/:module/save": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "SaveConfigs"
+        },
+        "POST /configs": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "GetConfigs"
+        },
+        "POST /partner/save": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "SavePartner"
+        },
+        "GET /partner/:partner_id/detail": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "GetPartnerDetail"
+        },
+        "Group /api/creative": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "GET /list": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "ListCreativeGroups"
+        },
+        "POST /upload": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "UploadImage"
+        },
+        "GET /internal/download/:download_hash/:password/:group_id": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "DownloadCreative"
+        },
+        "GET /adgroup/list": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "ListAdGroups"
+        },
+        "Group /api/creative_platform/admin": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "AdminPermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "GET /trigger_callback": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "AdminPermissionCheck"
+          ],
+          "handler": "TriggerCallback"
+        },
+        "GET /query_task_progress": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "AdminPermissionCheck"
+          ],
+          "handler": "QueryTaskProgress"
+        },
+        "GET /reset_task": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "AdminPermissionCheck"
+          ],
+          "handler": "ResetTask"
+        },
+        "Group /api/imagestop/creativegroup": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "GET /:creative_group_id/detail": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "GetCreativeGroupDetail"
+        },
+        "POST /lock": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "LockTemplate"
+        },
+        "POST /unlock": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "UnLockTemplate"
+        },
+        "Group /api/imagestop/design": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "POST /render/template": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RenderTemplateLayers"
+        },
+        "POST /render/realtime": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RenderRealtimeLayers"
+        },
+        "GET /preview": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "PreviewImage"
+        },
+        "Group /api/imagestop/template": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "RequestLog"
+        },
+        "POST /:template_id/edit": {
+          "middleware": [
+            "LoginCheck",
+            "RequestLog",
+            "Context",
+            "PermissionCheck"
+          ],
+          "handler": "EditTemplate"
+        },
+        "Group /api/admin": {
+          "middleware": [
+            "LoginCheck",
+            "Context",
+            "AdminPermissionCheck",
+            "AdminOperationLogInit"
+          ],
+          "handler": "LoginCheck"
+        },
+        "GET /permission/check": {
+          "middleware": [
+            "LoginCheck",
+            "Context",
+            "AdminPermissionCheck",
+            "AdminOperationLogInit"
+          ],
+          "handler": "CheckUserAdminPermission"
+        },
+        "GET /group/list": {
+          "middleware": [
+            "LoginCheck",
+            "Context",
+            "AdminPermissionCheck",
+            "AdminOperationLogInit"
+          ],
+          "handler": "AdminListAdGroups"
+        },
+        "GET /partner/list": {
+          "middleware": [
+            "LoginCheck",
+            "Context",
+            "AdminPermissionCheck",
+            "AdminOperationLogInit"
+          ],
+          "handler": "AdminListPartners"
+        }
+      }
+    }
+  ],
+  "llm_analyses": []
+}

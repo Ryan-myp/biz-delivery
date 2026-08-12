@@ -1,0 +1,405 @@
+---
+title: 微信读书精华：深入理解 Kafka 蒸馏笔记
+created: 
+updated: 2026-06-09
+type: concept
+tags: []
+---
+
+# 微信读书精华：深入理解 Kafka 蒸馏笔记
+
+> 来源：《深入理解Kafka：核心设计与实践原理》- 朱忠华
+> 状态：已读完 ✅
+> 蒸馏日期：2026-06-18
+
+---
+
+## 第一部分：Kafka 核心架构
+
+### 消息模型
+
+```
+Kafka 消息模型：
+┌─────────────────────────────────────────────────────────────────────┐
+│ Producer → Topic → Partition → Offset                               │
+│                                                                     │
+│ Topic：逻辑分组                                                      │
+│ Partition：物理分片，并行处理                                         │
+│ Offset：消息在 partition 中的位置，单调递增                           │
+│                                                                     │
+│ 关键特性：                                                          │
+│ • 消息持久化：写入磁盘，不丢失                                       │
+│ • 顺序写入：磁盘 IO 友好                                            │
+│ • 分区有序：partition 内有序，全局无序                               │
+│ • 回溯消费：可重新消费历史消息                                       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Broker 架构
+
+```
+Broker 内部结构：
+┌─────────────────────────────────────────────────────────────────────┐
+│ Segment 文件：                                                       │
+│ ├── xxx.log       # 消息日志                                        │
+│ ├── xxx.index     # 偏移量索引                                      │
+│ └── xxx.timeindex # 时间戳索引                                      │
+│                                                                     │
+│ 日志清理策略：                                                       │
+│ • delete：超过保留时间删除                                          │
+│ • compact：保留每个 key 的最新值                                    │
+│ • compact+delete：两者结合                                          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 第二部分：生产者与消费者
+
+### 生产者
+
+```
+生产者配置：
+┌─────────────────────────────────────────────────────────────────────┐
+│ acks=1: Leader 写入即确认（性能优先）                                │
+│ acks=all: 所有副本写入才确认（安全优先）                              │
+│ retries: 重试次数                                                    │
+│ batch.size: 批量大小（默认 16KB）                                    │
+│ linger.ms: 等待时间（默认 0ms）                                      │
+│ buffer.memory: 缓冲区大小（默认 32MB）                               │
+│ compression: 压缩算法（gzip/snappy/lz4/zstd）                       │
+│                                                                     │
+│ 分区策略：                                                          │
+│ 1. 指定 partition                                                    │
+│ 2. key 哈希（保证同一 key 到同一 partition）                         │
+│ 3. Round Robin（均匀分布）                                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 消费者
+
+```
+消费者组：
+┌─────────────────────────────────────────────────────────────────────┐
+│ Consumer Group: 一组消费者共同消费一个 Topic                         │
+│                                                                     │
+│ 分配策略：                                                          │
+│ • Range：按范围分配                                                │
+│ • RoundRobin：轮询分配                                             │
+│ • Sticky：粘性分配（减少 rebalance）                                 │
+│ • CooperativeSticky：增量 rebalance                                │
+│                                                                     │
+│ 偏移量管理：                                                        │
+│ • 自动提交：consumer.auto.commit.enable=true                       │
+│ • 手动提交：consumer.commitSync()/commitAsync()                    │
+│ • 偏移量存储：Kafka 内部 Topic（__consumer_offsets）                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 第三部分：高可用与性能
+
+### 副本机制
+
+```
+副本策略：
+┌─────────────────────────────────────────────────────────────────────┐
+│ ISR（In-Sync Replicas）：同步副本集合                               │
+│ • Leader：处理读写请求                                              │
+│ • Follower：从 Leader 同步数据                                      │
+│ • ISR：与 Leader 同步的副本                                         │
+│                                                                     │
+│ 选举规则：                                                          │
+│ 1. Leader 故障 → 从 ISR 中选新 Leader                               │
+│ 2. 优先选序号大的副本                                                │
+│ 3. min.insync.replicas：最小同步副本数                              │
+│                                                                     │
+│ 广告场景：                                                          │
+│ • 事件流：replication.factor=3                                       │
+│ • 日志：replication.factor=2                                        │
+│ • 配置：replication.factor=1                                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 性能优化
+
+```
+优化要点：
+1. 批量发送：batch.size + linger.ms
+2. 压缩：lz4（速度快）或 zstd（压缩率高）
+3. 分区数：根据吞吐量和消费者数量设置
+4. 刷盘策略：log.flush.interval.messages
+5. 文件预分配：log.preallocate=true
+6. 页面缓存：利用 OS Page Cache
+```
+
+---
+
+## 第四部分：自测题
+
+### Q1: Kafka 为什么快？
+
+**A**: 顺序写入磁盘、零拷贝、页面缓存、批量处理。
+
+### Q2: ISR 的作用？
+
+**A**: 保证数据不丢失，Leader 故障时从 ISR 选新 Leader。
+
+### Q3: 消费者组怎么工作？
+
+**A**: 每个 partition 只能被组内一个消费者消费，partition 数 = 消费者数的倍数时利用率最高。
+
+---
+
+## Go 代码实战：Kafka 核心组件 Go 实现
+
+### 1. Partition Leader Election（控制器选举）
+
+```go
+package kafka
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+)
+
+// Broker  Broker节点
+type Broker struct {
+	ID       int32
+	Host     string
+	Port     int
+	IsLeader bool
+	ISR      []int32 // In-Sync Replicas
+}
+
+// Controller 控制器
+type Controller struct {
+	brokers   sync.Map // brokerID -> *Broker
+	leaders   map[string][]int32 // topic:partition -> leaderID
+	mu        sync.RWMutex
+	elected   bool
+	term      int64
+	heartbeat chan struct{}
+}
+
+func NewController() *Controller {
+	return &Controller{
+		leaders:   make(map[string][]int32),
+		heartbeat: make(chan struct{}, 1),
+	}
+}
+
+func (c *Controller) Elect(brokerID int32, brokers []*Broker) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	// 记录所有broker
+	for _, b := range brokers {
+		c.brokers.Store(b.ID, b)
+	}
+	
+	c.elected = true
+	c.term++
+	
+	// 触发 Leader Election
+	go c.leaderElection()
+	return nil
+}
+
+func (c *Controller) leaderElection() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			c.electLeadersForAllTopics()
+			
+		case <-c.heartbeat:
+			// 收到新leader心跳，检查ISR
+			c.checkISR()
+		}
+	}
+}
+
+func (c *Controller) electLeadersForAllTopics() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	// 对每个 topic:partition，从 ISR 中选 leader
+	topics := c.getTopics()
+	for _, topic := range topics {
+		partitions := c.getPartitions(topic)
+		for _, p := range partitions {
+			key := fmt.Sprintf("%s:%d", topic, p)
+			isr := c.getISR(key)
+			if len(isr) == 0 {
+				continue
+			}
+			// 选 ISR 中第一个存活的 broker
+			for _, brokerID := range isr {
+				if c.isAlive(brokerID) {
+					c.leaders[key] = []int32{brokerID}
+					break
+				}
+			}
+		}
+	}
+}
+```
+
+### 2. Consumer Rebalance（协作式重平衡）
+
+```go
+package kafka
+
+import (
+	"sort"
+	"sync"
+)
+
+// CooperativeRebalancer 协作式重平衡器
+type CooperativeRebalancer struct {
+	members    sync.Map // memberID -> assigned partitions
+	currentGen int64
+}
+
+type Assignment struct {
+	MemberID   string
+	Partitions []int32
+}
+
+func (cr *CooperativeRebalancer) Rebalance(
+	newMembers []string, 
+	allPartitions []int32,
+) []Assignment {
+	cr.currentGen++
+	
+	assignments := make([]Assignment, 0, len(newMembers))
+	
+	// 1. 保留现有成员的分配（最小化扰动）
+	existing := make(map[string][]int32)
+	cr.members.Range(func(key, value interface{}) bool {
+		memberID := key.(string)
+		parts := value.([]int32)
+		
+		// 如果成员还在新列表中，保留其分配
+		for _, nm := range newMembers {
+			if nm == memberID {
+				existing[memberID] = parts
+				break
+			}
+		}
+		return true
+	})
+	
+	// 2. 找出未分配的 partition
+	unassigned := cr.getUnassigned(allPartitions, existing)
+	
+	// 3. 分配给新成员
+	for _, memberID := range newMembers {
+		if _, ok := existing[memberID]; !ok {
+			// 新成员：分配未分配的 partition
+			n := len(unassigned) / len(newMembers)
+			start := len(assignments) * n
+			end := start + n
+			if end > len(unassigned) {
+				end = len(unassigned)
+			}
+			assignments = append(assignments, Assignment{
+				MemberID:   memberID,
+				Partitions: unassigned[start:end],
+			})
+		} else {
+			// 已有分配
+			assignments = append(assignments, Assignment{
+				MemberID:   memberID,
+				Partitions: existing[memberID],
+			})
+		}
+	}
+	
+	// 更新状态
+	for _, a := range assignments {
+		cr.members.Store(a.MemberID, a.Partitions)
+	}
+	
+	return assignments
+}
+
+func (cr *CooperativeRebalancer) getUnassigned(
+	allParts []int32, 
+	existing map[string][]int32,
+) []int32 {
+	assigned := make(map[int32]bool)
+	for _, parts := range existing {
+		for _, p := range parts {
+			assigned[p] = true
+		}
+	}
+	
+	var unassigned []int32
+	for _, p := range allParts {
+		if !assigned[p] {
+			unassigned = append(unassigned, p)
+		}
+	}
+	sort.Slice(unassigned, func(i, j int) bool {
+		return unassigned[i] < unassigned[j]
+	})
+	return unassigned
+}
+```
+
+### 自测题
+
+<details>
+<summary>Q1: ISR（In-Sync Replicas）为什么不用所有副本而只同步副本选举 Leader？</summary>
+
+**答案**：
+
+**问题**：如果从所有副本中选 Leader，可能选到一个数据严重滞后的副本——导致数据丢失。
+
+**ISR 的作用**：
+- 只有跟 Leader 差距在 `replica.lag.time.max.ms`（默认30s）内的副本才留在 ISR
+- 确保新 Leader 至少有大部分数据
+- Leader 定期向 Follower 发送 FetchRequest 保持同步
+
+</details>
+
+<details>
+<summary>Q2: CooperativeSticky 重平衡相比 Range 策略的核心优势是什么？</summary>
+
+**答案**：
+
+| 特性 | Range | Cooperative Sticky |
+|------|-------|-------------------|
+| 重平衡影响 | 全量重新分配 | **增量迁移** |
+| 重复消费 | 高 | 低 |
+| 启动延迟 | 高 | 低 |
+| 复杂度 | 简单 | 复杂 |
+
+核心优势：**最小化扰动**。新增消费者时，只从现有消费者那里拿走少量分区，而不是全部打乱。
+
+</details>
+
+<details>
+<summary>Q3: Controller 的 heartbeat channel 为什么用 buffered channel（cap=1）？</summary>
+
+**答案**：
+
+**原因**：防止高频心跳堆积内存。
+
+```go
+heartbeat chan struct{} // cap=1
+
+// 即使每秒收到100次心跳，buffer里最多只有1个
+// 下次 tick 处理时会批量检查所有 ISR
+```
+
+这是经典的 **debounce 模式**——把高频事件合并为低频处理。
+
+</details>
