@@ -9,7 +9,7 @@ LOG_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../logs/watcher.log"
 PROCESS_DIR="$NOTIFY_DIR/processed"
 
 mkdir -p "$PROCESS_DIR"
-mkdir -p "$(dirname $LOG_FILE)"
+mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
@@ -20,7 +20,7 @@ log "📁 检查间隔: 10 秒"
 
 while true; do
     # 查找待处理的通知文件
-    NOTIFICATION_FILES=$(find "$NOTIFY_DIR" -name "*.json" -not -path "*/processed/*" 2>/dev/null | head -1)
+    NOTIFICATION_FILES=$(find "$NOTIFY_DIR" -name "*.json" ! -path "*/processed/*" 2>/dev/null | head -1)
     
     if [ -n "$NOTIFICATION_FILES" ]; then
         NOTIFICATION_FILE=$(echo "$NOTIFICATION_FILES" | tr -d '[:space:]')
