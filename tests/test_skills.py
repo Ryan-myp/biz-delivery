@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Skills 系统测试
-测试所有 Skill 的基本功能
+测试所有 Skill 的基本功能（纯确定性实现）
 """
 
 import pytest
@@ -35,101 +35,149 @@ class TestSkillBase:
 
 
 class TestPRDReviewSkill:
-    """测试 PRD Review Skill"""
+    """测试 PRD Review Skill（纯规则实现）"""
 
-    def test_run_with_mock(self):
-        """测试运行（Mock 模式）"""
+    def test_run_missing_title(self):
+        """测试缺少标题的问题"""
         from skills.prd_review import PRDReviewSkill
         
         skill = PRDReviewSkill(profile={"language": "go"})
         
-        with patch('scripts.review_engine.ReviewEngine') as mock_engine:
-            mock_result = Mock()
-            mock_result.issues = [
-                {"priority": "P1", "message": "Test issue"}
-            ]
-            mock_engine.return_value.run.return_value = mock_result
-            
-            result = skill.run({
-                "prd_content": "## 用户登录功能\n\n用户可以使用邮箱登录"
-            })
-            
-            assert result.success == True
-            assert result.output["p1_count"] == 1
-            assert result.output["total_issues"] == 1
+        result = skill.run({
+            "prd_content": "这是一个没有标题的 PRD\n\n## 需求\n用户登录功能"
+        })
+        
+        assert result.success == False  # P0 问题导致失败
+        assert result.output["p0_count"] > 0
+    
+    def test_run_complete_prd(self):
+        """测试完整的 PRD"""
+        from skills.prd_review import PRDReviewSkill
+        
+        skill = PRDReviewSkill(profile={"language": "go"})
+        
+        prd_content = """# 用户登录功能
+
+## 需求描述
+用户可以使用邮箱和密码登录系统
+
+## 接口定义
+- POST /api/login
+- GET /api/user/info
+
+## 数据模型
+- User
+- Token
+
+## 边界条件
+- 密码长度限制
+- 邮箱格式验证
+"""
+        
+        result = skill.run({"prd_content": prd_content})
+        
+        assert result.success == True
+        assert result.metadata["approach"] == "rule_based"
+    
+    def test_run_with_vague_requirements(self):
+        """测试模糊需求检测"""
+        from skills.prd_review import PRDReviewSkill
+        
+        skill = PRDReviewSkill(profile={"language": "go"})
+        
+        result = skill.run({
+            "prd_content": "# 优化系统\n\n我们需要优化用户体验，提升系统性能"
+        })
+        
+        # 应该检测到模糊需求
+        issues = result.output.get("issues", [])
+        vague_issues = [i for i in issues if "模糊" in i.get("name", "")]
+        assert len(vague_issues) > 0
 
 
 class TestTDSkill:
-    """测试 TD Skill"""
+    """测试 TD Skill（模板填充）"""
 
     def test_run_with_mock(self):
-        """测试运行（Mock 模式）"""
+        """测试运行（真实实现）"""
         from skills.technical_design import TDSkill
         
         skill = TDSkill(profile={"language": "go"})
         
-        with patch('scripts.td_engine.TDEngine') as mock_engine:
-            mock_result = Mock()
-            mock_result.td_content = "## 架构设计\n- 微服务\n- JWT 认证"
-            mock_engine.return_value.run.return_value = mock_result
-            
-            result = skill.run({
-                "prd_content": "## 用户登录功能"
-            })
-            
-            assert result.success == True
-            assert "架构设计" in result.output["td_content"]
+        prd_content = """# 用户登录功能
+
+## 需求描述
+用户可以使用邮箱和密码登录系统
+
+## 接口定义
+- POST /api/login
+- GET /api/user/info
+"""
+        
+        result = skill.run({"prd_content": prd_content})
+        
+        assert result.success == True
+        assert "技术方案" in result.output["td_content"]
+        assert "用户登录功能" in result.output["td_content"]
 
 
 class TestTaskPlanningSkill:
-    """测试任务规划 Skill"""
+    """测试任务规划 Skill（基于规则）"""
 
     def test_run_with_mock(self):
-        """测试运行（Mock 模式）"""
+        """测试运行（真实实现）"""
         from skills.task_planning import TaskPlanningSkill
         
         skill = TaskPlanningSkill(profile={"language": "go"})
         
-        with patch('scripts.agent.prompt_generator.TaskDecomposer') as mock_decomposer:
-            mock_decomposer.return_value.decompose.return_value = [
-                {"id": "T1", "title": "Task 1", "priority": "P0"},
-                {"id": "T2", "title": "Task 2", "priority": "P1"},
-            ]
-            
-            result = skill.run({
-                "td_content": "## 技术方案\n- Task 1\n- Task 2"
-            })
-            
-            assert result.success == True
-            assert result.output["total_tasks"] == 2
-            assert result.output["p0_count"] == 1
+        td_content = """# 技术方案：用户登录
+
+## 模块划分
+- AuthModule
+- UserModule
+
+## 接口设计
+| GET | /api/users | 获取用户列表 |
+| POST | /api/login | 用户登录 |
+"""
+        
+        result = skill.run({"td_content": td_content})
+        
+        assert result.success == True
+        assert result.output["total_tasks"] > 0
+        # P0 任务应该排在前面
+        tasks = result.output["tasks"]
+        if len(tasks) > 1:
+            assert tasks[0]["priority"] <= tasks[1]["priority"]
 
 
 class TestTestCaseSkill:
-    """测试测试用例生成 Skill"""
+    """测试测试用例生成 Skill（基于模板）"""
 
     def test_run_with_mock(self):
-        """测试运行（Mock 模式）"""
+        """测试运行（真实实现）"""
         from skills.test_case import TestCaseSkill
         
         skill = TestCaseSkill(profile={"language": "go"})
         
-        with patch('scripts.test_engine.TestEngine') as mock_engine:
-            mock_result = Mock()
-            mock_result.test_cases = [
-                {"priority": "P0", "case": "TestLogin"},
-                {"priority": "P1", "case": "TestLogout"},
-            ]
-            mock_result.coverage_analysis = {"coverage": 0.8}
-            mock_engine.return_value.run.return_value = mock_result
-            
-            result = skill.run({
-                "prd_content": "## 用户登录功能"
-            })
-            
-            assert result.success == True
-            assert result.output["total_cases"] == 2
-            assert result.output["p0_count"] == 1
+        prd_content = """# 用户登录功能
+
+## 需求描述
+用户可以使用邮箱和密码登录系统
+
+## 接口定义
+- POST /api/login
+"""
+        
+        result = skill.run({"prd_content": prd_content})
+        
+        assert result.success == True
+        assert result.output["total_cases"] > 0
+        # 应该有正向、异常、边界用例
+        case_types = [c["type"] for c in result.output["test_cases"]]
+        assert "positive" in case_types
+        assert "negative" in case_types
+        assert "boundary" in case_types
 
 
 class TestSkillOrchestrator:
@@ -156,6 +204,56 @@ class TestSkillOrchestrator:
         
         assert result["success"] == False
         assert "not found" in result["error"]
+
+
+class TestSkillIntegration:
+    """测试 Skill 集成"""
+
+    def test_full_pipeline(self):
+        """测试完整流水线（Skill 链式调用）"""
+        from skills import SkillOrchestrator, PRDReviewSkill, TDSkill, TaskPlanningSkill, TestCaseSkill
+        
+        orchestrator = SkillOrchestrator(profile={"language": "go"})
+        orchestrator.register("prd_review", PRDReviewSkill())
+        orchestrator.register("td", TDSkill())
+        orchestrator.register("task_planning", TaskPlanningSkill())
+        orchestrator.register("test_case", TestCaseSkill())
+        
+        prd_content = """# 用户登录功能
+
+## 需求描述
+用户可以使用邮箱和密码登录系统
+
+## 接口定义
+- POST /api/login
+- GET /api/user/info
+
+## 数据模型
+- User
+"""
+        
+        # 运行 PRD Review
+        review_result = orchestrator._run_skill("prd_review", {"prd_content": prd_content})
+        assert review_result["success"] == True or review_result["output"]["p0_count"] == 0
+        
+        # 运行 TD
+        td_result = orchestrator._run_skill("td", {"prd_content": prd_content})
+        assert td_result["success"] == True
+        
+        # 运行 Task Planning
+        td_content = td_result.get("output", {}).get("td_content", "")
+        plan_result = orchestrator._run_skill("task_planning", {"td_content": td_content})
+        assert plan_result["success"] == True
+        
+        # 运行 Test Case
+        test_result = orchestrator._run_skill("test_case", {"prd_content": prd_content})
+        assert test_result["success"] == True
+        
+        # 验证所有 Skill 都是确定性实现
+        assert review_result.get("metadata", {}).get("approach") == "rule_based"
+        assert td_result.get("metadata", {}).get("approach") == "template_based"
+        assert plan_result.get("metadata", {}).get("approach") == "rule_based"
+        assert test_result.get("metadata", {}).get("approach") == "template_based"
 
 
 if __name__ == "__main__":
