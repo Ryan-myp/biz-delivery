@@ -1,14 +1,14 @@
 #!/bin/bash
 # ============================================================
 # biz-delivery 智能优化触发脚本
-# 功能: Cron 创建通知文件 + 直接执行优化（双保险）
+# 功能: 创建触发文件供 Pi 扩展检测
 # ============================================================
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NOTIFY_DIR="$REPO_DIR/listener/notifications"
+TRIGGER_DIR="$REPO_DIR/listener/triggers"
 LOG_FILE="$REPO_DIR/logs/cron-trigger.log"
 
-mkdir -p "$NOTIFY_DIR"
+mkdir -p "$TRIGGER_DIR"
 mkdir -p "$(dirname $LOG_FILE)"
 
 log() {
@@ -17,9 +17,9 @@ log() {
 
 log "🚀 biz-delivery 优化触发"
 
-# 创建通知文件
+# 创建触发文件
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-cat > "$NOTIFY_DIR/optimize-$TIMESTAMP.json" << INNER_EOF
+cat > "$TRIGGER_DIR/optimize-$TIMESTAMP.json" << INNER_EOF
 {
     "type": "hourly",
     "message": "biz-delivery 智能优化任务",
@@ -29,14 +29,6 @@ cat > "$NOTIFY_DIR/optimize-$TIMESTAMP.json" << INNER_EOF
 }
 INNER_EOF
 
-log "✅ 通知文件已创建: optimize-$TIMESTAMP.json"
-
-# 直接执行优化（后台）
-log "⚡ 开始执行优化..."
-cd "$REPO_DIR"
-python3 scripts/optimize_agent.py >> "$REPO_DIR/logs/cron-auto.log" 2>&1 &
-OPTIMIZE_PID=$!
-
-log "📝 优化进程 PID: $OPTIMIZE_PID"
-log "📝 日志文件: $REPO_DIR/logs/cron-auto.log"
+log "✅ 触发文件已创建: optimize-$TIMESTAMP.json"
+log "📝 日志文件: $LOG_FILE"
 log "=========================================="
