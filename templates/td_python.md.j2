@@ -1,0 +1,30 @@
+# 技术方案：{{ title }}
+
+## 1. 架构设计
+- **架构风格**: {{ style }}
+- **语言**: Python {{ language_version }}
+- **框架**: {{ framework }}
+
+## 2. 核心模块
+{% for module in modules %}
+### {{ module.name }}
+- **职责**: {{ module.responsibility }}
+- **接口**: {{ module.interface }}
+{% endfor %}
+
+## 3. 数据库设计
+{% if database %}
+- **类型**: {{ database.type }}
+- **表结构**: {{ database.tables }}
+{% endif %}
+
+## 4. API 设计
+| 方法 | 路径 | 说明 |
+|------|------|------|
+{% for api in apis %}
+| {{ api.method }} | {{ api.path }} | {{ api.description }} |
+{% endfor %}
+
+## 5. 部署方案
+- **环境**: {{ deployment.env }}
+- **容器化**: {{ deployment.containerized }}

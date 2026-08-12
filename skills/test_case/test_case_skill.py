@@ -1,196 +1,155 @@
 """
-Test Case Skill 实现
-职责：根据 PRD 生成测试用例
+测试用例生成 Skill - 模板生成
 
-纯确定性实现，基于模板生成
+基于 PRD 内容，自动生成正向、异常和边界测试用例。
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Dict, Any, List
 from ..base import SkillBase, SkillResult
 
 
 class TestCaseSkill(SkillBase):
-    """测试用例生成 Skill - 基于模板生成"""
+    """测试用例生成 Skill - 模板生成"""
     
-    REQUIRED_INPUT = ["prd_content"]
-    
-    def __init__(self, profile: Optional[Dict[str, Any]] = None):
-        super().__init__(profile)
+    TEMPLATE = """# 测试用例：{title}
+
+## 正向用例
+{% for case in positive_cases %}
+### {case.id} {case.title}
+- **前置条件**: {case.precondition}
+- **操作步骤**: {case.steps}
+- **预期结果**: {case.expected}
+{% endfor %}
+
+## 异常用例
+{% for case in negative_cases %}
+### {case.id} {case.title}
+- **异常场景**: {case.scenario}
+- **操作步骤**: {case.steps}
+- **预期结果**: {case.expected}
+{% endfor %}
+
+## 边界用例
+{% for case in boundary_cases %}
+### {case.id} {case.title}
+- **边界条件**: {case.condition}
+- **操作步骤**: {case.steps}
+- **预期结果**: {case.expected}
+{% endfor %}
+"""
     
     def run(self, input_data: Dict[str, Any]) -> SkillResult:
-        """执行测试用例生成"""
-        # 验证输入
+        """生成测试用例"""
         errors = self.validate_input(input_data)
         if errors:
             return SkillResult(success=False, errors=errors)
         
         prd_content = input_data["prd_content"]
-        profile = input_data.get("profile", self.profile)
         
-        try:
-            # 从 PRD 提取功能点
-            features = self._extract_features(prd_content)
-            
-            # 生成测试用例
-            test_cases = self._generate_test_cases(features, profile)
-            
-            # 分类
-            p0_cases = [c for c in test_cases if c["priority"] == "P0"]
-            p1_cases = [c for c in test_cases if c["priority"] == "P1"]
-            p2_cases = [c for c in test_cases if c["priority"] == "P2"]
-            
-            # 覆盖率估算
-            coverage = self._estimate_coverage(test_cases, len(features))
-            
-            return SkillResult(
-                success=True,
-                output={
-                    "test_cases": test_cases,
-                    "total_cases": len(test_cases),
-                    "p0_count": len(p0_cases),
-                    "p1_count": len(p1_cases),
-                    "p2_count": len(p2_cases),
-                    "features_count": len(features),
-                    "coverage_estimate": coverage,
-                },
-                metadata={
-                    "skill": "test_case_generation",
-                    "approach": "template_based",
-                    "dimensions": self._get_dimensions(profile),
-                }
-            )
-            
-        except Exception as e:
-            return SkillResult(
-                success=False,
-                errors=[f"Test case generation failed: {str(e)}"]
-            )
+        # 提取关键信息
+        title = self._extract_title(prd_content)
+        requirements = self._extract_requirements(prd_content)
+        
+        # 生成测试用例
+        positive_cases = self._generate_positive_cases(requirements)
+        negative_cases = self._generate_negative_cases(requirements)
+        boundary_cases = self._generate_boundary_cases(requirements)
+        
+        # 填充模板
+        test_content = self._fill_template(
+            self.TEMPLATE,
+            title=title,
+            positive_cases=positive_cases,
+            negative_cases=negative_cases,
+            boundary_cases=boundary_cases
+        )
+        
+        return SkillResult(
+            success=True,
+            output={
+                "test_cases": positive_cases + negative_cases + boundary_cases,
+                "positive_count": len(positive_cases),
+                "negative_count": len(negative_cases),
+                "boundary_count": len(boundary_cases),
+                "total_count": len(positive_cases) + len(negative_cases) + len(boundary_cases),
+                "test_content": test_content,
+            },
+            metadata={"skill": "test_case", "template": "markdown"}
+        )
     
-    def _extract_features(self, prd_content: str) -> List[Dict]:
-        """从 PRD 提取功能点"""
-        features = []
-        
-        # 提取需求章节
-        req_section = re.search(r"##\s*需求.*?\n(.*?)(?=##\s|$)", prd_content, re.DOTALL | re.IGNORECASE)
-        if req_section:
-            lines = [l.strip() for l in req_section.group(1).split('\n') if l.strip()]
-            for line in lines[:10]:
-                # 尝试提取功能点
-                if line.startswith('-') or line.startswith('*'):
-                    feature = line[1:].strip()
-                else:
-                    feature = line
-                
-                if feature:
-                    features.append({
-                        "name": feature,
-                        "type": self._classify_feature(feature),
-                    })
-        
-        # 提取 API
-        apis = re.findall(r"(GET|POST|PUT|DELETE)\s+(/\S+)", prd_content)
-        for method, path in apis[:5]:
-            features.append({
-                "name": f"{method} {path}",
-                "type": "api",
-            })
-        
-        return features
+    def _extract_title(self, prd_content: str) -> str:
+        """提取标题"""
+        match = re.search(r"^#\s+(.+)", prd_content, re.MULTILINE)
+        return match.group(1).strip() if match else "未命名功能"
     
-    def _classify_feature(self, feature: str) -> str:
-        """分类功能点"""
-        keywords = {
-            "auth": ["登录", "注册", "认证", "授权", "token", "jwt"],
-            "data": ["查询", "列表", "详情", "搜索", "过滤"],
-            "create": ["创建", "新增", "提交", "保存"],
-            "update": ["更新", "修改", "编辑", "变更"],
-            "delete": ["删除", "移除", "注销"],
-        }
+    def _extract_requirements(self, prd_content: str) -> List[str]:
+        """提取需求列表"""
+        requirements = []
         
-        for ftype, kws in keywords.items():
-            for kw in kws:
-                if kw in feature:
-                    return ftype
+        # 查找需求描述章节
+        req_match = re.search(r"##\s*需求描述\s*\n((?:-\s+.+\n?)*)", prd_content)
+        if req_match:
+            lines = req_match.group(1).strip().split('\n')
+            requirements.extend([line.strip()[2:] for line in lines if line.strip().startswith('-')])
         
-        return "other"
+        # 如果没有找到，使用整个 PRD 作为需求
+        if not requirements:
+            requirements.append(prd_content[:200])
+        
+        return requirements
     
-    def _generate_test_cases(self, features: List[Dict], profile: Dict) -> List[Dict]:
-        """生成测试用例"""
-        test_cases = []
-        case_id = 1
-        
-        # 为每个功能点生成测试用例
-        for feature in features:
-            # 正向用例
-            test_cases.append({
-                "id": f"TC{case_id:03d}",
-                "feature": feature["name"],
+    def _generate_positive_cases(self, requirements: List[str]) -> List[Dict]:
+        """生成正向用例"""
+        cases = []
+        for i, req in enumerate(requirements[:3], 1):  # 最多3个正向用例
+            cases.append({
+                "id": f"POS-{i:03d}",
                 "type": "positive",
-                "priority": "P0",
-                "description": f"验证 {feature['name']} 正常流程",
-                "steps": [
-                    f"准备 {feature['name']} 所需数据",
-                    f"执行 {feature['name']} 操作",
-                    "验证返回结果符合预期",
-                ],
-                "expected": f"{feature['name']} 操作成功",
+                "title": f"正常场景{i}",
+                "precondition": "系统正常运行",
+                "steps": f"执行{req[:30]}...",
+                "expected": "功能正常执行，无异常"
             })
-            case_id += 1
-            
-            # 异常用例
-            test_cases.append({
-                "id": f"TC{case_id:03d}",
-                "feature": feature["name"],
+        return cases
+    
+    def _generate_negative_cases(self, requirements: List[str]) -> List[Dict]:
+        """生成异常用例"""
+        cases = []
+        for i, req in enumerate(requirements[:2], 1):  # 最多2个异常用例
+            cases.append({
+                "id": f"NEG-{i:03d}",
                 "type": "negative",
-                "priority": "P1",
-                "description": f"验证 {feature['name']} 异常情况",
-                "steps": [
-                    f"准备无效 {feature['name']} 数据",
-                    f"执行 {feature['name']} 操作",
-                    "验证返回错误信息",
-                ],
-                "expected": f"{feature['name']} 操作失败，返回错误码",
+                "title": f"异常场景{i}",
+                "scenario": f"输入无效数据时",
+                "steps": f"输入错误参数，执行{req[:20]}...",
+                "expected": "系统返回错误提示，不崩溃"
             })
-            case_id += 1
-            
-            # 边界用例
-            test_cases.append({
-                "id": f"TC{case_id:03d}",
-                "feature": feature["name"],
+        return cases
+    
+    def _generate_boundary_cases(self, requirements: List[str]) -> List[Dict]:
+        """生成边界用例"""
+        cases = []
+        for i, req in enumerate(requirements[:2], 1):  # 最多2个边界用例
+            cases.append({
+                "id": f"BDY-{i:03d}",
                 "type": "boundary",
-                "priority": "P2",
-                "description": f"验证 {feature['name']} 边界条件",
-                "steps": [
-                    f"准备边界值 {feature['name']} 数据",
-                    f"执行 {feature['name']} 操作",
-                    "验证边界情况处理正确",
-                ],
-                "expected": f"边界情况下 {feature['name']} 正确处理",
+                "title": f"边界场景{i}",
+                "condition": f"边界值测试",
+                "steps": f"输入边界值，执行{req[:20]}...",
+                "expected": "系统正确处理边界情况"
             })
-            case_id += 1
-        
-        return test_cases
+        return cases
     
-    def _estimate_coverage(self, test_cases: List[Dict], feature_count: int) -> Dict:
-        """估算覆盖率"""
-        if feature_count == 0:
-            return {"positive": 0, "negative": 0, "boundary": 0, "total": 0}
-        
-        positive = sum(1 for c in test_cases if c["type"] == "positive")
-        negative = sum(1 for c in test_cases if c["type"] == "negative")
-        boundary = sum(1 for c in test_cases if c["type"] == "boundary")
-        
-        return {
-            "positive": positive,
-            "negative": negative,
-            "boundary": boundary,
-            "total": len(test_cases),
-            "positive_ratio": positive / max(len(test_cases), 1),
-            "negative_ratio": negative / max(len(test_cases), 1),
-            "boundary_ratio": boundary / max(len(test_cases), 1),
-        }
-    
-    def _get_dimensions(self, profile: Dict) -> List[str]:
-        """获取测试维度"""
-        return profile.get("test_dimensions", ["正向流程", "异常分支", "边界条件", "性能测试", "安全测试"])
+    def _fill_template(self, template: str, **kwargs) -> str:
+        """填充模板"""
+        try:
+            from jinja2 import Template
+            t = Template(template)
+            return t.render(**kwargs)
+        except Exception:
+            # 降级处理：简单字符串替换
+            result = template
+            for key, value in kwargs.items():
+                result = result.replace("{" + key + "}", str(value))
+            return result

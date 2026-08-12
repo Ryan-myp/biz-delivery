@@ -1,25 +1,22 @@
 """
-PRD Review Skill 实现
-职责：基于规则自主发现 PRD 中的问题
+PRD 审查 Skill - 基于规则的纯确定性审查
 
-纯确定性实现，不依赖 LLM
+检测 PRD 中的缺失章节、模糊需求、潜在冲突等常见问题。
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Dict, Any, List
 from ..base import SkillBase, SkillResult
 
 
 class PRDReviewSkill(SkillBase):
     """PRD 审查 Skill - 基于规则的纯确定性审查"""
     
-    REQUIRED_INPUT = ["prd_content"]
-    
-    # 定义审查规则
     RULES = {
         "missing_title": {
             "name": "缺少标题",
             "pattern": r"^#\s+(.+)",
+            "flags": re.MULTILINE,
             "severity": "P0",
             "message": "PRD 应包含一级标题（标题）",
         },
@@ -29,143 +26,179 @@ class PRDReviewSkill(SkillBase):
             "severity": "P0",
             "message": "PRD 应包含需求描述章节",
         },
-        "missing_api_specs": {
-            "name": "缺少 API 规格",
-            "pattern": r"##\s*(接口|API|接口定义)",
+        "missing_goals": {
+            "name": "缺少业务目标",
+            "pattern": r"##\s*(目标|goal|目的|背景)",
+            "severity": "P0",
+            "message": "PRD 应说明业务目标和背景",
+        },
+        "missing_timeline": {
+            "name": "缺少时间规划",
+            "pattern": r"##\s*(时间|排期|里程碑|schedule)",
             "severity": "P1",
-            "message": "PRD 应包含接口规格说明",
+            "message": "PRD 应包含时间规划章节",
+        },
+        "missing_dependencies": {
+            "name": "缺少依赖说明",
+            "pattern": r"##\s*(依赖|前置|依赖项|dependency)",
+            "severity": "P1",
+            "message": "PRD 应说明依赖关系",
+        },
+        "missing_rollback": {
+            "name": "缺少回滚方案",
+            "pattern": r"##\s*(回滚|rollback|降级|fallback)",
+            "severity": "P1",
+            "message": "PRD 应包含回滚方案",
+        },
+        "missing_monitoring": {
+            "name": "缺少监控方案",
+            "pattern": r"##\s*(监控|monitoring|告警|alert)",
+            "severity": "P2",
+            "message": "PRD 应包含监控方案",
+        },
+        "missing_risk": {
+            "name": "缺少风险评估",
+            "pattern": r"##\s*(风险|risk|预案|contingency)",
+            "severity": "P1",
+            "message": "PRD 应包含风险评估",
+        },
+        "missing_metrics": {
+            "name": "缺少成功指标",
+            "pattern": r"##\s*(指标|metric|成功标准|success)",
+            "severity": "P1",
+            "message": "PRD 应定义成功指标",
+        },
+        "missing_api_design": {
+            "name": "缺少接口设计",
+            "pattern": r"##\s*(接口|API|endpoint|契约)",
+            "severity": "P2",
+            "message": "PRD 应包含接口设计说明",
         },
         "missing_data_model": {
             "name": "缺少数据模型",
-            "pattern": r"##\s*(数据|模型|Schema)",
-            "severity": "P1",
-            "message": "PRD 应包含数据模型定义",
-        },
-        "missing_edge_cases": {
-            "name": "缺少边界条件",
-            "pattern": r"##\s*(边界|异常|Edge)",
-            "severity": "P1",
-            "message": "PRD 应包含边界条件和异常处理",
-        },
-        "vague_requirement": {
-            "name": "需求描述模糊",
-            "pattern": r"优化|改善|提升|方便|更好",
+            "pattern": r"##\s*(数据|model|schema|实体)",
             "severity": "P2",
-            "message": "需求描述过于模糊，应具体可衡量",
+            "message": "PRD 应包含数据模型说明",
+        },
+        "missing_security": {
+            "name": "缺少安全考虑",
+            "pattern": r"##\s*(安全|security|权限|auth)",
+            "severity": "P1",
+            "message": "PRD 应包含安全考虑",
         },
         "missing_performance": {
             "name": "缺少性能要求",
-            "pattern": r"##\s*(性能|Performance|QoS)",
-            "severity": "P2",
-            "message": "PRD 应包含性能要求（QPS、延迟等）",
+            "pattern": r"##\s*(性能|performance|QPS|延迟)",
+            "severity": "P1",
+            "message": "PRD 应包含性能要求",
         },
-        "missing_security": {
-            "name": "缺少安全要求",
-            "pattern": r"##\s*(安全|Security|Auth)",
-            "severity": "P2",
-            "message": "PRD 应包含安全要求说明",
+        "vague_requirement": {
+            "name": "模糊需求",
+            "pattern": r"(尽快|大概|可能|或许|类似|差不多)",
+            "severity": "P1",
+            "message": "发现模糊表述，建议明确具体数值或标准",
+        },
+        "missing_acceptance_criteria": {
+            "name": "缺少验收标准",
+            "pattern": r"##\s*(验收|acceptance|测试标准|验证)",
+            "severity": "P1",
+            "message": "PRD 应包含验收标准",
         },
     }
     
-    def __init__(self, profile: Optional[Dict[str, Any]] = None):
-        super().__init__(profile)
-    
     def run(self, input_data: Dict[str, Any]) -> SkillResult:
         """执行 PRD 审查"""
-        # 验证输入
         errors = self.validate_input(input_data)
         if errors:
             return SkillResult(success=False, errors=errors)
         
         prd_content = input_data["prd_content"]
-        
-        # 执行规则检查
         issues = self._check_rules(prd_content)
         
-        # 分类问题
         p0_issues = [i for i in issues if i["severity"] == "P0"]
         p1_issues = [i for i in issues if i["severity"] == "P1"]
         p2_issues = [i for i in issues if i["severity"] == "P2"]
         
-        # 计算风险等级
-        risk_level = self._calculate_risk(p0_issues, p1_issues)
+        summary = self._generate_summary(issues, p0_issues, p1_issues, p2_issues)
         
         return SkillResult(
-            success=len(p0_issues) == 0,  # 有 P0 问题则失败
+            success=len(p0_issues) == 0,
             output={
                 "issues": issues,
-                "p0_count": len(p0_issues),
-                "p1_count": len(p1_issues),
-                "p2_count": len(p2_issues),
+                "summary": summary,
                 "total_issues": len(issues),
-                "risk_level": risk_level,
-                "summary": self._generate_summary(issues),
+                "p0_issues": len(p0_issues),
+                "p0_count": len(p0_issues),
+                "p1_issues": len(p1_issues),
+                "p1_count": len(p1_issues),
+                "p2_issues": len(p2_issues),
+                "p2_count": len(p2_issues),
             },
-            metadata={
-                "skill": "prd_review",
-                "rules_checked": len(self.RULES),
-                "approach": "rule_based",
-            }
+            metadata={"skill": "prd_review", "rules_checked": len(self.RULES)}
         )
     
     def _check_rules(self, prd_content: str) -> List[Dict]:
-        """执行规则检查"""
+        """检查所有规则"""
         issues = []
         
         for rule_name, rule in self.RULES.items():
-            if not re.search(rule["pattern"], prd_content, re.IGNORECASE):
-                # 注意：如果没有匹配到，说明缺少该内容，应该添加问题
-                # 但有些规则是检查"应该包含"的，所以没匹配到才是问题
-                if rule_name in ["missing_title", "missing_requirements", 
-                                 "missing_api_specs", "missing_data_model",
-                                 "missing_edge_cases", "missing_performance",
-                                 "missing_security"]:
-                    issues.append({
-                        "rule": rule_name,
-                        "name": rule["name"],
-                        "severity": rule["severity"],
-                        "message": rule["message"],
-                        "location": "document_structure",
-                    })
-        
-        # 检查模糊需求
-        vague_patterns = ["优化", "改善", "提升", "方便", "更好", "更高效", "更便捷"]
-        for pattern in vague_patterns:
-            if re.search(pattern, prd_content):
+            pattern = rule["pattern"]
+            flags = rule.get("flags", 0)
+            matches = re.search(pattern, prd_content, flags | re.IGNORECASE)
+            
+            # 对于必须存在的章节，如果未找到则报错
+            if not matches and rule["severity"] in ["P0", "P1"]:
                 issues.append({
-                    "rule": "vague_requirement",
-                    "name": f"模糊描述：{pattern}",
-                    "severity": "P2",
-                    "message": f"发现模糊描述\"{pattern}\"，应具体可衡量",
-                    "location": "content",
+                    "rule": rule_name,
+                    "name": rule["name"],
+                    "severity": rule["severity"],
+                    "message": rule["message"],
+                    "type": "missing",
+                })
+            # 对于模糊需求检查
+            elif matches and rule["name"] == "模糊需求":
+                issues.append({
+                    "rule": rule_name,
+                    "name": rule["name"],
+                    "severity": rule["severity"],
+                    "message": f"发现模糊表述: '{matches.group()}'",
+                    "type": "vague",
+                    "match": matches.group(),
                 })
         
         return issues
     
-    def _calculate_risk(self, p0_issues: List, p1_issues: List) -> str:
-        """计算风险等级"""
-        if len(p0_issues) > 0:
-            return "high"
-        elif len(p1_issues) > 3:
-            return "medium"
-        else:
-            return "low"
-    
-    def _generate_summary(self, issues: List[Dict]) -> str:
+    def _generate_summary(self, issues, p0_issues, p1_issues, p2_issues) -> str:
         """生成审查摘要"""
+        lines = [
+            f"## PRD 审查报告",
+            f"",
+            f"- **总问题数**: {len(issues)}",
+            f"- **P0 严重**: {len(p0_issues)}",
+            f"- **P1 重要**: {len(p1_issues)}",
+            f"- **P2 建议**: {len(p2_issues)}",
+            f"",
+        ]
+        
+        if p0_issues:
+            lines.append("### 🔴 P0 问题（必须修复）")
+            for issue in p0_issues:
+                lines.append(f"- {issue['name']}: {issue['message']}")
+            lines.append("")
+        
+        if p1_issues:
+            lines.append("### 🟡 P1 问题（建议修复）")
+            for issue in p1_issues:
+                lines.append(f"- {issue['name']}: {issue['message']}")
+            lines.append("")
+        
+        if p2_issues:
+            lines.append("### 🟢 P2 建议（可选优化）")
+            for issue in p2_issues:
+                lines.append(f"- {issue['name']}: {issue['message']}")
+            lines.append("")
+        
         if not issues:
-            return "✅ PRD 结构完整，未发现明显问题"
+            lines.append("✅ PRD 结构完整，未发现明显问题")
         
-        p0_count = sum(1 for i in issues if i["severity"] == "P0")
-        p1_count = sum(1 for i in issues if i["severity"] == "P1")
-        p2_count = sum(1 for i in issues if i["severity"] == "P2")
-        
-        summary = f"⚠️ 发现 {len(issues)} 个问题"
-        if p0_count > 0:
-            summary += f"（P0: {p0_count}, P1: {p1_count}, P2: {p2_count}）"
-            summary += "\n\n🔴 P0 问题（必须修复）："
-            for i in issues:
-                if i["severity"] == "P0":
-                    summary += f"\n- {i['message']}"
-        
-        return summary
+        return "\n".join(lines)
