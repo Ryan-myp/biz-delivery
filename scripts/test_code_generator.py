@@ -951,11 +951,11 @@ async def test_{TestName}_async(mock_dao, mock_redis):
 
         # 如果没有从 fields 生成 table tests，添加一个默认测试行
         if not table_test_rows:
-            table_test_rows.append('''{
+            table_test_rows.append('''{{
                 name: "default",
-                req: &{RequestStruct}{},
+                req: &{RequestStruct}{{}},
                 wantErr: false,
-            },'''.format(RequestStruct=struct_name or "Request"))
+            }},'''.format(RequestStruct=struct_name or "Request"))
 
         if not field_lines:
             field_lines.append('        // No fields extracted — manually populate Request struct')
