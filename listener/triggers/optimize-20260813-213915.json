@@ -1,0 +1,7 @@
+{
+    "type": "hourly",
+    "message": "biz-delivery 智能优化任务 - 打造资深专家水平",
+    "timestamp": "2026-08-13T21:39:15+08:00",
+    "triggered_by": "cron",
+    "auto_execute": true
+}

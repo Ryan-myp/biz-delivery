@@ -197,3 +197,22 @@
 2. 核心引擎修复 12 个真实 Bug（包括 2 个 lru_cache 不可哈希崩溃）
 3. 24 类 PRD 审查检查项全部有测试覆盖
 4. 全链路（PRD → Review → TD → Test → 自动化）都有端到端测试
+
+## 2026-08-13 深度优化（第四轮）
+
+### 新增覆盖模块
+
+| 模块 | 优化前 | 优化后 |
+|------|--------|--------|
+| core_flow_analyzer.py | 15% | 38% |
+| delivery_pipeline.py | 25% | 49% |
+| learn_repo.py | 16% | 20% |
+
+### 新增测试
+
+- test_learn_repo_deep.py (35 测试): dataclass、KnowledgeCache、KnowledgeWriter、IncrementalScanner
+- test_delivery_pipeline_deep.py (25 测试): AgentTask、AgentTaskGenerator、QualityGate
+- test_core_flow_analyzer_deep.py (25 测试): infer_flows、状态机、数据流、拓扑分析
+- test_deep_coverage.py (32 测试): _extract_go、业务逻辑推理、边界case
+
+### 测试总数: 782 → 895（+113）
