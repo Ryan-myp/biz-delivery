@@ -109,3 +109,60 @@
   }
 ]
 ## 2026-08-13 10:19\n\n- ✅ 添加边界条件测试用例\n\n
+## 2026-08-13 深度优化（第二轮）
+
+### 核心引擎覆盖率全面提升
+
+| 模块 | 优化前 | 优化后 |
+|------|--------|--------|
+| skills/ (全部) | 75% | 94% |
+| llm_client.py | 13% | 98% |
+| query_cache.py | 0% | 96% |
+| smart_routing.py | 0% | 94% |
+| multi_path_query.py | 63% | 94% |
+| fuzzy_match.py | 82% | 91% |
+| base_engine.py | 72% | 87% |
+| prompt_generator.py | 59% | 87% |
+| cross_module_analysis.py | 14% | 86% |
+| rrf_fusion.py | 47% | 84% |
+| wiki_query.py | 25% | 84% |
+| automation.py | 69% | 83% |
+| llm_analyzer.py | 0% | 83% |
+| td_engine.py | 5% | 78% |
+| review_engine.py | 55% | 76% |
+| query_evidence.py | 23% | 67% |
+| run_pipeline.py | 0% | 67% |
+| incremental_ir.py | 19% | 68% |
+| multi_repo_deps.py | 14% | 77% |
+| field_conflict.py | 18% | 59% |
+
+### 修复的真实 Bug（9 个）
+
+1. **orchestrator.py**: agent/auto_test 模式变量未定义（UnboundLocalError）
+2. **query_cache.py**: set 未保存 query，clear(query) 无法按关键词清理
+3. **review_engine.py**: _validate_core_flows 中 prd_entities 未初始化（NameError）
+4. **review_engine.py**: _build_review_prompt 中 route.get() 对 RouteDef 对象报 AttributeError
+5. **rrf_fusion.py**: rrf_fuse 使用 @lru_cache 但参数是 list（不可哈希），每次调用崩溃
+6. **evidence_query.py**: run_evidence_query_legacy 打开目录 '.' 报 IsADirectoryError
+7. **query_evidence.py**: _cosine_similarity 使用 @lru_cache 参数是 dict，语义搜索崩溃
+8. **query_evidence.py**: SimpleVectorizer IDF 公式错误导致所有向量为 0，语义搜索失效
+9. **query_evidence.py**: struct.fields 为 str 时 f.get() 报 AttributeError
+
+### 测试增长
+
+- 测试数: 306 → 740（+434 个测试）
+- 新增测试文件: 12 个
+  - test_skills_advanced.py (34)
+  - test_core_modules.py (32)
+  - test_td_engine_deep.py (11)
+  - test_review_expert_checks.py (44)
+  - test_query_wiki.py (24)
+  - test_multi_path_query.py (33)
+  - test_llm_client.py (32)
+  - test_run_pipeline.py (21)
+  - test_automation_deep.py (28)
+  - test_base_engine_deep.py (28)
+  - test_prompt_generator.py (31)
+  - test_review_submodules.py (38)
+  - test_review_enhancements.py (18)
+  - test_query_evidence_deep.py (60)
