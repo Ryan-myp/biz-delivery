@@ -28,6 +28,11 @@ def _patch_llm_calls(monkeypatch):
     # Clear LLM_API_KEY to prevent real LLM calls, but allow tests to override
     monkeypatch.delenv("LLM_API_KEY", raising=False)
 
+@pytest.fixture(autouse=True)
+def _set_agnes_api_key(monkeypatch):
+    """Set a fake AGNES_API_KEY so BizDeliveryPipeline can be instantiated."""
+    monkeypatch.setenv("AGNES_API_KEY", "fake-test-key")
+
 
 @pytest.fixture
 def tmp_out(tmp_path: Path) -> Path:
