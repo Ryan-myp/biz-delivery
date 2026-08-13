@@ -44,6 +44,7 @@ class SkillOrchestrator:
                 return result
         
         # 2. Technical Design
+        td_result = None
         if mode in ["full", "td"]:
             td_result = self._run_skill("td", {
                 "prd_content": prd_content,
@@ -52,8 +53,11 @@ class SkillOrchestrator:
             result["stages"]["td"] = td_result
         
         # 3. Task Planning
-        if mode in ["full", "plan"]:
-            td_content = td_result.get("output", {}).get("td_content", "")
+        plan_result = None
+        if mode in ["full", "plan", "agent"]:
+            td_content = ""
+            if td_result:
+                td_content = td_result.get("output", {}).get("td_content", "")
             plan_result = self._run_skill("task_planning", {
                 "td_content": td_content,
                 "profile": self.profile,
@@ -61,8 +65,11 @@ class SkillOrchestrator:
             result["stages"]["planning"] = plan_result
         
         # 4. Agent Execution
+        agent_result = None
         if mode in ["full", "agent"]:
-            tasks = plan_result.get("output", {}).get("tasks", [])
+            tasks = []
+            if plan_result:
+                tasks = plan_result.get("output", {}).get("tasks", [])
             agent_result = self._run_skill("agent_execution", {
                 "tasks": tasks,
                 "code_context": prd_content,
@@ -71,7 +78,8 @@ class SkillOrchestrator:
             result["stages"]["agent"] = agent_result
         
         # 5. Test Case Generation
-        if mode in ["full", "test"]:
+        test_result = None
+        if mode in ["full", "test", "auto_test"]:
             test_result = self._run_skill("test_case", {
                 "prd_content": prd_content,
                 "profile": self.profile,
@@ -80,8 +88,12 @@ class SkillOrchestrator:
         
         # 6. Automated Testing
         if mode in ["full", "auto_test"]:
-            code_dir = agent_result.get("output", {}).get("code_dir", ".")
-            test_cases = test_result.get("output", {}).get("test_cases", [])
+            code_dir = "."
+            if agent_result:
+                code_dir = agent_result.get("output", {}).get("code_dir", ".")
+            test_cases = []
+            if test_result:
+                test_cases = test_result.get("output", {}).get("test_cases", [])
             auto_test_result = self._run_skill("automated_testing", {
                 "code_dir": code_dir,
                 "test_cases": test_cases,

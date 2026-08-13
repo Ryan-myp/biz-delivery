@@ -1832,6 +1832,7 @@ class ReviewEngine(EngineBase):
         # 从 PRD 提取可能的实体名（大写驼峰、中文业务词）
         camel_entities = re.findall(r'[A-Z][a-z]+[A-Z]\\w*', prd_text)
         chinese_entities = re.findall(r'[\\u4e00-\\u9fff]{2,6}', prd_text)
+        prd_entities = set()
         prd_entities.update(camel_entities)
         prd_entities.update(chinese_entities)
         

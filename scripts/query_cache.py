@@ -46,6 +46,9 @@ class QueryCache:
         key = self._get_cache_key(query, scopes)
         path = self._get_cache_path(key)
         data["cached_at"] = time.time()
+        # 保存 query 和 scopes 以便按关键词清理
+        data["_query"] = query
+        data["_scopes"] = scopes
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     
     def clear(self, query: str = None):
