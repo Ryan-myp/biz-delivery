@@ -216,3 +216,26 @@
 - test_deep_coverage.py (32 测试): _extract_go、业务逻辑推理、边界case
 
 ### 测试总数: 782 → 895（+113）
+
+## 2026-08-13 深度优化（第五轮）
+
+### 覆盖率重大提升
+
+| 模块 | 优化前 | 优化后 | 增量 |
+|------|--------|--------|------|
+| core_flow_analyzer.py | 38% | **69%** | +31pp |
+| learn_repo.py | 20% | **26%** | +6pp |
+| delivery_pipeline.py | 49% | 49% | — |
+
+### 新增测试 (test_low_coverage_deep.py, 20 测试)
+
+- **状态机检测**: struct 含 status/state 字段 → 触发状态机流程推理
+- **异步消息流**: MQ 生产者/消费者命名模式匹配配对
+- **CRUD 分组**: 按资源路径分组生成 CRUD 流程
+- **Flow 合并**: Jaccard 相似度 + 入口点/路由合并策略
+- **错误处理检测**: ErrorCode struct + ErrorHandler 函数配对
+- **服务拓扑**: 从文件路径推断 service/dao/handler 分组
+- **实体归属**: entity_table → function 所有权映射
+- **GoScanner 降级**: Python re fallback 扫描真实 Go 代码（struct/func/route/GORM tag）
+
+### 测试总数: 895 → 915
