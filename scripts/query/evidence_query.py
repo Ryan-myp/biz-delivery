@@ -171,7 +171,7 @@ def run_evidence_query_legacy(
     ir_data = ir_cache
     if ir_data is None and profile:
         ir_cache_path = Path(profile.get('ir_cache_path', ''))
-        if ir_cache_path.exists():
+        if ir_cache_path and ir_cache_path.exists() and ir_cache_path.is_file():
             with open(ir_cache_path) as f:
                 ir_data = json.load(f)
     

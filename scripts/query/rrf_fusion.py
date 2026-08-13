@@ -56,6 +56,22 @@ def _get_rrf_k_for_label(label: str) -> int:
         if source_type in label_lower:
             return k_val
     
+    # 启发式匹配：根据路径关键词选择最合适的 k 值
+    if any(kw in label_lower for kw in ['code', 'function', 'route', 'handler']):
+        return _RRF_K_BY_SOURCE["code"]
+    elif any(kw in label_lower for kw in ['api', 'doc']):
+        return _RRF_K_BY_SOURCE["api_docs"]
+    elif any(kw in label_lower for kw in ['schema', 'table', 'struct', 'column']):
+        return _RRF_K_BY_SOURCE["schema"]
+    elif any(kw in label_lower for kw in ['business', 'logic', 'flow']):
+        return _RRF_K_BY_SOURCE["business"]
+    elif any(kw in label_lower for kw in ['semantic', 'similarity', 'tfidf']):
+        return _RRF_K_BY_SOURCE["semantic"]
+    elif any(kw in label_lower for kw in ['bm25']):
+        return _RRF_K_BY_SOURCE["bm25"]
+    elif any(kw in label_lower for kw in ['wiki', 'knowledge', 'md']):
+        return _RRF_K_BY_SOURCE["wiki"]
+    
     return _RRF_K_DEFAULT
 
 
@@ -69,6 +85,11 @@ def _get_source_weight(item: Dict) -> float:
 
 
 @lru_cache(maxsize=128)
+def _rrf_k_choices():
+    """缓存 k 值选项（无参数的辅助函数，避免 lru_cache 作用于不可哈希参数）"""
+    return _RRF_K_BY_SOURCE
+
+
 def rrf_fuse(candidates: List[List[Dict]], k: int = _RRF_K_DEFAULT) -> List[Dict]:
     """RRF 融合多路结果 — 基础版
     
