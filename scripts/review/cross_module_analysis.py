@@ -231,10 +231,10 @@ class EntityMatcher:
     
     def _similarity(self, s1: str, s2: str) -> float:
         """计算相似度"""
-        if s1 == s2:
-            return 1.0
         if not s1 or not s2:
             return 0.0
+        if s1 == s2:
+            return 1.0
         
         # 简单包含检查
         if s1 in s2 or s2 in s1:
