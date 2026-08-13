@@ -1267,7 +1267,6 @@ def _compute_idf(documents: List[List[str]]) -> Dict[str, float]:
     return idf
 
 
-@lru_cache(maxsize=512)
 def _cosine_similarity(vec_a: Dict[str, float], vec_b: Dict[str, float]) -> float:
     """计算两个向量的余弦相似度"""
     if not vec_a or not vec_b:
@@ -1358,7 +1357,13 @@ def semantic_expand_query(query: str, ir_data: dict, top_k: int = 20) -> List[st
     
     # 收集 struct 名和字段
     for struct in ir_data.get('structs', []):
-        struct_str = f"{struct.get('name', '')} {' '.join(f.get('name', '') for f in struct.get('fields', []))}"
+        field_names = []
+        for f in struct.get('fields', []):
+            if isinstance(f, dict):
+                field_names.append(f.get('name', ''))
+            else:
+                field_names.append(str(f))
+        struct_str = f"{struct.get('name', '')} {' '.join(field_names)}"
         if struct_str:
             searchable.append(struct_str)
     
@@ -1565,12 +1570,18 @@ def _search_code_fuzzy(ir_data: dict, queries: List[str], top_k: int) -> List[Di
             sname = struct.get('name', '').lower()
             score = fuzzy_score(query_lower, sname)
             if score >= min_threshold:
+                field_texts = []
+                for f in struct.get('fields', [])[:5]:
+                    if isinstance(f, dict):
+                        field_texts.append(f.get('name', str(f)))
+                    else:
+                        field_texts.append(str(f))
                 results.append({
                     'type': 'struct',
                     'title': struct['name'],
                     'path': struct.get('file', ''),
                     'line': struct.get('line', 0),
-                    'content': '\n'.join([f.get('name', str(f)) for f in struct.get('fields', [])[:5]]),
+                    'content': '\n'.join(field_texts),
                     'score': score,
                 })
         
@@ -2243,7 +2254,8 @@ class SimpleVectorizer:
                 df[term] = df.get(term, 0) + 1
         
         for term, count in df.items():
-            self.idf[term] = math.log(n_docs / (1 + count))
+            # 标准 IDF 公式: log((N+1)/(df+1)) + 1，避免常见词 IDF=0
+            self.idf[term] = math.log((n_docs + 1) / (count + 1)) + 1
             self.vocab[term] = len(self.vocab)
     
     def transform(self, documents: List[str]) -> List[List[float]]:
