@@ -306,11 +306,31 @@ class TaskDecomposer:
     def _extract_module_design(self, td_content: str, module: str) -> str:
         """提取模块设计细节"""
         import re
-        # 查找模块相关内容
-        pattern = rf'(?:##\s*{re.escape(module)}[^#\n]*\n)(.*?)(?=##\s|$)'
-        match = re.search(pattern, td_content, re.DOTALL)
-        if match:
-            return match.group(1).strip()[:1000]  # 限制长度
+        lines = td_content.split('\n')
+        in_module = False
+        parts = []
+        for line in lines:
+            stripped = line.strip()
+            # 排除三级及以下标题，只匹配 ## 二级标题
+            if stripped.startswith('###'):
+                if in_module:
+                    parts.append(line)
+                continue
+            # 匹配模块标题（## 模块: X 或 ## X）
+            title_match = re.match(r'##\s*(?:模块[:：]\s*)?(.+?)\s*$', stripped)
+            if title_match:
+                if title_match.group(1).strip() == module:
+                    in_module = True
+                    continue
+                elif in_module:
+                    # 遇到下一个 ## 标题，结束
+                    break
+            elif in_module:
+                parts.append(line)
+        
+        design = '\n'.join(parts).strip()
+        if design:
+            return design[:1000]
         return f"参考技术方案中关于 {module} 的部分"
     
     def _generate_test_cases(self, requirement: str, module: str) -> List[str]:
