@@ -2791,9 +2791,15 @@ class ReviewEngine(EngineBase):
         is_new_feature = True
         existing_features = []
         for route in ir.routes[:20]:
-            if route.get('handler', '').lower() in prd_text.lower() or route.get('path', '').lower() in prd_text.lower():
+            if isinstance(route, dict):
+                route_handler = route.get('handler', '')
+                route_path = route.get('path', '')
+            else:
+                route_handler = getattr(route, 'handler', '')
+                route_path = getattr(route, 'path', '')
+            if route_handler.lower() in prd_text.lower() or route_path.lower() in prd_text.lower():
                 is_new_feature = False
-                existing_features.append(route.get('path', ''))
+                existing_features.append(route_path)
         
         if is_new_feature:
             prompt_parts.append("## 新功能架构设计原则")
