@@ -649,7 +649,7 @@ class MermaidGenerator:
                 http_status = '4xx Client Error'
             elif code.startswith('5'):
                 http_status = '5xx Server Error'
-            elif int(code) < 400:
+            elif code.lstrip('-').isdigit() and int(code) < 400:
                 http_status = 'Success'
             else:
                 http_status = 'Error'
