@@ -257,3 +257,46 @@ class TestSimilarityFunctions:
         """测试代码查询"""
         qtype = classify_query("创建用户")
         assert isinstance(qtype, str)
+
+
+class TestBusinessDiagrams:
+    """业务流程图测试"""
+    
+    def test_facebook_sync_flow_diagram(self):
+        from scripts.mermaid_generator import MermaidGenerator
+        gen = MermaidGenerator({})
+        diagram = gen.generate_facebook_sync_flow_diagram()
+        assert "```mermaid" in diagram
+        assert "flowchart TB" in diagram
+        assert "getCampaignIds" in diagram or "getCampaignList" in diagram
+        assert "Diff" in diagram
+        assert "Store" in diagram
+    
+    def test_ads_change_sync_diagram(self):
+        from scripts.mermaid_generator import MermaidGenerator
+        gen = MermaidGenerator({})
+        diagram = gen.generate_ads_change_sync_diagram()
+        assert "```mermaid" in diagram
+        assert "sequenceDiagram" in diagram
+        assert "AdsChangeProcessor" in diagram
+        assert "QueryDapCampaignById" in diagram
+        assert "CreateOrUpdateCampaign" in diagram
+    
+    def test_generate_all_diagrams_with_flow(self):
+        from scripts.mermaid_generator import MermaidGenerator
+        flow_data = {
+            'spex_traces': {'AutoCreateCampaignRun': {'calls': [
+                {'name': 'SaveDraftCampaign', 'cross_repo': True},
+            ]}},
+            'entry_points': [{'name': 'AutoCreateCampaignRun', 'calls': []}],
+            'patterns': {
+                'state_machines': [],
+                'task_group_patterns': [],
+            },
+        }
+        gen = MermaidGenerator({}, flow_data=flow_data)
+        diagrams = gen.generate_all_diagrams()
+        assert 'business_flow' in diagrams
+        assert 'cross_service_flow' in diagrams
+        assert 'state_machine_detailed' in diagrams
+        assert 'task_lifecycle' in diagrams

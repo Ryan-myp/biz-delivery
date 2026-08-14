@@ -679,6 +679,194 @@ class MermaidGenerator:
         lines.append("```")
         return "\n".join(lines)
 
+    def generate_business_flow_diagram(self) -> str:
+        """从 SPX Processor 和 Go 调用链生成业务流程图."""
+        lines = ["```mermaid", "flowchart TB"]
+        lines.append("    classDef entry fill:#f9f,stroke:#333,stroke-width:2px")
+        lines.append("    classDef external fill:#bbf,stroke:#333,stroke-width:1px")
+        lines.append("    classDef db fill:#dfd,stroke:#333,stroke-width:1px")
+        lines.append("    classDef kafka fill:#fbd,stroke:#333,stroke-width:1px")
+        lines.append("    classDef lock fill:#fdb,stroke:#333,stroke-width:1px")
+        lines.append("")
+        if self.entry_points:
+            for ep in self.entry_points[:3]:
+                name = ep.get('name', 'unknown')
+                file = ep.get('file', '')
+                short_name = name[:25]
+                lines.append(f'    A["<b>{short_name}</b><br/><small>{file}</small>"]')
+                lines.append("    class A entry")
+                for call in ep.get('calls', [])[:5]:
+                    callee = call.get('name', '')
+                    is_cross = call.get('cross_repo') or call.get('external_call')
+                    if is_cross:
+                        lines.append(f'    A -->|"SPX RPC"| B["{callee[:25]}"]')
+                        lines.append("    class B external")
+                    else:
+                        lines.append(f"    A --> {callee[:25]}")
+        if self.spex_traces:
+            for func_name, trace in list(self.spex_traces.items())[:3]:
+                func_short = func_name[:20]
+                top_call = None
+                for call in trace.get('calls', []):
+                    if call.get('cross_repo') or call.get('external_call'):
+                        top_call = call
+                        break
+                if top_call:
+                    callee_name = top_call.get('name', 'external')[:25]
+                    lines.append(f"    subgraph SPX[{func_short}]")
+                    lines.append(f"        C[\"{func_short}\"]")
+                    lines.append(f"        C --> D[\"{callee_name}\"]")
+                    for sub in top_call.get('calls', [])[:3]:
+                        sub_name = sub.get('name', '')[:20]
+                        lines.append(f'        D --> "{sub_name}"')
+                    lines.append("    end")
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+
+    def generate_cross_service_flow_diagram(self) -> str:
+        """生成跨服务数据流图 — 基于 cross_repo_flow 的追踪结果."""
+        lines = ["```mermaid", "flowchart LR"]
+        lines.append("    classDef repo fill:#e8e8ff,stroke:#666,stroke-width:2px")
+        lines.append("    classDef svc fill:#fff4e8,stroke:#666,stroke-width:1px")
+        lines.append("    classDef rpc fill:#ffe8e8,stroke:#666,stroke-width:1px")
+        lines.append("")
+        repos = set()
+        rpc_calls = []
+        if self.cross_repo:
+            calls = self.cross_repo.get('calls', [])
+            for call in calls[:20]:
+                caller = call.get('caller', '')
+                callee = call.get('callee', '')
+                cross_repo = call.get('cross_repo', False)
+                caller_pkg = caller.split('/')
+                callee_pkg = callee.split('/')
+                caller_svc = caller_pkg[-3] if len(caller_pkg) > 3 else caller_pkg[-1]
+                callee_svc = callee_pkg[-3] if len(callee_pkg) > 3 else callee_pkg[-1]
+                repos.add(caller_svc)
+                repos.add(callee_svc)
+                if cross_repo:
+                    rpc_calls.append((caller_svc, callee_svc, call.get('func', '')))
+        for repo in sorted(repos):
+            safe = repo.replace('-', '_').replace('.', '_')
+            lines.append(f'    {safe}["📦 {repo}"]')
+            lines.append(f"    class {safe} repo")
+        for caller_svc, callee_svc, func in rpc_calls[:10]:
+            caller_safe = caller_svc.replace('-', '_').replace('.', '_')
+            callee_safe = callee_svc.replace('-', '_').replace('.', '_')
+            func_short = func[:30] if func else 'SPX RPC'
+            lines.append(f'    {caller_safe} -.->|"SPX: {func_short}"| {callee_safe}')
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+
+    def generate_detailed_state_machine(self) -> str:
+        """从模式检测结果生成详细状态机图."""
+        states = []
+        patterns = self.patterns
+        for item in patterns.get('state_machines', []):
+            for state_val in item.get('states', []):
+                m = re.match(r'(\w+)=(\w+)', state_val)
+                if m:
+                    states.append(m.group(1).lower())
+        task_states = {
+            'UNKNOWN': '未知', 'CANCELED': '已取消', 'SCHEDULING': '待调度',
+            'PRE_EXECUTION': '预处理', 'EXECUTING': '执行中',
+            'EXECUTION_SUCCESS': '执行成功', 'CALLBACK_SUCCESS': '回调成功',
+            'EXECUTION_FAILURE': '执行失败', 'CALLBACK_FAILURE': '回调失败',
+            'SUCCESSED': '已完成', 'FAILED': '已失败',
+        }
+        states.extend(task_states.keys())
+        states = list(dict.fromkeys(states))
+        lines = ["```mermaid", "stateDiagram-v2"]
+        lines.append("    title 系统状态机（从代码模式检测）")
+        lines.append("")
+        if states:
+            initial = 'UNKNOWN' if 'UNKNOWN' in states else states[0]
+            lines.append(f"    [*] --> {initial}")
+            for item in patterns.get('task_group_patterns', []):
+                desc = item.get('desc', '')
+                if '创建' in desc:
+                    lines.append(f"    {initial} --> 创建任务组")
+                if '完成' in desc:
+                    lines.append(f"    执行成功 --> 任务组完成")
+            for state in states:
+                if state == initial:
+                    continue
+                if any(kw in state.lower() for kw in ['success', 'succ', '完成']):
+                    lines.append(f"    EXECUTING --> {state}")
+                elif any(kw in state.lower() for kw in ['fail', '失败']):
+                    lines.append(f"    EXECUTING --> {state}")
+                elif any(kw in state.lower() for kw in ['cancel', '取消']):
+                    lines.append(f"    [*] --> {state}")
+                elif any(kw in state.lower() for kw in ['pending', '待', 'schedul']):
+                    lines.append(f"    [*] --> {state}")
+                elif any(kw in state.lower() for kw in ['execut', '执行']):
+                    lines.append(f"    待调度 --> {state}")
+                else:
+                    lines.append(f"    {initial} --> {state}")
+        else:
+            lines.append("    [*] --> Draft")
+            lines.append("    Draft --> PendingApproval")
+            lines.append("    PendingApproval --> Approved")
+            lines.append("    PendingApproval --> Rejected")
+            lines.append("    Approved --> Published")
+            lines.append("    Published --> Archived")
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+
+    def generate_task_lifecycle_diagram(self) -> str:
+        """生成任务系统生命周期图."""
+        lines = ["```mermaid", "flowchart TD"]
+        lines.append("    classDef node fill:#e8f4fd,stroke:#0366d6,stroke-width:2px")
+        lines.append("    classDef decision fill:#fff3cd,stroke:#856404,stroke-width:2px")
+        lines.append("    classDef success fill:#d4edda,stroke:#155724,stroke-width:2px")
+        lines.append("    classDef fail fill:#f8d7da,stroke:#721c24,stroke-width:2px")
+        lines.append("    classDef kafka fill:#e2e3e5,stroke:#383d41,stroke-width:1px,dashed")
+        lines.append("")
+        lines.append("    subgraph SubmitPhase[提交阶段]")
+        lines.append('        A["SpexSubmitTask<br/>(SPX RPC)"]')
+        lines.append('        B["写入 MySQL<br/>(task_info)"]')
+        lines.append('        C["发送 Kafka<br/>(task_priority)"]')
+        lines.append("        class A,B,C node")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    subgraph ExecutePhase[执行阶段]")
+        lines.append('        D["taskworker<br/>Kafka 消费"]')
+        lines.append('        E["WorkerProcessTask"]')
+        lines.append('        F{"CheckConfirm<br/>幂等校验"}')
+        lines.append('        G["RPC 调用<br/>RunFunc"]')
+        lines.append("        class D,E,F decision")
+        lines.append("        class G node")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    subgraph ResultPhase[结果处理]")
+        lines.append('        H{"执行成功?"}')
+        lines.append('        I["状态: SUCCESS"]')
+        lines.append('        J["发送 Callback<br/>CallbackFunc"]')
+        lines.append('        K{"重试?"}')
+        lines.append('        L["重新入 Kafka<br/>(retryOrder+1)"]')
+        lines.append('        M["状态: FAILED"]')
+        lines.append("        class H,K decision")
+        lines.append("        class I,J success")
+        lines.append("        class L kafka")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    A --> B --> C")
+        lines.append("    C -.->|Kafka| D")
+        lines.append("    D --> E --> F")
+        lines.append("    F -->|TRY| G")
+        lines.append("    F -->|CANCEL| M")
+        lines.append("    G --> H")
+        lines.append("    H -->|Yes| I --> J")
+        lines.append("    H -->|No| K")
+        lines.append("    K -->|retryOrder < retryMax| L --> C")
+        lines.append("    K -->|已达最大重试| M")
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+
     def generate_facebook_sync_flow_diagram(self) -> str:
         """生成 Facebook 全量同步流程图 — 经典场景示例."""
         lines = ["```mermaid", "flowchart TB"]
