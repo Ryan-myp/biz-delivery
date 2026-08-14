@@ -775,10 +775,18 @@ class EngineBase:
     def _build_agent_workflows_section(self, ir: IRDocument) -> str:
         """Format agent workflow definitions for prompt injection.
 
-        从 workflow YAML + Go 源码联合提取的详细业务流程。
-        优先展示 Go 源码分析结果（真实代码调用链），辅以 YAML 步骤结构。
+        从 workflow YAML + Go 源码联合提取的详细业务流程 + 架构模式识别。
+        三层信息：模式层(状态机/锁/重试) → 调用链层(跨仓库) → 步骤层(YAML)。
         """
         parts = []
+
+        # 架构模式（最高优先级：告诉 agent 系统的约束和保证）
+        if hasattr(ir, 'architectural_patterns') and ir.architectural_patterns:
+            from go_flow_analyzer import generate_pattern_summary
+            pattern_summary = generate_pattern_summary(ir.architectural_patterns)
+            if pattern_summary.strip():
+                parts.append(pattern_summary)
+                parts.append("")
 
         # SPX Processor 业务逻辑（dap → ad_delivery_platform 跨仓库调用）
         if hasattr(ir, 'spex_business_flows') and ir.spex_business_flows:

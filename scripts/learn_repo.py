@@ -531,6 +531,9 @@ class IRDocument:
     # SPX Processor 业务逻辑（dap → ad_delivery_platform 跨仓库调用）
     spex_business_flows: Dict = field(default_factory=dict)  # {repo_path: {traces, summary}}
 
+    # 架构模式（状态机、Redis锁、Kafka、重试、幂等等）
+    architectural_patterns: Dict = field(default_factory=dict)  # {state_machines, redis_locks, kafka_patterns, retry_logic, idempotency, task_group_patterns}
+
     # 向后兼容
     compat_issues: List[Dict] = field(default_factory=list)
 
@@ -668,6 +671,16 @@ class GoScanner:
                     calls = traces[func_name].get('calls', [])
                     cross_repo = [c for c in calls if c.get('cross_repo') or c.get('external_call')]
                     print(f"    {func_name}: {len(calls)} calls, {len(cross_repo)} → ad_delivery_platform")
+
+            # 4. 架构模式检测（状态机、Redis锁、Kafka、重试、幂等等）
+            from go_flow_analyzer import analyze_patterns, generate_pattern_summary
+            print(f"  🔬 Detecting architectural patterns across repos...")
+            pattern_results = analyze_patterns([str(dir_path)])
+            ir.architectural_patterns = pattern_results
+            print(f"    Found: {len(pattern_results.get('state_machines', []))} state machines, "
+                  f"{len(pattern_results.get('redis_locks', []))} Redis patterns, "
+                  f"{len(pattern_results.get('kafka_patterns', []))} Kafka consumers, "
+                  f"{len(pattern_results.get('retry_logic', []))} retry patterns")
         except Exception as e:
             print(f"  ⚠️  Deep flow extraction skipped: {e}")
 

@@ -697,15 +697,353 @@ def _generate_spex_summary(spex_entries: List, traces: Dict,
     return '\n'.join(lines)
 
 
+# ── 架构模式检测器 ────────────────────────────────────────────
+
+
+def analyze_patterns(repo_paths: List[str]) -> Dict:
+    """分析代码中的架构模式 — 状态机、Redis锁、重试、Kafka、幂等等."""
+    import time
+    t0 = time.time()
+    print(f"  🔍 Analyzing architectural patterns...")
+
+    # 手动构建索引以支持多仓库
+    func_index: Dict[str, List[Dict]] = {}
+    call_graph = defaultdict(set)
+    for repo in [Path(p) for p in repo_paths]:
+        count = 0
+        for f in sorted(repo.rglob('*.go')):
+            if count >= 800:
+                break
+            if 'vendor/' in str(f) or '.git/' in str(f) or '_test.go' in str(f):
+                continue
+            count += 1
+            try:
+                text = f.read_text(errors='ignore')
+            except Exception:
+                continue
+            pkg_match = re.search(r'^package\s+(\w+)', text, re.MULTILINE)
+            pkg = pkg_match.group(1) if pkg_match else ''
+            rel = str(f.relative_to(repo))
+            for m in re.finditer(r'func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(', text):
+                fname = m.group(1)
+                line_no = text[:m.start()].count('\n') + 1
+                body_start = text.index('{', m.end()) + 1
+                body_end = _find_matching_brace(text, body_start - 1)
+                if body_end <= 0:
+                    continue
+                body = text[body_start:body_end]
+                func_index.setdefault(fname, []).append({
+                    'file': rel, 'line': line_no, 'pkg': pkg, 'body': body,
+                })
+    idx_mock = type('IdxMock', (), {'func_index': func_index})()
+
+    results = {
+        'state_machines': _detect_state_machines(idx_mock),
+        'redis_locks': _detect_redis_patterns(idx_mock),
+        'retry_logic': _detect_retry_patterns(idx_mock),
+        'kafka_patterns': _detect_kafka_patterns(idx_mock),
+        'idempotency': _detect_idempotency_patterns(idx_mock),
+        'task_group_patterns': _detect_task_group_patterns(idx_mock),
+        'distributed_cache': _detect_cache_patterns(idx_mock),
+    }
+
+    elapsed = time.time() - t0
+    print(f"  Pattern analysis done in {elapsed:.1f}s")
+    return results
+
+
+def _detect_state_machines(idx: GoFunctionIndex) -> List[Dict]:
+    """检测状态机模式: 状态常量定义 + 状态转换."""
+    machine_results = []
+    seen = set()
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body']
+            # 找状态常量组
+            states_found = []
+            for m in re.finditer(r'(\w+(?:State|Status)\w*)\s*=\s*(\w+)', body):
+                name = m.group(1)
+                if any(kw in name.upper() for kw in ['STATE', 'STATUS', 'TASK_', 'OPS_']):
+                    states_found.append(f'{name}={m.group(2)}')
+            if len(states_found) >= 3:
+                machine_results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'states': states_found[:8],
+                    'pattern': f'状态常量({len(states_found)}个)',
+                })
+                seen.add(fname)
+                break
+
+    # 状态转换逻辑
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body']
+            transitions = []
+            for m in re.finditer(r'(?:TransferTo|StatusTransfer|set.*Status|TaskStatusTransfer|updateStatus)', body):
+                transitions.append(m.group(0))
+            if transitions:
+                machine_results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'transitions': transitions[:5],
+                    'pattern': '状态转换函数',
+                })
+                seen.add(fname)
+    return machine_results
+
+
+def _detect_redis_patterns(idx: GoFunctionIndex) -> List[Dict]:
+    """检测 Redis 分布式锁模式."""
+    patterns_map = [
+        (r'Del\(ctx', 'Del'), (r'DeleteKey\(', 'DeleteKey'),
+        (r'RedisMutex\(', 'RedisMutex'), (r'GetSet\(ctx', 'GetSet'),
+        (r'SetNX\(|Setnx\(', 'SetNX'), (r'LockKey\(', 'LockKey'),
+        (r'GetTaskIdProcessLockKey', 'TaskLockKey'),
+        (r'GetOpsAdsUpdateUniqueKey', 'AdsLockKey'),
+        (r'mutex\.Unlock', 'Unlock'), (r'defer.*mutex', 'defer Unlock'),
+        (r'cache\.Set\(', 'CacheSet'), (r'cache\.Get\(', 'CacheGet'),
+    ]
+    results = []
+    seen = set()
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body']
+            matches = [desc for pat, desc in patterns_map if re.search(pat, body)]
+            if matches:
+                results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'patterns': matches,
+                    'desc': 'Redis模式: ' + ', '.join(set(matches)),
+                })
+                seen.add(fname)
+    return results
+
+
+def _detect_retry_patterns(idx: GoFunctionIndex) -> List[Dict]:
+    """检测重试逻辑模式."""
+    kw_map = [
+        ('retry', '重试'), ('RetryCount', '重试计数'), ('retryMax', '最大重试'),
+        ('backoff', '退避'), ('sleep', '睡眠'), ('interval', '间隔'),
+        ('requeue', '重新入队'), ('retryOrder', '重试顺序'),
+    ]
+    results = []
+    seen = set()
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body'].lower()
+            matched = [desc for kw, desc in kw_map if kw in body]
+            if len(matched) >= 2:
+                results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'signals': matched,
+                    'desc': f'重试模式: {", ".join(set(matched))}',
+                })
+                seen.add(fname)
+    return results
+
+
+def _detect_kafka_patterns(idx: GoFunctionIndex) -> List[Dict]:
+    """检测 Kafka 生产/消费模式."""
+    patterns_map = [
+        (r'SendKafkaMessage\(', 'Kafka生产'), (r'KafkaConsumeMessage\(', 'Kafka消费'),
+        (r'TaskMsgChan\s*<-', 'Channel分发'), (r'workerKafkaConsumer', 'WorkerConsumer'),
+        (r'newConsumerV2\(', 'Consumer初始化'), (r'ConsumerGroup', 'ConsumerGroup'),
+        (r'StartKafkaProducer', 'Producer启动'), (r'gasproducer', 'GAS Producer'),
+        (r'sarama\.NewConsumerGroup', 'Sarama Consumer'), (r'sarama\.NewSyncProducer', 'Sarama Producer'),
+    ]
+    results = []
+    seen = set()
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body']
+            matches = [desc for pat, desc in patterns_map if re.search(pat, body)]
+            if matches:
+                results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'patterns': matches,
+                    'desc': 'Kafka模式: ' + ', '.join(set(matches)),
+                })
+                seen.add(fname)
+    return results
+
+
+def _detect_idempotency_patterns(idx: GoFunctionIndex) -> List[Dict]:
+    """检测幂等保护模式."""
+    patterns_map = [
+        (r'CheckConfirm', 'CheckConfirm'), (r'CONFIRM_STATUS', 'Confirm状态'),
+        (r'ConfirmStatus', 'Confirm状态'), (r'NeedRetry', '重试判断'),
+        (r'validateTaskInfo', '任务校验'), (r'redis.*lock\|Lock.*redis', 'Redis锁'),
+        (r'defer.*Unlock', 'defer解锁'),
+    ]
+    results = []
+    seen = set()
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body']
+            matches = [desc for pat, desc in patterns_map if re.search(pat, body, re.I)]
+            if matches:
+                results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'patterns': list(set(matches)),
+                    'desc': '幂等保护: ' + ', '.join(set(matches)),
+                })
+                seen.add(fname)
+    return results
+
+
+def _detect_task_group_patterns(idx: GoFunctionIndex) -> List[Dict]:
+    """检测任务组模式."""
+    patterns_map = [
+        (r'CreateTaskGroup', '创建任务组'), (r'TaskGroupId', '任务组ID'),
+        (r'TaskTotalCount', '任务总数'), (r'TaskSuccessCount', '成功计数'),
+        (r'TaskFailedCount', '失败计数'), (r'HandleTaskGroupCallback', '组回调'),
+        (r'submitPublishTaskGroup', '提交任务组'), (r'ScheduleTaskGroup', '调度任务组'),
+        (r'HaveTasksInTaskGroup', '检查完成'), (r'correctTaskCountInGroup', '修正计数'),
+    ]
+    results = []
+    seen = set()
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body']
+            matches = [desc for pat, desc in patterns_map if re.search(pat, body)]
+            if len(matches) >= 2:
+                results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'patterns': list(set(matches)),
+                    'desc': '任务组模式: ' + ', '.join(set(matches)),
+                })
+                seen.add(fname)
+    return results
+
+
+def _detect_cache_patterns(idx: GoFunctionIndex) -> List[Dict]:
+    """检测缓存模式."""
+    patterns_map = [
+        (r'Cache\.', 'Cache调用'), (r'getCache', 'getCache'),
+        (r'setCache', 'setCache'), (r'deleteCache', 'deleteCache'),
+        (r'instrumentedCache', 'instrumentedCache'),
+    ]
+    results = []
+    seen = set()
+    for fname, entries in idx.func_index.items():
+        if fname in seen:
+            continue
+        for e in entries:
+            body = e['body']
+            matches = [desc for pat, desc in patterns_map if re.search(pat, body)]
+            if matches:
+                results.append({
+                    'func': fname, 'file': e['file'], 'line': e['line'],
+                    'patterns': list(set(matches)),
+                    'desc': '缓存模式: ' + ', '.join(set(matches)),
+                })
+                seen.add(fname)
+    return results
+
+
+def generate_pattern_summary(results: Dict) -> str:
+    """生成架构模式摘要，用于 prompt 注入."""
+    lines = ["## 架构模式识别（从代码自动检测）", ""]
+
+    # 状态机
+    sm = results.get('state_machines', [])
+    if sm:
+        lines.append("### 状态机")
+        for item in sm[:5]:
+            states = item.get('states', item.get('transitions', []))
+            lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}")
+            lines.append(f"  {item['pattern']}: {', '.join(states[:4])}")
+        lines.append("")
+
+    # Redis 锁
+    redis = results.get('redis_locks', [])
+    if redis:
+        lines.append("### Redis 分布式锁模式")
+        for item in redis[:5]:
+            lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}")
+            lines.append(f"  {item['desc']}")
+        lines.append("")
+
+    # 重试
+    retry = results.get('retry_logic', [])
+    if retry:
+        lines.append("### 重试机制")
+        for item in retry[:5]:
+            lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}")
+            lines.append(f"  {item['desc']}")
+        lines.append("")
+
+    # Kafka
+    kafka = results.get('kafka_patterns', [])
+    if kafka:
+        lines.append("### Kafka 消息队列模式")
+        for item in kafka[:5]:
+            lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}")
+            lines.append(f"  {item['desc']}")
+        lines.append("")
+
+    # 幂等
+    idem = results.get('idempotency', [])
+    if idem:
+        lines.append("### 幂等保护模式")
+        for item in idem[:5]:
+            lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}")
+            lines.append(f"  {item['desc']}")
+        lines.append("")
+
+    # 任务组
+    tgroup = results.get('task_group_patterns', [])
+    if tgroup:
+        lines.append("### 任务组模式")
+        for item in tgroup[:5]:
+            lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}")
+            lines.append(f"  {item['desc']}")
+        lines.append("")
+
+    # 缓存
+    cache = results.get('distributed_cache', [])
+    if cache:
+        lines.append("### 缓存模式")
+        for item in cache[:3]:
+            lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}: {item['desc']}")
+        lines.append("")
+
+    return '\n'.join(lines)
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent-dir", required=True)
+    parser.add_argument("--agent-dir", help="Agent source directory")
     parser.add_argument("--repo-paths", nargs="*", default=["/Users/yanping.ma/GolandProjects/dap"])
     parser.add_argument("--output", default=None)
+    parser.add_argument("--patterns", action="store_true", help="Run pattern analysis")
     args = parser.parse_args()
 
-    result = analyze_go_agent(args.agent_dir, args.repo_paths)
+    if args.patterns:
+        results = analyze_patterns(args.repo_paths)
+        summary = generate_pattern_summary(results)
+        print(summary)
+    elif args.agent_dir:
+        result = analyze_go_agent(args.agent_dir, args.repo_paths)
+        output = args.output or f"/tmp/go_flow_{Path(args.agent_dir).name}.json"
+        import json
+        Path(output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"✅ Output: {output}")
+        print(result['summary'])
 
     output = args.output or f"/tmp/go_flow_{Path(args.agent_dir).name}.json"
     import json
