@@ -2628,6 +2628,9 @@ class ReviewEngine(EngineBase):
         
         # 注入核心业务流程（从 IR 自动推断）
         prompt_parts.append(self._build_core_flows_section(ir, limit=8))
+
+        # 注入 Agent Workflow 深度解析（从 workflow YAML + Go 源码联合提取）
+        prompt_parts.append(self._build_agent_workflows_section(ir))
         
         if profile_data.get("state_machines"):
             prompt_parts.append("## 状态机（从 profile 配置）")

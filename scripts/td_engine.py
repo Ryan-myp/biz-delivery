@@ -137,6 +137,9 @@ class TDEngine(EngineBase):
         
         # 核心业务流程 — 使用 base_engine 共享方法
         prompt_parts.append(self._build_core_flows_section(ir, limit=6))
+
+        # Agent Workflow 深度解析 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_agent_workflows_section(ir))
         
         # 注入包结构（用于架构图生成）— 使用 base_engine 共享方法
         prompt_parts.append(self._build_packages_section(ir, limit=15))
@@ -403,7 +406,7 @@ class TDEngine(EngineBase):
         prompt_parts.append("```\n")
         prompt_parts.append("")
         
-        prompt = "\n".join(prompt_parts)
+        prompt = self.build_prompt_with_budget(prompt_parts, engine="td")
         return prompt
 
 

@@ -521,7 +521,10 @@ class IRDocument:
     
     # 核心业务流程（自动推断）
     core_flows: List[Dict] = field(default_factory=list)  # {flow_name, entry_point, call_chain, data_flow, max_depth}
-    
+
+    # Agent Workflow 深度解析（从 workflow YAML + Go 源码联合提取）
+    agent_workflows: Dict = field(default_factory=dict)  # {agent_dir: {workflows, executors, summary}}
+
     # 向后兼容
     compat_issues: List[Dict] = field(default_factory=list)
 
@@ -623,7 +626,22 @@ class GoScanner:
         self._extract_business_logic(ir, dir_path, max_entries=100)
         self._build_call_graph_from_signatures(ir)
         ir.core_flows = self._infer_core_business_flow_v2(ir)
-        self._extract_sql_operations(ir, dir_path, max_files)
+
+        # 深度流程提取：从 workflow YAML + Go 源码联合推断详细业务逻辑
+        try:
+            agent_dirs = self._find_agent_dirs(dir_path)
+            if agent_dirs:
+                from deep_flow_extractor import extract_deep_flows
+                print(f"  🔬 Extracting deep flows from {len(agent_dirs)} agent dir(s)...")
+                deep_result = extract_deep_flows(agent_dirs, [str(dir_path)])
+                ir.agent_workflows = deep_result
+                for agent_dir, data in deep_result.items():
+                    wf_count = len(data.get('workflows', {}))
+                    exec_count = len(data.get('executors', {}))
+                    print(f"    {Path(agent_dir).name}: {wf_count} workflows, {exec_count} executors traced")
+        except Exception as e:
+            print(f"  ⚠️  Deep flow extraction skipped: {e}")
+
         self._extract_error_codes(ir, dir_path, max_files)
         self._extract_entity_tables(ir, dir_path, max_files)
         self._extract_conditions(ir, dir_path, max_files)
@@ -3298,6 +3316,30 @@ class GoScanner:
     
     def _build_call_graph_from_signatures(self, ir: IRDocument):
         """从 import + func 签名构建调用图"""
+
+    @staticmethod
+    def _find_agent_dirs(repo_path: Path) -> List[str]:
+        """在 Go 仓库中查找 agent skill 目录（含 references/workflow.yaml）.
+
+        识别模式：
+        - app/agent/skills/{skill_name}/references/workflow.yaml
+        - app/agent/{service_name}/  (含 agent_flow.go)
+        """
+        agent_dirs = []
+        # 模式1: skills 子目录
+        skills_ref = repo_path / "app" / "agent" / "skills"
+        if skills_ref.exists():
+            for skill_dir in skills_ref.iterdir():
+                wf_file = skill_dir / "references" / "workflow.yaml"
+                if wf_file.exists():
+                    agent_dirs.append(str(skill_dir))
+        # 模式2: 直接 agent 子服务
+        agent_app = repo_path / "app" / "agent"
+        if agent_app.exists():
+            for subdir in agent_app.iterdir():
+                if subdir.is_dir() and (subdir / "agent_flow.go").exists():
+                    agent_dirs.append(str(subdir))
+        return agent_dirs
 
 
 # ============================================================================

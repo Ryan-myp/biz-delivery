@@ -351,6 +351,9 @@ class TestEngine(EngineBase):
         
         # 测试覆盖 — 使用 base_engine 共享方法
         prompt_parts.append(self._build_test_coverage_section(ir))
+
+        # Agent Workflow 深度解析 — 使用 base_engine 共享方法
+        prompt_parts.append(self._build_agent_workflows_section(ir))
         
         # 证据查询结果
         if filtered.get('evidence'):
@@ -696,7 +699,7 @@ class TestEngine(EngineBase):
         prompt_parts.append("```")
         prompt_parts.append("")
         
-        prompt = "\n".join(prompt_parts)
+        prompt = self.build_prompt_with_budget(prompt_parts, engine="test")
         return prompt
 
 

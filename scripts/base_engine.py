@@ -772,6 +772,58 @@ class EngineBase:
         lines.append("")
         return "\n".join(lines)
 
+    def _build_agent_workflows_section(self, ir: IRDocument) -> str:
+        """Format agent workflow definitions for prompt injection.
+
+        从 workflow YAML + Go 源码联合提取的详细业务流程，
+        适用于 Agent-based 架构（如 dap-agent 的 UA Campaign skill）。
+        """
+        if not hasattr(ir, 'agent_workflows') or not ir.agent_workflows:
+            return ""
+        lines = ["## Agent 工作流程（从 workflow YAML + Go 源码联合提取）"]
+        lines.append("")
+
+        for agent_dir, data in list(ir.agent_workflows.items())[:3]:  # cap 3 agents
+            agent_name = Path(agent_dir).name
+            workflows = data.get('workflows', {})
+            if not workflows:
+                continue
+
+            lines.append(f"### Agent: {agent_name}")
+            for wf_name, wf in list(workflows.items())[:2]:  # cap 2 workflows per agent
+                step_count = wf.get('step_count', 0)
+                custom_execs = wf.get('custom_executors', [])
+                subflows = wf.get('subflows', [])
+                lines.append(f"\n**Workflow**: `{wf_name}` ({step_count} 步骤, {len(custom_execs)} 自定义执行器)")
+                lines.append(f"  子流程: {', '.join(subflows) if subflows else '无'}")
+                lines.append(f"  自定义执行器: {', '.join(custom_execs[:8])}")
+
+                # 步骤详情
+                for step in wf.get('steps', [])[:6]:  # cap 6 steps
+                    exec_type = step.get('executor', '')
+                    cond = step.get('condition', '')
+                    cond_str = f" [当: {cond}]" if cond else ""
+                    lines.append(f"  - **{step.get('label', step.get('name', '?'))}** `{step.get('name', '')}`{cond_str}")
+                    lines.append(f"    {step.get('description', '')}")
+                    lines.append(f"    Executor: `{exec_type}`")
+
+                    # 子步骤
+                    for sub in step.get('sub_steps', [])[:4]:
+                        sub_cond = sub.get('condition', '')
+                        sub_str = f" [当: {sub_cond}]" if sub_cond else ""
+                        lines.append(f"    - **{sub.get('label', sub.get('name', '?'))}** `{sub.get('name', '')}`{sub_str}")
+                        lines.append(f"      {sub.get('description', '')} | Executor: `{sub.get('executor', '')}`")
+
+                        # 内置步骤配置
+                        if sub.get('is_builtin') and sub.get('config'):
+                            cfg = sub['config']
+                            if 'required_slots' in cfg:
+                                lines.append(f"      必填字段: {', '.join(cfg['required_slots'])}")
+
+                lines.append("")
+
+        return "\n".join(lines)
+
     def _load_business_cards(self, cache_dir: str) -> Optional[dict]:
         """Load business_cards.json from kb_dir or cache_dir."""
         candidates = []
