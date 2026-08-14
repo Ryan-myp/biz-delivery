@@ -528,6 +528,9 @@ class IRDocument:
     # Go 源码业务流程追踪（纯代码分析，不从 YAML 读）
     go_business_flows: Dict = field(default_factory=dict)  # {agent_dir: {summary, entry_points, traces}}
 
+    # SPX Processor 业务逻辑（dap → ad_delivery_platform 跨仓库调用）
+    spex_business_flows: Dict = field(default_factory=dict)  # {repo_path: {traces, summary}}
+
     # 向后兼容
     compat_issues: List[Dict] = field(default_factory=list)
 
@@ -652,6 +655,19 @@ class GoScanner:
                 run_funcs = [f for f in entries if f.startswith('runUA')]
                 print(f"    {Path(agent_dirs[0]).name}: {len(entries)} entries, "
                       f"{len(run_funcs)} run* functions traced from Go source")
+
+            # 3. SPX Processor 跨仓库调用分析（dap → ad_delivery_platform 真实业务逻辑）
+            spex_dir = dir_path / "app" / "admin" / "spexprocessor"
+            if spex_dir.exists():
+                from go_flow_analyzer import analyze_spex_processors
+                print(f"  🔬 Analyzing SPX processors: {spex_dir}...")
+                spex_result = analyze_spex_processors(str(dir_path))
+                ir.spex_business_flows[str(dir_path)] = spex_result
+                traces = spex_result.get('traces', {})
+                for func_name in list(traces.keys())[:5]:
+                    calls = traces[func_name].get('calls', [])
+                    cross_repo = [c for c in calls if c.get('cross_repo') or c.get('external_call')]
+                    print(f"    {func_name}: {len(calls)} calls, {len(cross_repo)} → ad_delivery_platform")
         except Exception as e:
             print(f"  ⚠️  Deep flow extraction skipped: {e}")
 

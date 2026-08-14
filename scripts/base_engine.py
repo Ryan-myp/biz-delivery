@@ -780,6 +780,16 @@ class EngineBase:
         """
         parts = []
 
+        # SPX Processor 业务逻辑（dap → ad_delivery_platform 跨仓库调用）
+        if hasattr(ir, 'spex_business_flows') and ir.spex_business_flows:
+            parts.append("## SPX Processor 业务流程（dap 调用 ad_delivery_platform 的真实实现）")
+            parts.append("")
+            for repo_path, data in list(ir.spex_business_flows.items())[:2]:
+                summary = data.get('summary', '')
+                if summary:
+                    parts.append(summary)
+                    parts.append("")
+
         # Go 源码业务流程（从代码追踪的真实调用链）
         if hasattr(ir, 'go_business_flows') and ir.go_business_flows:
             parts.append("## Go 源码业务流程追踪（从代码入口递归分析）")

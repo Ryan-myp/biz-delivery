@@ -17,6 +17,21 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import defaultdict
 
 
+def _find_matching_brace(text: str, open_pos: int) -> int:
+    """找到 open_pos 处 '{' 对应的匹配 '}' 位置."""
+    depth = 1
+    i = open_pos + 1
+    while i < len(text):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
 # ── Go 函数索引 ──────────────────────────────────────────────────
 
 class GoFunctionIndex:
@@ -422,6 +437,264 @@ def analyze_go_agent(agent_dir: str, repo_paths: List[str]) -> Dict:
     idx = GoFunctionIndex(repo_paths)
     analyzer = FlowAnalyzer(idx, agent_dir)
     return analyzer.analyze()
+
+
+def analyze_spex_processors(repo_path: str, max_repos: int = 3) -> Dict:
+    """分析 SPX Processor 业务逻辑 — 从 dap/app/admin/spexprocessor/ 追踪跨仓库调用.
+
+    这是真正的业务入口：
+    - AutoCreateCampaignRun → SaveDraftCampaign → adsclient.OperateDraftAds() → ad_delivery_platform
+    - GeneratePMaxCampaign → generateSavePmaxCampaignReq → adsclient
+    - GenerateShoppingCampaign → GenerateDraftAdsFromControlCampaign → adsclient
+    """
+    import time
+    t0 = time.time()
+    repo = Path(repo_path)
+
+    # 只索引 spexprocessor + client/adp_client 目录，确保覆盖关键文件
+    scan_dirs = [
+        repo / "app" / "admin" / "spexprocessor",
+        repo / "app" / "admin" / "service",
+        repo / "app" / "admin" / "controller",
+        repo / "app" / "innerapi" / "handler",
+        repo / "app" / "innerapi" / "service",
+        repo / "client" / "adp_client",
+    ]
+    # 收集所有 .go 文件（排除 vendor/.git/test）
+    go_files = []
+    for scan_dir in scan_dirs:
+        if not scan_dir.exists():
+            continue
+        for f in sorted(scan_dir.rglob("*.go")):
+            if "vendor/" in str(f) or ".git/" in str(f) or "_test.go" in str(f):
+                continue
+            go_files.append(f)
+
+    # 去重并保持顺序
+    seen = set()
+    unique_files = []
+    for f in go_files:
+        if str(f) not in seen:
+            seen.add(str(f))
+            unique_files.append(f)
+
+    # 手动构建索引
+    func_index = {}
+    call_graph = defaultdict(set)
+    reverse_call = defaultdict(set)
+
+    for f in unique_files:
+        try:
+            text = f.read_text(errors="ignore")
+        except Exception:
+            continue
+
+        pkg_match = re.search(r'^package\s+(\w+)', text, re.MULTILINE)
+        pkg = pkg_match.group(1) if pkg_match else ''
+        rel = str(f.relative_to(repo))
+
+        # 提取函数和方法 — 两阶段解析：先匹配 func (receiver)? Name( ，再找对应的 {
+        for m in re.finditer(r'func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(', text):
+            fname = m.group(1)
+            body_start = text.index('{', m.end()) + 1
+            body_end = _find_matching_brace(text, body_start - 1)
+            if body_end <= 0:
+                continue
+            body = text[body_start:body_end]
+            line_no = text[:m.start()].count('\n') + 1
+            func_index.setdefault(fname, []).append({
+                'file': rel, 'line': line_no, 'pkg': pkg, 'body': body,
+            })
+
+            # 提取调用
+            callees = set()
+            for cm in re.finditer(r'\b(\w+)\s*\(', body):
+                callee = cm.group(1)
+                excluded = {'if', 'for', 'switch', 'return', 'defer', 'go', 'select',
+                            'make', 'new', 'append', 'len', 'cap', 'close', 'copy',
+                            'delete', 'panic', 'recover', 'fmt', 'log', 'err', 'nil',
+                            'string', 'int', 'bool', 'ctx', 'c', 'w', 'r', 'rsp', 'res',
+                            'done', 'cancel', 'Error', 'WithSuccess', 'WithError',
+                            'NewContext', 'Reflect', 'User', 'Now', 'Unix', 'Int64',
+                            'AsInt64', 'LogE', 'LogI', 'ConstructResp',
+                            'sync', 'context', 'errors', 'json', 'strings', 'strconv',
+                            'time', 'rand', 'math', 'os', 'encoding', 'io', 'net',
+                            'http', 'bufio', 'crypto', 'hash', 'mime', 'sort',
+                            'unicode', 'unsafe', 'println', 'print', 'require', 'assert',
+                            't', 's', 'b', 'n', 'i', 'j', 'k', 'x', 'y', 'z',
+                            'a', 'e', 'd', 'g', 'h', 'l', 'm', 'o', 'p', 'q', 'v',
+                            'ctx', 'err', 'ok', 'resp', 'req', 'result', 'input',
+                            'logCtx', 'dapCtx', 'commonRsp', 'commonReq', 'request',
+                            'taskParams', 'taskHandler', 'createList', 'sourceCampaign',
+                            'saveReq', 'marketConfig', 'commonConfig', 'accInfo'}
+                if callee not in excluded:
+                    callees.add(callee)
+
+            call_graph[fname].update(callees)
+            for callee in callees:
+                reverse_call[callee].add(fname)
+
+    elapsed = time.time() - t0
+    print(f"  Indexed {len(unique_files)} files, {len(func_index)} functions in {elapsed:.1f}s")
+
+    # 找 SaveDraftCampaign 方法（包括作为 method 和 standalone function）
+    spex_funcs = []
+    for fname in sorted(func_index.keys()):
+        if fname == 'SaveDraftCampaign' or fname.startswith('Save'):
+            entries = func_index.get(fname, [])
+            spex_funcs.append((fname, entries[0] if entries else {}))
+
+    # 追踪每个函数的完整调用链
+    traces = {}
+    for func_name, info in spex_funcs[:10]:
+        trace = _trace_spex_func(func_name, func_index, call_graph, max_depth=3)
+        traces[func_name] = trace
+
+    return {
+        'spex_dir': str(repo / "app" / "admin" / "spexprocessor"),
+        'client_dir': str(repo / "client" / "adp_client"),
+        'files_indexed': len(unique_files),
+        'functions_indexed': len(func_index),
+        'spex_functions': spex_funcs,
+        'traces': traces,
+        'summary': _generate_spex_summary(spex_funcs, traces, func_index),
+    }
+
+
+def _trace_spex_func(func_name: str, func_index: Dict, call_graph: Dict,
+                     max_depth: int = 3, visited: Set[str] = None) -> Dict:
+    """追踪 SPX 函数的完整调用链."""
+    if visited is None:
+        visited = set()
+    if func_name in visited or max_depth <= 0:
+        return {'name': func_name, 'depth': 0, 'calls': [], 'truncated': True}
+    visited.add(func_name)
+
+    entries = func_index.get(func_name, [])
+    if not entries:
+        return {'name': func_name, 'depth': 0, 'calls': [], 'truncated': False}
+
+    body = entries[0].get('body', '')
+    file_info = entries[0].get('file', '')
+    line_no = entries[0].get('line', 0)
+
+    # 获取直接调用列表
+    callees = call_graph.get(func_name, set())
+
+    traced_calls = []
+    for callee in sorted(callees)[:10]:
+        call_info = {'name': callee, 'depth': 1}
+        sub_trace = _trace_spex_func(callee, func_index, call_graph, max_depth - 1, visited.copy())
+        # 判断是否跨仓库调用
+        callee_entries = func_index.get(callee, [])
+        is_external = not callee_entries  # 不在索引中 = 外部调用
+        call_info.update(sub_trace)
+        if is_external:
+            call_info['cross_repo'] = True
+            call_info['external_call'] = True
+        traced_calls.append(call_info)
+
+    # 提取关键特征
+    features = _extract_spex_features(body, callees)
+
+    return {
+        'name': func_name,
+        'depth': 3 - max_depth + 1,
+        'file': file_info,
+        'line': line_no,
+        'calls': traced_calls,
+        'features': features,
+    }
+
+
+def _extract_spex_features(body: str, callees: Set[str]) -> Dict:
+    """提取 SPX 函数的关键特征."""
+    features = {
+        'adp_calls': [],       # 调用 ad_delivery_platform 的客户端方法
+        'dap_dao_calls': [],   # 调用 dap 自己的 DAO
+        'conditions': [],
+        'returns': [],
+    }
+
+    # ADP 客户端调用模式
+    adp_patterns = [
+        r'adsclient\.\w+',
+        r'accountdomain\.\w+',
+        r'admgmtclient\.\w+',
+        r'adsdomain\.\w+',
+        r'marketing_plan_client\.\w+',
+        r'strategy_group\.\w+',
+        r'commondomain\.\w+',
+        r'campaign_strategy_client\.\w+',
+        r'adp_spex_client\.\w+',
+    ]
+    for pattern in adp_patterns:
+        for m in re.finditer(pattern, body):
+            call = m.group(0)
+            if call not in features['adp_calls']:
+                features['adp_calls'].append(call)
+
+    # DAP 自己的 DAO 调用
+    dao_patterns = [r'dao\.\w+', r'\.Query\w+\(', r'\.Create\w+\(', r'\.Update\w+\(', r'\.Delete\w+\(']
+    for pattern in dao_patterns:
+        for m in re.finditer(pattern, body):
+            call = m.group(0)
+            if 'dao.' in call and call not in features['dap_dao_calls']:
+                features['dap_dao_calls'].append(call)
+
+    # 条件分支
+    for m in re.finditer(r'if\s+\w+', body):
+        cond = m.group(0)[:80]
+        if cond not in features['conditions']:
+            features['conditions'].append(cond)
+
+    return features
+
+
+def _generate_spex_summary(spex_entries: List, traces: Dict,
+                            handlers: Dict) -> str:
+    """生成 SPX 业务流程摘要."""
+    lines = []
+    lines.append("## SPX Processor 业务流程（从 dap/app/admin/spexprocessor/ Go 源码分析）")
+    lines.append("")
+    lines.append(f"发现 {len(handlers)} 个 Handler 类型，{len(spex_entries)} 个 SaveDraft 函数")
+    lines.append("")
+
+    for func_name, info in spex_entries[:5]:
+        trace = traces.get(func_name, {})
+        features = trace.get('features', {})
+        adp_calls = features.get('adp_calls', [])
+        dao_calls = features.get('dap_dao_calls', [])
+        conditions = features.get('conditions', [])[:3]
+        file_info = trace.get('file', '?')
+        line_no = trace.get('line', '?')
+
+        # 提取 handler 类型名
+        handler_type = ''
+        for hname, hinfo in handlers.items():
+            if hname.lower() in func_name.lower() or func_name.lower() in hname.lower():
+                handler_type = hname
+                break
+
+        lines.append(f"**{func_name}** `@ {file_info}:{line_no}`")
+        if handler_type:
+            lines.append(f"  Handler: `{handler_type}`")
+        if adp_calls:
+            lines.append(f"  → 调用 ad_delivery_platform: {', '.join(adp_calls[:5])}")
+        if dao_calls:
+            lines.append(f"  → 调用 DAP 本地 DAO: {', '.join(dao_calls[:3])}")
+        if conditions:
+            lines.append(f"  → 条件判断: {', '.join(conditions[:2])}")
+
+        # 子调用
+        for call in trace.get('calls', [])[:6]:
+            call_name = call.get('name', '')
+            cross_repo = call.get('cross_repo', False)
+            prefix = "↗ " if cross_repo else "  → "
+            lines.append(f"{prefix}{call_name}()")
+        lines.append("")
+
+    return '\n'.join(lines)
 
 
 if __name__ == "__main__":
