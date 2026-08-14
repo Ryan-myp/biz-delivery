@@ -745,6 +745,7 @@ def analyze_patterns(repo_paths: List[str]) -> Dict:
         'idempotency': _detect_idempotency_patterns(idx_mock),
         'task_group_patterns': _detect_task_group_patterns(idx_mock),
         'distributed_cache': _detect_cache_patterns(idx_mock),
+        'enums': _detect_enum_patterns(repo_paths),
     }
 
     elapsed = time.time() - t0
@@ -761,7 +762,6 @@ def _detect_state_machines(idx: GoFunctionIndex) -> List[Dict]:
             continue
         for e in entries:
             body = e['body']
-            # 找状态常量组
             states_found = []
             for m in re.finditer(r'(\w+(?:State|Status)\w*)\s*=\s*(\w+)', body):
                 name = m.group(1)
@@ -793,6 +793,69 @@ def _detect_state_machines(idx: GoFunctionIndex) -> List[Dict]:
                 })
                 seen.add(fname)
     return machine_results
+
+
+def _detect_enum_patterns(repo_paths: List[str]) -> List[Dict]:
+    """检测枚举/常量定义模式 — 扫描原始 Go 文件顶部的 const block."""
+    import time as _time
+    t0 = _time.time()
+
+    results = []
+    type_counts: Dict[str, int] = {}
+    seen_keys: set = set()
+
+    for repo in [Path(p) for p in repo_paths]:
+        count = 0
+        for f in sorted(repo.rglob('*.go')):
+            if count >= 800:
+                break
+            if 'vendor/' in str(f) or '.git/' in str(f) or '_test.go' in str(f):
+                continue
+            count += 1
+            try:
+                text = f.read_text(errors='ignore')
+            except Exception:
+                continue
+
+            # 检测 const block
+            const_blocks = re.findall(r'const\s*\((.*?)\)', text, re.DOTALL)
+            for block in const_blocks:
+                entries = re.findall(r'^\s*(\w+)\s+[\w|*]+\s*=\s*([^/\n]+)', block, re.MULTILINE)
+                if len(entries) < 2:
+                    entries = re.findall(r'^\s*(\w+)\s*=\s*([^/\n]+)', block, re.MULTILINE)
+                if len(entries) < 2:
+                    continue
+
+                names = [e[0] for e in entries]
+                all_names = ' '.join(names)
+                if re.search(r'\b(type|Status|State|Action|Option|Type|Kind|Level)\b', all_names, re.I):
+                    enum_type = '状态/类型枚举'
+                elif re.search(r'\b(Int|Uint|Byte)\b', all_names):
+                    enum_type = '数值枚举'
+                elif re.search(r'\bString\|bool\|bool\)', all_names):
+                    enum_type = '字符串/布尔枚举'
+                else:
+                    enum_type = '常量组'
+
+                key = (str(f.relative_to(repo)), enum_type)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                type_counts[enum_type] = type_counts.get(enum_type, 0) + 1
+
+                sig_vals = [e[1].strip().split(',')[0].strip() for e in entries[:6]]
+                results.append({
+                    'file': str(f.relative_to(repo)),
+                    'line': 'const block',
+                    'type': enum_type,
+                    'count': len(entries),
+                    'samples': sig_vals,
+                    'names': names[:8],
+                })
+
+    elapsed = _time.time() - t0
+    print(f"  Enum detection done in {elapsed:.1f}s, found {len(results)} groups")
+    return results
 
 
 def _detect_redis_patterns(idx: GoFunctionIndex) -> List[Dict]:
@@ -1021,6 +1084,15 @@ def generate_pattern_summary(results: Dict) -> str:
             lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}: {item['desc']}")
         lines.append("")
 
+    # 枚举
+    enums = results.get('enums', [])
+    if enums:
+        lines.append("### 枚举/常量定义")
+        for item in enums[:10]:
+            lines.append(f"- `{item['file']}` ({item['type']}, {item['count']}个)")
+            lines.append(f"  {', '.join(item['names'][:6])}")
+        lines.append("")
+
     return '\n'.join(lines)
 
 
@@ -1044,9 +1116,3 @@ if __name__ == "__main__":
         Path(output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"✅ Output: {output}")
         print(result['summary'])
-
-    output = args.output or f"/tmp/go_flow_{Path(args.agent_dir).name}.json"
-    import json
-    Path(output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"✅ Output: {output}")
-    print(result['summary'])
