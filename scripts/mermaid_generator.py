@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Mermaid diagram generator — creates actual mermaid code from IR data.
+"""Mermaid diagram generator — creates actual mermaid code from IR data + flow analysis.
 
 Generates:
 1. Architecture diagram (graph TB) from packages + call_graph
 2. Data model diagram (erDiagram) from entity_tables
 3. Deployment diagram (graph LR) from service_topology
 4. Sequence diagram from core_flows
+5. **Business flow diagram** from cross-repo flow analysis traces
+6. **State machine diagram** from pattern detection results
+7. **Activity diagram** from Go function call chains
+8. **Cross-service data flow** from cross_repo_flow analysis
 """
 
 import json
@@ -15,10 +19,11 @@ from typing import Any, Dict, List, Optional
 
 
 class MermaidGenerator:
-    """Generate mermaid diagrams from IR data."""
-    
-    def __init__(self, ir_data: Dict[str, Any]):
+    """Generate mermaid diagrams from IR data + flow analysis results."""
+
+    def __init__(self, ir_data: Dict[str, Any], flow_data: Optional[Dict] = None):
         self.ir = ir_data
+        self.flow = flow_data if flow_data else {}
         self.packages = ir_data.get('packages', {})
         self.call_graph = ir_data.get('call_graph', [])
         self.entity_tables = ir_data.get('entity_tables', [])
@@ -31,6 +36,12 @@ class MermaidGenerator:
         self.error_codes = ir_data.get('error_codes', [])
         self.auth_models = ir_data.get('auth_models', [])
         self.configs = ir_data.get('configs', [])
+        # Flow analysis data
+        self.spex_traces = self.flow.get('spex_traces', {})
+        self.go_flows = self.flow.get('go_flows', {})
+        self.patterns = self.flow.get('patterns', {})
+        self.cross_repo = self.flow.get('cross_repo', {})
+        self.entry_points = self.flow.get('entry_points', [])
     
     def generate_architecture_diagram(self) -> str:
         """Generate architecture diagram from actual package structure."""
@@ -335,7 +346,7 @@ class MermaidGenerator:
     
     def generate_all_diagrams(self) -> Dict[str, str]:
         """Generate all diagrams and return as dict."""
-        return {
+        result = {
             'architecture': self.generate_architecture_diagram(),
             'data_model': self.generate_data_model_diagram(),
             'deployment': self.generate_deployment_diagram(),
@@ -346,6 +357,14 @@ class MermaidGenerator:
             'api_flow': self.generate_api_flow_diagram(),
             'error_code_matrix': self.generate_error_code_matrix_diagram(),
         }
+        # Add flow-analysis-specific diagrams if data available
+        if self.spex_traces or self.cross_repo or self.go_flows:
+            result['business_flow'] = self.generate_business_flow_diagram()
+            result['cross_service_flow'] = self.generate_cross_service_flow_diagram()
+        if self.patterns:
+            result['state_machine_detailed'] = self.generate_detailed_state_machine()
+            result['task_lifecycle'] = self.generate_task_lifecycle_diagram()
+        return result
     
     def generate_activity_diagram(self) -> str:
         """Generate activity diagram from core flows or business logic.
@@ -656,6 +675,130 @@ class MermaidGenerator:
             
             lines.append(f"    Ready --> {name}: [{code}] {http_status}")
         
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+
+    def generate_facebook_sync_flow_diagram(self) -> str:
+        """生成 Facebook 全量同步流程图 — 经典场景示例."""
+        lines = ["```mermaid", "flowchart TB"]
+        lines.append("    classDef trigger fill:#ffeaa7,stroke:#fdcb6e,stroke-width:2px")
+        lines.append("    classDef api fill:#74b9ff,stroke:#0984e3,stroke-width:2px")
+        lines.append("    classDef diff fill:#a29bfe,stroke:#6c5ce7,stroke-width:2px")
+        lines.append("    classDef store fill:#55efc4,stroke:#00b894,stroke-width:2px")
+        lines.append("    classDef alert fill:#ff7675,stroke:#d63031,stroke-width:2px")
+        lines.append("    classDef db fill:#dfe6e9,stroke:#636e72,stroke-width:1px")
+        lines.append("")
+        lines.append("    subgraph Trigger[🕐 触发层]")
+        lines.append('        A["Cron/MMS<br/>定时调度"]')
+        lines.append('        B["自定义同步<br/>(指定campaign)"]')
+        lines.append("        class A,B trigger")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    subgraph Init[📋 初始化]")
+        lines.append('        C["获取 AdAccount<br/>列表(Apollo配置)"]')
+        lines.append('        D["查询 Catalog<br/>+ ProductSet"]')
+        lines.append("        class C,D db")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    subgraph FBQuery[🔍 FB API 查询层]")
+        lines.append('        E["getCampaignIds()<br/>GetCampaignByAccountId"]')
+        lines.append('        F["getCampaignList()<br/>GoPool并发<br/>(CONCURRENCY_LEVEL)"]')
+        lines.append('        G["getAdSetInfoList()<br/>并发查询adset"]')
+        lines.append('        H["getAdList()<br/>并发查询ad"]')
+        lines.append('        I["getAdCreativeList()"]')
+        lines.append("        class E,F,G,H,I api")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    subgraph Diff[📊 Diff 计算层]")
+        lines.append('        J{"FB有?"}')
+        lines.append('        K{"字段变更?"}')
+        lines.append('        L{"FB存在?"}')
+        lines.append('        M["NeedAdded<br/>新增"]')
+        lines.append('        N["NeedUpdated<br/>更新"]')
+        lines.append('        O["NeedDeleted<br/>删除<br/>(二次确认)"]')
+        lines.append("        class J,K,L diff")
+        lines.append("        class M,N,O alert")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    subgraph Store[💾 存储层]")
+        lines.append('        P["StoreCampaign<br/>del→upd→add"]')
+        lines.append('        Q["StoreAdset<br/>del→upd→add"]')
+        lines.append('        R["StoreAd<br/>del→upd→add"]')
+        lines.append('        S["AddAdCreative"]')
+        lines.append("        class P,Q,R,S store")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    subgraph Filter[🚫 过滤]")
+        lines.append('        T["ARCHIVED<br/>Campaign"]')
+        lines.append('        U["UA Campaign<br/>(business_goal=2)"]')
+        lines.append('        V["不支持<br/>Objective"]')
+        lines.append("        class T,U,V diff")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    A & B --> C --> D")
+        lines.append("    D --> E --> T --> U --> F")
+        lines.append("    F --> J")
+        lines.append("    J -- FB有 --> K")
+        lines.append("    J -- FB无 --> V --> L")
+        lines.append("    K -- 有变更 --> N")
+        lines.append("    K -- 无变更 --> G")
+        lines.append("    L -- 存在 --> O")
+        lines.append("    L -- 不存在 --> M")
+        lines.append("    M & N --> G --> H --> I")
+        lines.append("    P --> Q --> R --> S")
+        lines.append("")
+        lines.append("```")
+        return "\n".join(lines)
+
+    def generate_ads_change_sync_diagram(self) -> str:
+        """生成 ADS 变更实时同步 Sequence 图."""
+        lines = ["```mermaid", "sequenceDiagram"]
+        lines.append("    title ADS 变更实时同步（DAP → ADP）")
+        lines.append("    autonumber")
+        lines.append("")
+        lines.append("    participant Client as 客户端(DAP)")
+        lines.append("    participant Kafka as GAS/Kafka")
+        lines.append("    participant Proc as AdsChangeProcessor")
+        lines.append("    participant SyncSvc as AdsChangeSyncServiceImpl")
+        lines.append("    participant DapDB as DAP MySQL")
+        lines.append("    participant AdpDB as ADP SPX")
+        lines.append("")
+        lines.append("    Client->>Kafka: AdsChangeInfo(campaign/adset/ad)")
+        lines.append("    Kafka->>Proc: Process(msg)")
+        lines.append("    Proc->>SyncSvc: MsgHandler(info)")
+        lines.append("")
+        lines.append("    alt ObjectLevel == Campaign")
+        lines.append("        SyncSvc->>DapDB: QueryDapCampaignById")
+        lines.append("        SyncSvc->>DapDB: QueryFbCampaignById")
+        lines.append("        SyncSvc->>AdpDB: QueryOpsCampaign")
+        lines.append("        alt ADP未查到 → 创建")
+        lines.append("            SyncSvc->>AdpDB: CreateOrUpdateCampaign(INSERT)")
+        lines.append("        else ADP查到 → 更新")
+        lines.append("            SyncSvc->>AdpDB: CreateOrUpdateCampaign(UPDATE_ALL)")
+        lines.append("        end")
+        lines.append("        SyncSvc->>AdpDB: OperateDraftAds(删除草稿)")
+        lines.append("    elseif ObjectLevel == AdSet")
+        lines.append("        SyncSvc->>DapDB: QueryDapAdSetById + QueryFbAdSetById")
+        lines.append("        SyncSvc->>AdpDB: QueryOpsAdGroup")
+        lines.append("        alt 未查到 → CREATE")
+        lines.append("            SyncSvc->>AdpDB: CreateOrUpdateAdGroup(INSERT)")
+        lines.append("        else 查到 → UPDATE_ALL")
+        lines.append("            SyncSvc->>AdpDB: CreateOrUpdateAdGroup(UPDATE_ALL)")
+        lines.append("        end")
+        lines.append("    elseif ObjectLevel == Ad")
+        lines.append("        SyncSvc->>DapDB: QueryDapAdById + QueryFbAdById")
+        lines.append("        SyncSvc->>DapDB: GetAllAdCreative(creativeId)")
+        lines.append("        SyncSvc->>AdpDB: QueryOpsAd")
+        lines.append("        alt 未查到 → CREATE")
+        lines.append("            SyncSvc->>AdpDB: CreateOrUpdateAd(INSERT)")
+        lines.append("        else 查到 → UPDATE_ALL")
+        lines.append("            SyncSvc->>AdpDB: CreateOrUpdateAd(UPDATE_ALL)")
+        lines.append("        end")
+        lines.append("    end")
+        lines.append("")
+        lines.append("    SyncSvc->>AdpDB: SyncAdsLogToAdp(最近5天日志)")
+        lines.append("    Kafka-->>Proc: 消费确认")
         lines.append("")
         lines.append("```")
         return "\n".join(lines)
