@@ -525,6 +525,9 @@ class IRDocument:
     # Agent Workflow 深度解析（从 workflow YAML + Go 源码联合提取）
     agent_workflows: Dict = field(default_factory=dict)  # {agent_dir: {workflows, executors, summary}}
 
+    # Go 源码业务流程追踪（纯代码分析，不从 YAML 读）
+    go_business_flows: Dict = field(default_factory=dict)  # {agent_dir: {summary, entry_points, traces}}
+
     # 向后兼容
     compat_issues: List[Dict] = field(default_factory=list)
 
@@ -631,6 +634,7 @@ class GoScanner:
         try:
             agent_dirs = self._find_agent_dirs(dir_path)
             if agent_dirs:
+                # 1. Workflow YAML 结构（步骤级流程）
                 from deep_flow_extractor import extract_deep_flows
                 print(f"  🔬 Extracting deep flows from {len(agent_dirs)} agent dir(s)...")
                 deep_result = extract_deep_flows(agent_dirs, [str(dir_path)])
@@ -638,7 +642,16 @@ class GoScanner:
                 for agent_dir, data in deep_result.items():
                     wf_count = len(data.get('workflows', {}))
                     exec_count = len(data.get('executors', {}))
-                    print(f"    {Path(agent_dir).name}: {wf_count} workflows, {exec_count} executors traced")
+                    print(f"    {Path(agent_dir).name}: {wf_count} workflows (YAML), {exec_count} executors traced")
+
+                # 2. Go 源码真实调用链（不从 YAML 读，纯代码分析）
+                from go_flow_analyzer import analyze_go_agent
+                go_result = analyze_go_agent(agent_dirs[0], [str(dir_path)])
+                ir.go_business_flows[agent_dirs[0]] = go_result
+                entries = go_result.get('entry_points', [])
+                run_funcs = [f for f in entries if f.startswith('runUA')]
+                print(f"    {Path(agent_dirs[0]).name}: {len(entries)} entries, "
+                      f"{len(run_funcs)} run* functions traced from Go source")
         except Exception as e:
             print(f"  ⚠️  Deep flow extraction skipped: {e}")
 
