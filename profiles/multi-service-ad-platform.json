@@ -1,0 +1,603 @@
+{
+  "business_domain": "ad-marketing-platform",
+  "repositories": [
+    {
+      "name": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap",
+      "language": "go",
+      "max_files": 3441,
+      "module": "git.garena.com/shopee/marketing/dap"
+    },
+    {
+      "name": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform",
+      "language": "go",
+      "max_files": 5000,
+      "module": "git.garena.com/shopee/marketing/ad_delivery_platform"
+    }
+  ],
+  "learn_config": {
+    "max_files_per_lang": 5000,
+    "include_tests": true,
+    "max_files": 5000
+  },
+  "modules": [
+    {
+      "name": "dap/admin",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/admin",
+      "keywords": [
+        "admin",
+        "dap"
+      ],
+      "description": "管理后台 API 服务",
+      "goal": "Service: dap/admin"
+    },
+    {
+      "name": "dap/agent",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/agent",
+      "keywords": [
+        "agent",
+        "dap"
+      ],
+      "description": "AI Agent 入口服务",
+      "goal": "Service: dap/agent"
+    },
+    {
+      "name": "dap/dap_agent",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/dap_agent",
+      "keywords": [
+        "dap_agent",
+        "dap"
+      ],
+      "description": "DAP Agent 核心服务",
+      "goal": "Service: dap/dap_agent"
+    },
+    {
+      "name": "dap/dv360sync",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/dv360sync",
+      "keywords": [
+        "dv360sync",
+        "dap"
+      ],
+      "description": "DV360 数据同步服务",
+      "goal": "Service: dap/dv360sync"
+    },
+    {
+      "name": "dap/facebooksync",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/facebooksync",
+      "keywords": [
+        "facebooksync",
+        "dap"
+      ],
+      "description": "Facebook 数据同步服务",
+      "goal": "Service: dap/facebooksync"
+    },
+    {
+      "name": "dap/fb_sync",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/fb_sync",
+      "keywords": [
+        "fb_sync",
+        "dap"
+      ],
+      "description": "Facebook 同步辅助服务",
+      "goal": "Service: dap/fb_sync"
+    },
+    {
+      "name": "dap/feed_upload",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/feed_upload",
+      "keywords": [
+        "feed_upload",
+        "dap"
+      ],
+      "description": "Feed 上传服务",
+      "goal": "Service: dap/feed_upload"
+    },
+    {
+      "name": "dap/filedownload",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/filedownload",
+      "keywords": [
+        "filedownload",
+        "dap"
+      ],
+      "description": "文件下载服务（最大路由数）",
+      "goal": "Service: dap/filedownload"
+    },
+    {
+      "name": "dap/googlesync",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/googlesync",
+      "keywords": [
+        "googlesync",
+        "dap"
+      ],
+      "description": "Google Ads 数据同步服务",
+      "goal": "Service: dap/googlesync"
+    },
+    {
+      "name": "dap/image_download",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/image_download",
+      "keywords": [
+        "image_download",
+        "dap"
+      ],
+      "description": "图片下载服务",
+      "goal": "Service: dap/image_download"
+    },
+    {
+      "name": "dap/innerapi",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/innerapi",
+      "keywords": [
+        "innerapi",
+        "dap"
+      ],
+      "description": "内部 API 聚合服务",
+      "goal": "Service: dap/innerapi"
+    },
+    {
+      "name": "dap/taskexecutor",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/taskexecutor",
+      "keywords": [
+        "taskexecutor",
+        "dap"
+      ],
+      "description": "任务执行器服务",
+      "goal": "Service: dap/taskexecutor"
+    },
+    {
+      "name": "dap/tiktoksync",
+      "repo": "dap",
+      "path": "/Users/yanping.ma/GolandProjects/dap/app/tiktoksync",
+      "keywords": [
+        "tiktoksync",
+        "dap"
+      ],
+      "description": "TikTok 数据同步服务",
+      "goal": "Service: dap/tiktoksync"
+    },
+    {
+      "name": "ad_delivery_platform/account",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/account",
+      "keywords": [
+        "account",
+        "ad_delivery_platform"
+      ],
+      "description": "账户管理服务",
+      "goal": "Service: ad_delivery_platform/account"
+    },
+    {
+      "name": "ad_delivery_platform/accountdomain",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/accountdomain",
+      "keywords": [
+        "accountdomain",
+        "ad_delivery_platform"
+      ],
+      "description": "账户领域服务",
+      "goal": "Service: ad_delivery_platform/accountdomain"
+    },
+    {
+      "name": "ad_delivery_platform/admgmt",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/admgmt",
+      "keywords": [
+        "admgmt",
+        "ad_delivery_platform"
+      ],
+      "description": "广告管理核心服务",
+      "goal": "Service: ad_delivery_platform/admgmt"
+    },
+    {
+      "name": "ad_delivery_platform/ads",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/ads",
+      "keywords": [
+        "ads",
+        "ad_delivery_platform"
+      ],
+      "description": "广告投放核心服务",
+      "goal": "Service: ad_delivery_platform/ads"
+    },
+    {
+      "name": "ad_delivery_platform/adsdomain",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/adsdomain",
+      "keywords": [
+        "adsdomain",
+        "ad_delivery_platform"
+      ],
+      "description": "广告领域服务",
+      "goal": "Service: ad_delivery_platform/adsdomain"
+    },
+    {
+      "name": "ad_delivery_platform/adstraffic",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/adstraffic",
+      "keywords": [
+        "adstraffic",
+        "ad_delivery_platform"
+      ],
+      "description": "广告流量处理服务",
+      "goal": "Service: ad_delivery_platform/adstraffic"
+    },
+    {
+      "name": "ad_delivery_platform/commondomain",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/commondomain",
+      "keywords": [
+        "commondomain",
+        "ad_delivery_platform"
+      ],
+      "description": "公共领域服务（共享配置/消费者）",
+      "goal": "Service: ad_delivery_platform/commondomain"
+    },
+    {
+      "name": "ad_delivery_platform/dspproxy",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/dspproxy",
+      "keywords": [
+        "dspproxy",
+        "ad_delivery_platform"
+      ],
+      "description": "DSP Proxy 服务",
+      "goal": "Service: ad_delivery_platform/dspproxy"
+    },
+    {
+      "name": "ad_delivery_platform/facebookproxy",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/facebookproxy",
+      "keywords": [
+        "facebookproxy",
+        "ad_delivery_platform"
+      ],
+      "description": "Facebook API Proxy",
+      "goal": "Service: ad_delivery_platform/facebookproxy"
+    },
+    {
+      "name": "ad_delivery_platform/googleapi",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/googleapi",
+      "keywords": [
+        "googleapi",
+        "ad_delivery_platform"
+      ],
+      "description": "Google Ads API 代理服务",
+      "goal": "Service: ad_delivery_platform/googleapi"
+    },
+    {
+      "name": "ad_delivery_platform/googleproxy",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/googleproxy",
+      "keywords": [
+        "googleproxy",
+        "ad_delivery_platform"
+      ],
+      "description": "Google Proxy 服务",
+      "goal": "Service: ad_delivery_platform/googleproxy"
+    },
+    {
+      "name": "ad_delivery_platform/imagedownload",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/imagedownload",
+      "keywords": [
+        "imagedownload",
+        "ad_delivery_platform"
+      ],
+      "description": "图片下载服务",
+      "goal": "Service: ad_delivery_platform/imagedownload"
+    },
+    {
+      "name": "ad_delivery_platform/notice",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/notice",
+      "keywords": [
+        "notice",
+        "ad_delivery_platform"
+      ],
+      "description": "通知服务",
+      "goal": "Service: ad_delivery_platform/notice"
+    },
+    {
+      "name": "ad_delivery_platform/product",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/product",
+      "keywords": [
+        "product",
+        "ad_delivery_platform"
+      ],
+      "description": "产品管理服务",
+      "goal": "Service: ad_delivery_platform/product"
+    },
+    {
+      "name": "ad_delivery_platform/reconciliation",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/reconciliation",
+      "keywords": [
+        "reconciliation",
+        "ad_delivery_platform"
+      ],
+      "description": "对账服务",
+      "goal": "Service: ad_delivery_platform/reconciliation"
+    },
+    {
+      "name": "ad_delivery_platform/rpcserver",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/rpcserver",
+      "keywords": [
+        "rpcserver",
+        "ad_delivery_platform"
+      ],
+      "description": "RPC 聚合服务（钱包/通道）",
+      "goal": "Service: ad_delivery_platform/rpcserver"
+    },
+    {
+      "name": "ad_delivery_platform/selleradmin",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/selleradmin",
+      "keywords": [
+        "selleradmin",
+        "ad_delivery_platform"
+      ],
+      "description": "卖家后台管理 API",
+      "goal": "Service: ad_delivery_platform/selleradmin"
+    },
+    {
+      "name": "ad_delivery_platform/strategy",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/strategy",
+      "keywords": [
+        "strategy",
+        "ad_delivery_platform"
+      ],
+      "description": "策略引擎服务",
+      "goal": "Service: ad_delivery_platform/strategy"
+    },
+    {
+      "name": "ad_delivery_platform/taskmanager",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/taskmanager",
+      "keywords": [
+        "taskmanager",
+        "ad_delivery_platform"
+      ],
+      "description": "任务调度管理",
+      "goal": "Service: ad_delivery_platform/taskmanager"
+    },
+    {
+      "name": "ad_delivery_platform/taskworker",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/taskworker",
+      "keywords": [
+        "taskworker",
+        "ad_delivery_platform"
+      ],
+      "description": "任务执行 Worker",
+      "goal": "Service: ad_delivery_platform/taskworker"
+    },
+    {
+      "name": "ad_delivery_platform/tiktokproxy",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/tiktokproxy",
+      "keywords": [
+        "tiktokproxy",
+        "ad_delivery_platform"
+      ],
+      "description": "TikTok API Proxy",
+      "goal": "Service: ad_delivery_platform/tiktokproxy"
+    },
+    {
+      "name": "ad_delivery_platform/timer",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/timer",
+      "keywords": [
+        "timer",
+        "ad_delivery_platform"
+      ],
+      "description": "定时任务调度服务",
+      "goal": "Service: ad_delivery_platform/timer"
+    },
+    {
+      "name": "ad_delivery_platform/trafficitem",
+      "repo": "ad_delivery_platform",
+      "path": "/Users/yanping.ma/GolandProjects/ad_delivery_platform/app/trafficitem",
+      "keywords": [
+        "trafficitem",
+        "ad_delivery_platform"
+      ],
+      "description": "流量项处理服务",
+      "goal": "Service: ad_delivery_platform/trafficitem"
+    }
+  ],
+  "cross_service_dependencies": [
+    {
+      "from": "dap/innerapi",
+      "to": "ad_delivery_platform/account",
+      "type": "rpc",
+      "desc": "调用账户信息"
+    },
+    {
+      "from": "dap/innerapi",
+      "to": "ad_delivery_platform/product",
+      "type": "rpc",
+      "desc": "调用产品信息"
+    },
+    {
+      "from": "dap/admin",
+      "to": "ad_delivery_platform/selleradmin",
+      "type": "rpc",
+      "desc": "管理后台调用卖家 API"
+    },
+    {
+      "from": "dap/tiktoksync",
+      "to": "ad_delivery_platform/tiktokproxy",
+      "type": "rpc",
+      "desc": "TikTok 数据同步调用 proxy"
+    },
+    {
+      "from": "dap/googlesync",
+      "to": "ad_delivery_platform/googleapi",
+      "type": "rpc",
+      "desc": "Google 数据同步调用 API"
+    },
+    {
+      "from": "dap/facebooksync",
+      "to": "ad_delivery_platform/facebookproxy",
+      "type": "rpc",
+      "desc": "FB 数据同步调用 proxy"
+    },
+    {
+      "from": "dap/fb_sync",
+      "to": "ad_delivery_platform/facebookproxy",
+      "type": "rpc",
+      "desc": "FB 同步辅助调用 proxy"
+    },
+    {
+      "from": "dap",
+      "to": "dap/app",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/util",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/spex",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "ad_delivery_platform/infrastructure",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/config",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/dao",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/enum",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/lib",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/client",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/model",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/service",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "ad_delivery_platform/enum",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/protocol",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "ad_delivery_platform/domain",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/pkg",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/external",
+      "type": "import"
+    },
+    {
+      "from": "dap",
+      "to": "dap/tool",
+      "type": "import"
+    },
+    {
+      "from": "ad_delivery_platform",
+      "to": "ad_delivery_platform/app",
+      "type": "import"
+    },
+    {
+      "from": "ad_delivery_platform",
+      "to": "ad_delivery_platform/config",
+      "type": "import"
+    },
+    {
+      "from": "ad_delivery_platform",
+      "to": "ad_delivery_platform/domain",
+      "type": "import"
+    },
+    {
+      "from": "ad_delivery_platform",
+      "to": "ad_delivery_platform/enum",
+      "type": "import"
+    },
+    {
+      "from": "ad_delivery_platform",
+      "to": "ad_delivery_platform/infrastructure",
+      "type": "import"
+    },
+    {
+      "from": "ad_delivery_platform",
+      "to": "ad_delivery_platform/proxy",
+      "type": "import"
+    }
+  ],
+  "infrastructure": {
+    "database": "MySQL (GORM)",
+    "cache": "Redis (go-redis)",
+    "message_queue": "Kafka (ShopMsg/GAS)",
+    "rpc_framework": "micro/go-micro + SPX",
+    "config": "Apollo + GAS config-client",
+    "shared_modules": [
+      "git.garena.com/shopee/marketing/adscomm",
+      "git.garena.com/shopee/marketing/adscomm/v2",
+      "git.garena.com/shopee/marketing/mkt-common",
+      "git.garena.com/shopee/marketing/config-client",
+      "git.garena.com/shopee/marketing/crs-common",
+      "git.garena.com/shopee/mts/go-application-server/gas",
+      "git.garena.com/shopee/mts/go-application-server/spi/*",
+      "git.garena.com/shopee/mms/mms-sdk/orchestrator-sdk",
+      "git.garena.com/shopee/platform/golang_splib",
+      "git.garena.com/shopee/pl/shopeepay-common/shark"
+    ]
+  },
+  "repo_count": 2,
+  "service_count": 36,
+  "total_files": 8635
+}

@@ -571,121 +571,76 @@ class GoScanner:
         return self._rg_available
     
     def _scan_with_rgrep(self, dir_path: Path, max_files: int) -> IRDocument:
-        """用 ripgrep 批量扫描 — 核心加速路径"""
+        """用 ripgrep 批量扫描 — 核心加速路径（并行执行所有 rgrep）"""
         ir = IRDocument(
             repo_name=dir_path.name,
             repo_path=str(dir_path),
             language="go",
         )
-        
+
         exclude_args = ["--glob", "!vendor/**", "--glob", "!**/.git/**", "--glob", "!**/_test.go"]
-        
-        # 1. 扫描 struct 定义
-        try:
-            r = subprocess.run(
-                ["rg", "--json", "--type", "go", "-n",
-                 r"type\s+(\w+)\s+struct\s*\{"] + exclude_args + [str(dir_path)],
-                capture_output=True, text=True, timeout=120
-            )
-            if r.returncode in (0, 1):  # 0=found, 1=no match
-                self._parse_rg_structs(r.stdout, ir, dir_path, max_files)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # 2. 扫描 TableName
-        try:
-            r = subprocess.run(
-                ["rg", "--json", "--type", "go", "-n",
-                 r'func\s+\(\s*\*\w+\)\s+TableName\(\)\s+string'] + exclude_args + [str(dir_path)],
-                capture_output=True, text=True, timeout=120
-            )
-            if r.returncode in (0, 1):
-                self._parse_rg_table_names(r.stdout, ir)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # 3. 扫描 method signatures
-        try:
-            r = subprocess.run(
-                ["rg", "--json", "--type", "go", "-n",
-                 r'func\s+\(\s*\*?\w+\)\s+\w+\s*\('] + exclude_args + [str(dir_path)],
-                capture_output=True, text=True, timeout=120
-            )
-            if r.returncode in (0, 1):
-                self._parse_rg_methods(r.stdout, ir, dir_path, max_files)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # 4. 扫描 top-level func
-        try:
-            r = subprocess.run(
-                ["rg", "--json", "--type", "go", "-n",
-                 r'^func\s+\w+\s*\('] + exclude_args + [str(dir_path)],
-                capture_output=True, text=True, timeout=120
-            )
-            if r.returncode in (0, 1):
-                self._parse_rg_top_funcs(r.stdout, ir, dir_path, max_files)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # 5. 扫描 routes
-        try:
-            r = subprocess.run(
-                ["rg", "--json", "--type", "go", "-n",
-                 r'(?:r|group|engine)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"'] + exclude_args + [str(dir_path)],
-                capture_output=True, text=True, timeout=120
-            )
-            if r.returncode in (0, 1):
-                self._parse_rg_routes(r.stdout, ir, dir_path, max_files)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # 6. 扫描 imports
-        try:
-            r = subprocess.run(
-                ["rg", "--json", "--type", "go", "-n",
-                 r'"([^"]+)"'] + exclude_args + [str(dir_path)],
-                capture_output=True, text=True, timeout=120
-            )
-            if r.returncode in (0, 1):
-                self._parse_rg_imports(r.stdout, ir, dir_path, max_files)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # 7. 扫描 struct 字段（用 rg -A 获取 struct body 上下文）
-        try:
-            r = subprocess.run(
-                ["rg", "--json", "--type", "go", "-A", "30", "-n",
-                 r'type\s+\w+\s+struct\s*\{'] + exclude_args + [str(dir_path)],
-                capture_output=True, text=True, timeout=180
-            )
-            if r.returncode in (0, 1):
-                self._parse_rg_struct_fields(r.stdout, ir, dir_path, max_files)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # 构建调用图和入口点（测试扫描和 API 文档提取在 scan_directory 中统一调用）
+
+        # Define all scan tasks: (rg_args, parser_fn) pairs
+        scan_tasks = [
+            (["rg", "--json", "--type", "go", "-n",
+              r"type\s+(\w+)\s+struct\s*\{"] + exclude_args + [str(dir_path)],
+             lambda out: self._parse_rg_structs(out, ir, dir_path, max_files)),
+            (["rg", "--json", "--type", "go", "-n",
+              r'func\s+\(\s*\*\w+\)\s+TableName\(\)\s+string'] + exclude_args + [str(dir_path)],
+             lambda out: self._parse_rg_table_names(out, ir)),
+            (["rg", "--json", "--type", "go", "-n",
+              r'func\s+\(\s*\*?\w+\)\s+\w+\s*\('] + exclude_args + [str(dir_path)],
+             lambda out: self._parse_rg_methods(out, ir, dir_path, max_files)),
+            (["rg", "--json", "--type", "go", "-n",
+              r'^func\s+\w+\s*\('] + exclude_args + [str(dir_path)],
+             lambda out: self._parse_rg_top_funcs(out, ir, dir_path, max_files)),
+            (["rg", "--json", "--type", "go", "-n",
+              r'(?:r|group|engine)\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*"([^"]+)"'] + exclude_args + [str(dir_path)],
+             lambda out: self._parse_rg_routes(out, ir, dir_path, max_files)),
+            (["rg", "--json", "--type", "go", "-n",
+              r'"([^"]+)"'] + exclude_args + [str(dir_path)],
+             lambda out: self._parse_rg_imports(out, ir, dir_path, max_files)),
+            (["rg", "--json", "--type", "go", "-A", "30", "-n",
+              r'type\s+\w+\s+struct\s*\{'] + exclude_args + [str(dir_path)],
+             lambda out: self._parse_rg_struct_fields(out, ir, dir_path, max_files)),
+        ]
+
+        # Run all rgrep calls in parallel ( ThreadPoolExecutor, max 8 workers )
+        import concurrent.futures
+        start = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(scan_tasks))) as executor:
+            futures = {executor.submit(self._run_rg, args): (fn, i) for i, (args, fn) in enumerate(scan_tasks)}
+            for future in concurrent.futures.as_completed(futures):
+                fn, idx = futures[future]
+                try:
+                    fn(future.result())
+                except Exception as e:
+                    print(f"  ⚠️  rgrep scan #{idx+1} failed: {e}")
+        elapsed = time.time() - start
+        print(f"  ✅ Parallel rgrep scans done in {elapsed:.1f}s")
+
+        # Sequential post-processing (not IO-bound, keep sequential)
         self._extract_business_logic(ir, dir_path, max_entries=100)
         self._build_call_graph_from_signatures(ir)
-        # 推断核心业务流程（增强版：多策略融合）
         ir.core_flows = self._infer_core_business_flow_v2(ir)
-        
-        # 提取 SQL/GORM 操作
         self._extract_sql_operations(ir, dir_path, max_files)
-        
-        # 提取错误码定义
         self._extract_error_codes(ir, dir_path, max_files)
-        
-        # 提取 Entity/TableName 映射
         self._extract_entity_tables(ir, dir_path, max_files)
-        
-        # 提取 Condition 查询条件
         self._extract_conditions(ir, dir_path, max_files)
-        
-        # 提取配置
         self._extract_configs(ir, dir_path, max_files)
-        
+
         return ir
+
+    @staticmethod
+    def _run_rg(args: list) -> str:
+        """Run a single rgrep command and return stdout. Shared across all scan tasks."""
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, timeout=120)
+            if r.returncode in (0, 1):
+                return r.stdout
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+        return ""
     
     def _parse_rg_json_lines(self, output: str) -> Dict[str, List[Dict]]:
         """解析 rg --json 输出，按文件分组
