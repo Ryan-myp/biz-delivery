@@ -271,7 +271,7 @@ class GoExecutorTracer:
                 self._index_file(f)
 
     def _index_file(self, f: Path):
-        """解析单个 Go 文件，索引函数."""
+        """解析单个 Go 文件，索引函数和方法."""
         try:
             text = f.read_text(errors='ignore')
         except Exception:
@@ -281,14 +281,14 @@ class GoExecutorTracer:
         pkg_match = re.search(r'^package\s+(\w+)', text, re.MULTILINE)
         pkg = pkg_match.group(1) if pkg_match else ''
 
-        # 找函数/方法
+        # 找 top-level func
         for m in re.finditer(
-            r'func\s+(?:\(\s*\*?\w+\s+\w+\s*\)\s+)?(\w+)\s*\(',
+            r'^func\s+(\w+)\s*\(',
             text,
+            re.MULTILINE,
         ):
             func_name = m.group(1)
             line_no = text[:m.start()].count('\n') + 1
-            # 取函数体前 200 字符作为预览
             body_start = m.end()
             brace_depth = 0
             body_end = body_start
@@ -301,10 +301,29 @@ class GoExecutorTracer:
                         break
                     brace_depth -= 1
             body_preview = text[body_start:body_start + 300].replace('\n', ' ').strip()[:200]
-
-            entry = {'file': str(f.relative_to(self.repo_paths[0])),
-                     'line': line_no, 'pkg': pkg, 'preview': body_preview}
+            entry = {
+                'file': str(f.relative_to(self.repo_paths[0])),
+                'line': line_no,
+                'pkg': pkg,
+                'preview': body_preview,
+            }
             self.func_index.setdefault(func_name, []).append(entry)
+
+        # 找方法 (func (r *Receiver) MethodName(...))
+        for m in re.finditer(
+            r'func\s*\(\s*\w+\s+\*\w+\s*\)\s+(\w+)\s*\(',
+            text,
+        ):
+            method_name = m.group(1)
+            line_no = text[:m.start()].count('\n') + 1
+            entry = {
+                'file': str(f.relative_to(self.repo_paths[0])),
+                'line': line_no,
+                'pkg': pkg,
+                'preview': '',
+                'is_method': True,
+            }
+            self.func_index.setdefault(method_name, []).append(entry)
 
     def trace_executor(self, executor_name: str) -> Dict:
         """追踪一个 custom executor 的实现."""
@@ -316,17 +335,36 @@ class GoExecutorTracer:
             'key_logic': [],
         }
 
-        # 1. 直接匹配函数名
+        # 1. 直接匹配
         if executor_name in self.func_index:
             result['found'] = True
             result['files'] = self.func_index[executor_name][:3]
 
-        # 2. 模糊匹配（下划线分隔）
+        # 2. 模糊匹配（下划线分隔 ↔ PascalCase 互转）
         if not result['found']:
+            # ua_slot_filler → SlotFiller / slotFiller
+            variants = set()
+            parts = executor_name.split('_')
+            # PascalCase: SlotFiller
+            pascal = ''.join(p.capitalize() for p in parts)
+            variants.add(pascal)
+            # camelCase: slotFiller
+            camel = parts[0] + ''.join(p.capitalize() for p in parts[1:])
+            variants.add(camel)
+            # Prefix variants: runUA + Pascal
+            if len(parts) > 1:
+                variants.add('run' + pascal)
+                variants.add('Run' + pascal)
+                variants.add(pascal + 'Executor')
+                variants.add(pascal + 'Handler')
+
             for func_name, entries in self.func_index.items():
-                if executor_name in func_name or func_name in executor_name:
-                    result['found'] = True
-                    result['files'] = entries[:3]
+                for v in variants:
+                    if v.lower() == func_name.lower() or v in func_name or func_name in v:
+                        result['found'] = True
+                        result['files'] = entries[:3]
+                        break
+                if result['found']:
                     break
 
         # 3. 从文件内容中提取工具调用
@@ -338,8 +376,9 @@ class GoExecutorTracer:
                         text = full_path.read_text(errors='ignore')
                         # MCP 工具调用
                         for m in re.finditer(
-                            r'(get_|call_|invoke_)?(mkt_dap|adminapi|google|facebook|tiktok|meta|dsp)[_\w]*',
+                            r'(?:get_|call_|invoke_)?(?:mkt_dap|adminapi|google|facebook|tiktok|meta|dsp|shop)[_\w]*',
                             text,
+                            re.IGNORECASE,
                         ):
                             call = m.group(0)
                             if call not in result['tool_calls'] and len(call) > 5:
