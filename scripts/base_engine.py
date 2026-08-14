@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Shared base classes for biz-delivery engines.
 
-Eliminates code duplication between review_engine, td_engine, and test_engine.
-Each engine inherits from EngineBase and only implements its own prompt building logic.
+Provides:
+- Codebase scanning with module filtering and dynamic file limits
+- Token-aware prompt generation (chunks oversized prompts)
+- Evidence querying with configurable context budget
+- Profile normalization and KB directory inference
 """
 
 import json
@@ -10,11 +13,17 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
 from learn_repo import GoScanner, IRDocument
 
+# Default context budgets per engine (in tokens)
+_DEFAULT_CONTEXT_BUDGET = {
+    "review": 16000,
+    "td": 16000,
+    "test": 12000,
+}
 
 # ──────────────────────────────────────────────
 # Route handler cleanup regex (shared)
@@ -28,40 +37,134 @@ _STRUCT_NAME_RE = re.compile(r'(?:Request|Response|Input|Output|Param|Option|Con
 _SKIP_STRUCTS = frozenset({'request', 'response', 'context', 'option', 'config', 'params', 'input', 'output'})
 
 
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count for mixed Chinese/English text."""
+    if not text:
+        return 0
+    cn_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+    other_chars = len(text) - cn_chars
+    return int(cn_chars + other_chars / 3.5)
+
+
+def _truncate_to_budget(text: str, max_tokens: int, min_tokens: int = 100) -> Tuple[str, int]:
+    """Truncate text to fit within token budget."""
+    current_tokens = _estimate_tokens(text)
+    if current_tokens <= max_tokens:
+        return text, current_tokens
+    ratio = max_tokens / current_tokens
+    trunc_len = int(len(text) * ratio)
+    trunc_len = max(trunc_len, min_tokens * 3.5)
+    return text[:trunc_len] + "\n\n... [内容被截断，原始文本超出token限制]", current_tokens
+
+
+def _chunk_prompt(prompt: str, chunk_size_tokens: int = 8000,
+                  overlap_tokens: int = 500) -> List[str]:
+    """Split a large prompt into chunks with overlap for sequential LLM calls."""
+    if _estimate_tokens(prompt) <= chunk_size_tokens:
+        return [prompt]
+
+    sections = re.split(r'(?=^## )', prompt, flags=re.MULTILINE)
+    sections = [s.strip() for s in sections if s.strip()]
+
+    chunks = []
+    current_chunk = []
+    current_tokens = 0
+
+    for section in sections:
+        section_tokens = _estimate_tokens(section)
+        if section_tokens > chunk_size_tokens:
+            if current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = []
+                current_tokens = 0
+            paragraphs = section.split('\n\n')
+            para_chunk = []
+            para_tokens = 0
+            for para in paragraphs:
+                para_tok = _estimate_tokens(para)
+                if para_tok > chunk_size_tokens:
+                    lines = para.split('\n')
+                    line_chunk = []
+                    line_tokens = 0
+                    for line in lines:
+                        line_tok = _estimate_tokens(line)
+                        if line_tokens + line_tok > chunk_size_tokens and line_chunk:
+                            chunks.append('\n'.join(line_chunk))
+                            line_chunk = [line]
+                            line_tokens = line_tok
+                        else:
+                            line_chunk.append(line)
+                            line_tokens += line_tok
+                    if line_chunk:
+                        chunks.append('\n'.join(line_chunk))
+                else:
+                    if para_tokens + para_tok > chunk_size_tokens and para_chunk:
+                        chunks.append('\n\n'.join(para_chunk))
+                        overlap_n = max(1, len(para_chunk) - 2)
+                        para_chunk = para_chunk[max(0, overlap_n):]
+                        para_tokens = _estimate_tokens('\n\n'.join(para_chunk))
+                    para_chunk.append(para)
+                    para_tokens += para_tok
+            if para_chunk:
+                chunks.append('\n\n'.join(para_chunk))
+            continue
+
+        if current_tokens + section_tokens > chunk_size_tokens and current_chunk:
+            chunks.append("\n".join(current_chunk))
+            overlap_n = min(2, len(current_chunk))
+            current_chunk = current_chunk[-overlap_n:]
+            current_tokens = _estimate_tokens("\n".join(current_chunk))
+
+        current_chunk.append(section)
+        current_tokens += section_tokens
+
+    if current_chunk:
+        chunks.append("\n".join(current_chunk))
+
+    return chunks if chunks else [prompt]
+
+
 class EngineBase:
     """Base class for all biz-delivery engines.
 
-    Provides shared:
-    - Codebase scanning (_scan_codebase)
-    - Evidence querying (_query_evidence_for_prd)
-    - Profile normalization
-    - KB directory inference
+    Supports:
+    - Module-level scope filtering (--module flag)
+    - Dynamic max_files from profile config (no hard 500 limit)
+    - Token-aware prompt generation with automatic chunking
+    - Incremental cache with hash-based detection
     """
 
-    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None):
+    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None,
+                 module_filter: Optional[str] = None, max_files: Optional[int] = None,
+                 context_budget: Optional[int] = None):
         self.profile = profile
         self.output_dir = Path(output_dir)
         self.wiki_path = wiki_path
-        
+        self.module_filter = module_filter
+        self.context_budget = context_budget
+
         # Validate and normalize profile
         profile_data = self._normalize_profile(profile)
-        
+
         # Required fields validation
         missing = []
         if not profile_data.get("business_domain"):
             missing.append("business_domain")
         if not profile_data.get("repositories"):
             missing.append("repositories")
-        
+
         # Warn on missing required fields
         if missing:
             print(f"⚠️  Profile missing required fields: {', '.join(missing)}")
             print(f"   business_domain will default to 'unknown'")
             print(f"   repositories will be empty — engines may skip scanning")
-        
+
         self.business_domain = profile_data.get("business_domain", "unknown")
         self.repos = profile_data.get("repositories", [])
-        
+
+        # Determine max_files: explicit > profile > dynamic estimate
+        self.max_files = self._resolve_max_files(profile_data, max_files)
+
         # Validate repository paths
         for repo in self.repos:
             repo_path = repo.get("path", "")
@@ -87,6 +190,98 @@ class EngineBase:
             if inner:
                 return inner
         return profile
+
+    def _resolve_max_files(self, profile_data: dict, explicit_max: Optional[int] = None) -> int:
+        """Resolve max_files from: explicit arg > profile config > dynamic estimate."""
+        if explicit_max is not None:
+            return explicit_max
+        learn_config = profile_data.get("learn_config", {})
+        profile_max = learn_config.get("max_files_per_lang", 0)
+        if profile_max > 0:
+            return profile_max
+        for repo in profile_data.get("repositories", []):
+            repo_max = repo.get("max_files", 0)
+            if repo_max > 0:
+                return repo_max
+        return self._estimate_file_count()
+
+    def _estimate_file_count(self) -> int:
+        """Estimate total source file count across all repos (capped at 10000)."""
+        total = 0
+        for repo in self.repos:
+            repo_path = Path(repo.get("path", ""))
+            if not repo_path.exists():
+                continue
+            lang = repo.get("language", "go")
+            exts = {"go": "*.go", "python": "*.py", "java": "*.java"}
+            ext = exts.get(lang, "*.go")
+            count = 0
+            for f in repo_path.rglob(ext):
+                if "vendor/" in str(f) or ".git/" in str(f):
+                    continue
+                count += 1
+                if count >= 10000:
+                    break
+            total += count
+        return min(total, 10000)
+
+    # ── Module filtering ────────────────────────
+
+    def _filter_ir_by_module(self, ir: IRDocument) -> IRDocument:
+        """Filter IR to only include items related to the module scope."""
+        if not self.module_filter:
+            return ir
+
+        filter_lower = self.module_filter.lower()
+        matched_routes = []
+        matched_logic = []
+        matched_packages = set()
+
+        for route in ir.routes:
+            route_path = getattr(route, 'path', '')
+            route_handler = getattr(route, 'handler', '')
+            if filter_lower in str(route_path).lower() or filter_lower in str(route_handler).lower():
+                matched_routes.append(route)
+
+        for bl in ir.business_logic:
+            bl_str = json.dumps(bl) if isinstance(bl, dict) else str(bl)
+            if filter_lower in bl_str.lower():
+                matched_logic.append(bl)
+
+        if hasattr(ir, 'packages') and ir.packages:
+            for pkg_name in ir.packages:
+                if filter_lower in pkg_name.lower():
+                    matched_packages.add(pkg_name)
+
+        if matched_routes or matched_logic or matched_packages:
+            filtered = IRDocument(
+                repo_name=ir.repo_name, repo_path=ir.repo_path, language=ir.language,
+            )
+            for attr in ['structs', 'functions', 'entity_tables', 'sql_operations',
+                         'error_codes', 'auth_models', 'test_files', 'test_functions',
+                         'imports', 'configs', 'services', 'perf_hotspots']:
+                if hasattr(ir, attr):
+                    setattr(filtered, attr, list(getattr(ir, attr)))
+            if matched_routes:
+                filtered.routes = matched_routes
+            if matched_logic:
+                filtered.business_logic = matched_logic
+            if hasattr(ir, 'packages') and ir.packages:
+                filtered.packages = {}
+                for pkg_name, pkg_data in ir.packages.items():
+                    if pkg_name in matched_packages:
+                        filtered.packages[pkg_name] = pkg_data
+            if hasattr(ir, 'call_graph') and ir.call_graph:
+                filtered.call_graph = ir.call_graph[:50]
+            if hasattr(ir, 'core_flows') and ir.core_flows:
+                filtered.core_flows = ir.core_flows[:5]
+            print(f"  🔍 Module filter '{self.module_filter}': "
+                  f"{len(matched_routes)} routes, {len(matched_logic)} logic, "
+                  f"{len(matched_packages)} packages")
+            return filtered
+
+        print(f"  ⚠️  Module filter '{self.module_filter}' matched no items, using full IR")
+        return ir
 
     # ── Incremental / Parallel Scan Support ─────
 
@@ -114,13 +309,7 @@ class EngineBase:
     # ── Codebase scanning ───────────────────────
 
     def _scan_codebase(self) -> IRDocument:
-        """Scan configured repositories and return merged IRDocument.
-
-        Supports:
-        - Multi-repo merging
-        - Incremental scan (loads cached IR if fresh)
-        - Parallel scan via parallel_scanner when kb_dir is available
-        """
+        """Scan configured repositories with module filtering and dynamic limits."""
         if not self.repos:
             print("⚠️  No repositories configured, skipping scan")
             return IRDocument(repo_name="none", repo_path="", language="unknown")
@@ -131,8 +320,8 @@ class EngineBase:
             cached = self._try_load_cached_ir(cache_dir)
             if cached:
                 print(f"✅ Using cached IR from {cache_dir}/ir_cache.json")
-                # Reconstruct IRDocument from dict
-                return self._dict_to_ir(cached)
+                merged = self._dict_to_ir(cached)
+                return self._filter_ir_by_module(merged)
 
         # Fallback: full scan (possibly parallel)
         kb_dir = self.kb_dir or cache_dir
@@ -141,12 +330,13 @@ class EngineBase:
                 from .parallel_scanner import ParallelScanner
                 result = self._parallel_scan(kb_dir)
                 if result is not None:
-                    return result
+                    return self._filter_ir_by_module(result)
             except Exception:
-                pass  # Fall back to sequential
+                pass
 
         # Sequential scan (original path)
-        return self._sequential_scan()
+        merged = self._sequential_scan()
+        return self._filter_ir_by_module(merged)
 
     def _parallel_scan(self, kb_dir: str) -> Optional[IRDocument]:
         """Try parallel scan via ParallelScanner."""
@@ -160,12 +350,11 @@ class EngineBase:
             return None
 
         ps = ParallelScanner(kb_dir, max_workers=min(4, len(self.repos)))
-        scan_results = ps.scan_repos(self.repos, scanners, max_files=500)
+        scan_results = ps.scan_repos(self.repos, scanners, max_files=self.max_files)
         valid = [r for r in scan_results if "ir" in r]
         if not valid:
             return None
 
-        # Merge results
         merged = IRDocument(repo_name="multi-parallel", repo_path="", language="go")
         for sr in valid:
             ir = sr["ir"]
@@ -190,7 +379,7 @@ class EngineBase:
         return merged
 
     def _sequential_scan(self) -> IRDocument:
-        """Original sequential scan path."""
+        """Original sequential scan path with dynamic max_files."""
         merged = IRDocument(repo_name="multi", repo_path="", language="go")
         scanners_used = set()
 
@@ -206,7 +395,8 @@ class EngineBase:
                 continue
 
             scanners_used.add(language)
-            ir = scanner.scan_directory(repo_path)
+            repo_max = repo.get("max_files", self.max_files)
+            ir = scanner.scan_directory(repo_path, max_files=repo_max)
             ir.repo_name = repo_name
             ir.repo_path = str(repo_path)
 
@@ -246,7 +436,8 @@ class EngineBase:
                 merged.language = language
 
             print(f"  Scanned repo '{repo_name}': {len(ir.structs)} structs, "
-                  f"{len(ir.functions)} functions, {len(ir.routes)} routes")
+                  f"{len(ir.functions)} functions, {len(ir.routes)} routes "
+                  f"(max_files={repo_max})")
 
         if len(scanners_used) == 1:
             merged.language = list(scanners_used)[0]
@@ -279,14 +470,8 @@ class EngineBase:
     # ── Evidence querying ───────────────────────
 
     def _query_evidence_for_prd(self, prd_text: str, cache_dir: str = "") -> dict:
-        """Query evidence from codebase using PRD keywords.
-
-        Uses shared _common.query_evidence_for_prd implementation.
-        Lazy import to avoid circular dependency with _common (which uses relative imports).
-        """
-        # Lazy import to avoid circular dependency
+        """Query evidence from codebase using PRD keywords."""
         from _common import query_evidence_for_prd as qefp
-        
         profile_data = self._normalize_profile(self.profile)
         return qefp(
             prd_text=prd_text,
@@ -297,6 +482,28 @@ class EngineBase:
             max_total=30,
             kb_dir=self.kb_dir,
         )
+
+    # ── Token-aware prompt helpers ──────────────
+
+    def build_prompt_with_budget(self, prompt_parts: List[str], engine: str = "review") -> str:
+        """Build prompt with token budget awareness. Truncates if over budget."""
+        prompt = "\n".join(prompt_parts)
+        tokens = _estimate_tokens(prompt)
+        budget = self.context_budget or _DEFAULT_CONTEXT_BUDGET.get(engine, 16000)
+        if tokens <= budget:
+            print(f"  📊 Prompt: {tokens} tokens (within {budget} budget)")
+            return prompt
+        print(f"  ⚠️  Prompt: {tokens} tokens exceeds {budget} budget, truncating...")
+        truncated, actual = _truncate_to_budget(prompt, budget)
+        print(f"  📊 Truncated to: {actual} tokens")
+        return truncated
+
+    def build_chunked_prompt(self, prompt_parts: List[str], engine: str = "review") -> List[str]:
+        """Build prompt and return chunks if it exceeds single-call budget."""
+        prompt = "\n".join(prompt_parts)
+        chunks = _chunk_prompt(prompt, chunk_size_tokens=8000)
+        print(f"  📊 Prompt split into {len(chunks)} chunk(s) ({_estimate_tokens(prompt)} tokens total)")
+        return chunks
 
     # ── Prompt building helpers ─────────────────
 
@@ -495,7 +702,7 @@ class EngineBase:
     @staticmethod
     def _format_weighted_evidence(evidence_list: list, top_n: int = 20) -> List[str]:
         """Format weighted evidence items into prompt lines.
-        
+
         Shared across review_engine and test_engine to avoid duplication.
         """
         type_weights = {
@@ -507,7 +714,7 @@ class EngineBase:
             'business_logic': 0.8,
             'schema': 0.7,
         }
-        
+
         # Compute weighted scores
         weighted = []
         for item in evidence_list[:top_n * 2]:  # fetch extra for sorting
@@ -516,9 +723,9 @@ class EngineBase:
             weight = type_weights.get(item_type, 1.0)
             weighted_score = raw_score * weight
             weighted.append({**item, 'weighted_score': weighted_score, 'type_weight': weight})
-        
+
         weighted.sort(key=lambda x: x['weighted_score'], reverse=True)
-        
+
         lines = []
         for i, item in enumerate(weighted[:top_n], 1):
             title = item.get('title', item.get('path', 'unknown'))

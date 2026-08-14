@@ -24,11 +24,11 @@ DEFAULT_PROFILE_TEMPLATE = {
             "name": "{{repo_name}}",
             "path": "{{repo_path}}",
             "language": "{{language}}",
-            "max_files": 500
+            "max_files": 2000
         }
     ],
     "learn_config": {
-        "max_files_per_lang": 500,
+        "max_files_per_lang": 2000,
         "include_tests": True,
         "include_configs": False
     },

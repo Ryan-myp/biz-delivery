@@ -274,7 +274,7 @@ def parallel_learn_from_repos(
     wiki_path: Optional[str] = None,
     kb_dir: Optional[str] = None,
     max_workers: int = 4,
-    max_files: int = 500,
+    max_files: int = 2000,
 ) -> Dict:
     """并行版本的 learn_from_repos
     

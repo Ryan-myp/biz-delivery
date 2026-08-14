@@ -4,7 +4,11 @@
     {
       "path": "/Users/yanping.ma/GolandProjects/eino",
       "language": "go",
-      "name": "eino"
+      "name": "eino",
+      "max_files": 2000
     }
-  ]
+  ],
+  "learn_config": {
+    "max_files_per_lang": 2000
+  }
 }

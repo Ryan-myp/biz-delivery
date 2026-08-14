@@ -40,23 +40,30 @@ def load_profile(profile_path: str) -> dict:
         return json.load(f)
 
 
-def run_learn_mode(profile_path: str, output_dir: str, wiki_path: Optional[str] = None, incremental: bool = False) -> dict:
+def run_learn_mode(profile_path: str, output_dir: str, wiki_path: Optional[str] = None,
+                   incremental: bool = False, module_filter: Optional[str] = None,
+                   max_files: Optional[int] = None) -> dict:
     """执行 learn 模式
-    
+
     Args:
         incremental: 如果为 True，使用 FileCache 只做增量扫描（跳过未变更文件）
+        module_filter: 只扫描指定模块（如 "share"、"adgroup"）
+        max_files: 每个仓库最大扫描文件数（覆盖 profile 配置）
     """
-    
+
     result = learn_from_repos(
         profile_path=profile_path,
         output_dir=output_dir,
         wiki_path=wiki_path,
         incremental=incremental,
+        module_filter=module_filter,
+        max_files=max_files,
     )
     return result
 
 
-def run_auto_mode(profile: dict, prd_text: str, output_dir: str, wiki_path: Optional[str] = None) -> dict:
+def run_auto_mode(profile: dict, prd_text: str, output_dir: str, wiki_path: Optional[str] = None,
+                  module_filter: str = None, max_files: int = None) -> dict:
     """执行 auto 模式 — PRD -> LLM 自动审查 -> TD -> 测试（全自动）
     
     与 prdtdd 模式不同，auto 模式会直接调用 LLM API 完成每个阶段，
@@ -89,7 +96,8 @@ def run_auto_mode(profile: dict, prd_text: str, output_dir: str, wiki_path: Opti
     
     # Stage 1: PRD 审查（自动调用 LLM）
     print("\n📋 Stage 1: PRD Review (Auto)")
-    review_engine = ReviewEngine(profile, output_dir, wiki_path)
+    review_engine = ReviewEngine(profile, output_dir, wiki_path,
+                                 module_filter=module_filter, max_files=max_files)
     review_result = review_engine.review(prd_text)
     
     # 检查是否已有 LLM 生成的报告
@@ -145,7 +153,8 @@ Output your review in Markdown format with P0/P1/P2 priority levels."""
     
     # Stage 2: 技术方案生成（自动调用 LLM）
     print("\n📋 Stage 2: Technical Design (Auto)")
-    td_engine = TDEngine(profile, output_dir, wiki_path)
+    td_engine = TDEngine(profile, output_dir, wiki_path,
+                         module_filter=module_filter, max_files=max_files)
     td_result = td_engine.generate_td(prd_text=prd_text)
     
     # Check for existing TD
@@ -162,7 +171,8 @@ Output your review in Markdown format with P0/P1/P2 priority levels."""
     
     # Stage 3: 测试用例生成（自动调用 LLM）
     print("\n📋 Stage 3: Test Cases (Auto)")
-    test_engine = TestEngine(profile, output_dir, wiki_path)
+    test_engine = TestEngine(profile, output_dir, wiki_path,
+                             module_filter=module_filter, max_files=max_files)
     test_result = test_engine.generate_tests(prd_text=prd_text)
     
     # Check for existing test cases
@@ -306,9 +316,11 @@ Include: positive flows, exception handling, boundary conditions, state transiti
         print(f"  ❌ Test generation failed after retries")
 
 
-def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list = None, wiki_path: str = None) -> dict:
+def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list = None,
+                    wiki_path: str = None, module_filter: str = None,
+                    max_files: int = None) -> dict:
     """执行 prdtdd 模式 — 支持阶段间数据传递
-    
+
     串联逻辑：
     - review → td: TD 接收审查报告（review_report 参数）
     - td → test: Test 接收 TD 内容（td_text 参数）
@@ -318,7 +330,7 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     """
     os.makedirs(output_dir, exist_ok=True)
     sys.path.insert(0, str(Path(__file__).parent))
-    
+
     # 推断 kb_dir（所有引擎共享同一个知识库目录）
     kb_dir = None
     for repo in profile.get("repositories", []):
@@ -328,16 +340,17 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
             if kb.exists():
                 kb_dir = str(kb)
                 break
-    
+
     stages = stages or ["review", "td", "test"]
     results = {}
     prev_context = None  # 前一个阶段的上下文（prompt 或 report）
     prev_stage = None    # 上一个执行的阶段名，用于自动检测 LLM 输出
-    
+
     # Stage 1: PRD 审查
     if "review" in stages:
         print("\n📋 Stage 1: PRD Review")
-        review_engine = ReviewEngine(profile, output_dir, wiki_path)
+        review_engine = ReviewEngine(profile, output_dir, wiki_path,
+                                     module_filter=module_filter, max_files=max_files)
         review_result = review_engine.review(prd_text)
         results["review"] = review_result
         
@@ -363,7 +376,8 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     # Stage 2: 技术方案生成（接收 review 报告）
     if "td" in stages:
         print("\n📋 Stage 2: Technical Design")
-        td_engine = TDEngine(profile, output_dir, wiki_path)
+        td_engine = TDEngine(profile, output_dir, wiki_path,
+                             module_filter=module_filter, max_files=max_files)
         
         # 如果有审查报告，注入给 TD
         td_kwargs = {"prd_text": prd_text}
@@ -395,7 +409,8 @@ def run_prdtdd_mode(profile: dict, prd_text: str, output_dir: str, stages: list 
     # Stage 3: 测试用例生成（接收 TD 内容）
     if "test" in stages:
         print("\n📋 Stage 3: Test Cases")
-        test_engine = TestEngine(profile, output_dir, wiki_path)
+        test_engine = TestEngine(profile, output_dir, wiki_path,
+                                 module_filter=module_filter, max_files=max_files)
         
         # 如果有 TD 内容，注入给 Test
         test_kwargs = {"prd_text": prd_text}
@@ -433,6 +448,8 @@ def main():
     parser.add_argument("--wiki-path", help="Wiki engine path")
     parser.add_argument("--stages", help="Stages for prdtdd: review,td,plan,test,automation")
     parser.add_argument("--incremental", action="store_true", help="Enable incremental scanning (skip unchanged files)")
+    parser.add_argument("--module", help="Module scope filter (e.g. 'share', 'adgroup') — only scan relevant packages")
+    parser.add_argument("--max-files", type=int, help="Max files per repo to scan (overrides profile default)")
     parser.add_argument("--prd-key", help="Specific PRD key for evaluation: new_feature/enhancement/high_risk_change")
     args = parser.parse_args()
     
@@ -469,7 +486,10 @@ def main():
         
         if mode == "learn":
             output = os.path.join(args.output_dir, "knowledge")
-            result = run_learn_mode(profile_path, output, args.wiki_path, incremental=args.incremental)
+            result = run_learn_mode(profile_path, output, args.wiki_path,
+                                    incremental=args.incremental,
+                                    module_filter=args.module,
+                                    max_files=args.max_files)
             results["learn"] = result
             
         elif mode == "prdtdd":
@@ -477,7 +497,10 @@ def main():
             if not args.text:
                 print("ERROR: --text is required for prdtdd mode")
                 sys.exit(1)
-            result = run_prdtdd_mode(profile, args.text, output, stages)
+            result = run_prdtdd_mode(profile, args.text, output, stages,
+                                     wiki_path=args.wiki_path,
+                                     module_filter=args.module,
+                                     max_files=args.max_files)
             results["prdtdd"] = result
             
         elif mode == "auto":
@@ -485,7 +508,8 @@ def main():
             if not args.text:
                 print("ERROR: --text is required for auto mode")
                 sys.exit(1)
-            result = run_auto_mode(profile, args.text, output, args.wiki_path)
+            result = run_auto_mode(profile, args.text, output, args.wiki_path,
+                                   module_filter=args.module, max_files=args.max_files)
             results["auto"] = result
             
         else:

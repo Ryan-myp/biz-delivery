@@ -4,16 +4,21 @@
     {
       "path": "/Users/yanping.ma/GolandProjects/conc",
       "language": "go",
-      "name": "conc"
+      "name": "conc",
+      "max_files": 2000
     },
     {
       "path": "/Users/yanping.ma/GolandProjects/eino",
       "language": "go",
-      "name": "eino"
+      "name": "eino",
+      "max_files": 2000
     }
   ],
   "evidence_sources": {
     "code": true,
     "graph": true
+  },
+  "learn_config": {
+    "max_files_per_lang": 2000
   }
 }

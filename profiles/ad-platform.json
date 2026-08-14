@@ -5,19 +5,22 @@
       "path": "/Users/yanping.ma/GolandProjects/ad_smart_delivery_platform",
       "language": "go",
       "name": "adp",
-      "description": "广告交付平台"
+      "description": "广告交付平台",
+      "max_files": 2000
     },
     {
       "path": "/Users/yanping.ma/GolandProjects/creative-platform",
       "language": "go",
       "name": "creative-platform",
-      "description": "创意平台"
+      "description": "创意平台",
+      "max_files": 2000
     },
     {
       "path": "/Users/yanping.ma/GolandProjects/eino",
       "language": "go",
       "name": "eino",
-      "description": "Agent 编排框架"
+      "description": "Agent 编排框架",
+      "max_files": 2000
     }
   ],
   "evidence_sources": {
@@ -42,5 +45,8 @@
       "approve",
       "reject"
     ]
+  },
+  "learn_config": {
+    "max_files_per_lang": 2000
   }
 }

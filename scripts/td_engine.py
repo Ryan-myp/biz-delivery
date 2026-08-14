@@ -23,8 +23,10 @@ from base_engine import EngineBase
 class TDEngine(EngineBase):
     """技术方案生成引擎"""
     
-    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None):
-        super().__init__(profile, output_dir, wiki_path)
+    def __init__(self, profile: dict, output_dir: str, wiki_path: Optional[str] = None,
+                 module_filter: Optional[str] = None, max_files: Optional[int] = None):
+        super().__init__(profile, output_dir, wiki_path,
+                         module_filter=module_filter, max_files=max_files)
 
     def generate_td(self, prd_text: str, review_report: Optional[str] = None) -> dict:
         """生成技术方案

@@ -21,7 +21,8 @@
         "**/handler.go",
         "**/server.go",
         "**/*_module.go"
-      ]
+      ],
+      "max_files": 2000
     }
   ],
   "evidence_sources": {
@@ -160,5 +161,8 @@
       "定向投放",
       "受众"
     ]
+  },
+  "learn_config": {
+    "max_files_per_lang": 2000
   }
 }

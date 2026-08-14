@@ -55,11 +55,11 @@ class CodeKnowledgeExtractor:
         else:
             return {"error": f"Unsupported language: {self.language}"}
     
-    def _extract_go(self) -> Dict[str, Any]:
+    def _extract_go(self, max_files: int = 2000) -> Dict[str, Any]:
         """提取 Go 代码知识"""
         packages = {}
-        
-        for go_file in list(self.repo_path.rglob("**/*.go"))[:500]:
+
+        for go_file in list(self.repo_path.rglob("**/*.go"))[:max_files]:
             if "test" in go_file.name.lower() or "mock" in go_file.name.lower():
                 continue
             
@@ -1002,7 +1002,7 @@ class GoScanner:
                 params.append({"name": "", "type": tokens[0]})
         return params
     
-    def scan_directory(self, dir_path: Path, max_files: int = 500,
+    def scan_directory(self, dir_path: Path, max_files: int = 2000,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
         """扫描整个目录 — 使用 ripgrep 批量扫描（加速版）
         
@@ -1144,7 +1144,7 @@ class GoScanner:
                 return
         
         # 第一步：构建全局函数名 → 文件映射 + 方法体缓存
-        all_go_files = list(dir_path.rglob("**/*.go"))[:1000] + list(dir_path.rglob("**/*.py"))[:500] + list(dir_path.rglob("**/*.java"))[:500]
+        all_go_files = list(dir_path.rglob("**/*.go"))[:2000] + list(dir_path.rglob("**/*.py"))[:1000] + list(dir_path.rglob("**/*.java"))[:1000]
         func_to_files = {}
         func_bodies = {}  # (file, func_name) → body_text
         
@@ -3563,7 +3563,7 @@ class PythonScanner:
         
         return result
     
-    def scan_directory(self, dir_path: Path, max_files: int = 500,
+    def scan_directory(self, dir_path: Path, max_files: int = 2000,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
         """扫描整个目录 — 支持增量扫描
         
@@ -3795,7 +3795,7 @@ class JavaScanner:
         
         return result
     
-    def scan_directory(self, dir_path: Path, max_files: int = 500,
+    def scan_directory(self, dir_path: Path, max_files: int = 2000,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
         """扫描整个目录 — 支持增量扫描
         
@@ -4653,8 +4653,9 @@ def _clean_handler(handler: str) -> str:
     return handler.strip()
 
 
-def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str] = None, 
-                     knowledge_base_dir: Optional[str] = None, incremental: bool = False):
+def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str] = None,
+                     knowledge_base_dir: Optional[str] = None, incremental: bool = False,
+                     module_filter: Optional[str] = None, max_files: Optional[int] = None):
     """
     learn 模式主入口
     
@@ -4683,7 +4684,16 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         sys.exit(1)
     
     learn_config = profile.get("learn_config", {})
-    max_files = learn_config.get("max_files_per_lang", 500)
+    # max_files: explicit arg > profile config > dynamic estimate (no hard 500 limit)
+    if max_files is not None:
+        max_files = max_files
+    else:
+        profile_max = learn_config.get("max_files_per_lang", 0)
+        if profile_max > 0:
+            max_files = profile_max
+        else:
+            # Dynamic estimate based on actual repo size
+            max_files = 2000  # fallback for backward compatibility
     
     # 2. 增量扫描准备
     incremental_scanner = None
@@ -4802,7 +4812,7 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
         from code_graph_builder import CodeGraphBuilder
         print(f"  🔗 Building code graph from {all_ir[0].repo_path}...")
         builder = CodeGraphBuilder(all_ir[0].repo_name, all_ir[0].repo_path)
-        graph = builder.build(lang=all_ir[0].language, max_files=500)
+        graph = builder.build(lang=all_ir[0].language, max_files=max_files)
         
         # 提取图谱关键数据
         route_handler_map = []
