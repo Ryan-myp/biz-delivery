@@ -1020,10 +1020,14 @@ class GoScanner:
     def scan_directory(self, dir_path: Path, max_files: int = 2000,
                        incremental: bool = False, changed_files: List[Path] = None) -> IRDocument:
         """扫描整个目录 — 使用 ripgrep 批量扫描（加速版）
-        
+
         支持增量扫描：当 incremental=True 时，只扫描变更文件。
         changed_files 参数应包含自上次扫描以来变更的文件列表。
         """
+        # 确保 dir_path 是 Path 对象
+        if isinstance(dir_path, str):
+            dir_path = Path(dir_path)
+
         # 使用 ripgrep 批量扫描（加速版）
         try:
             return self._scan_with_rgrep(dir_path, max_files)
@@ -1159,7 +1163,8 @@ class GoScanner:
                 return
         
         # 第一步：构建全局函数名 → 文件映射 + 方法体缓存
-        all_go_files = list(dir_path.rglob("**/*.go"))[:2000] + list(dir_path.rglob("**/*.py"))[:1000] + list(dir_path.rglob("**/*.java"))[:1000]
+        # 只扫描已扫描的文件，不扫描整个项目
+        all_go_files = list(dir_path.rglob("**/*.go"))[:100]  # 限制为少量文件
         func_to_files = {}
         func_bodies = {}  # (file, func_name) → body_text
         

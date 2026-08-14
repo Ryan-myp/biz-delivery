@@ -412,3 +412,49 @@
 ## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
 
 ## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 4 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 6 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 3 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 13 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 30 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 5 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 1 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 0 created, 0 updated
+
+## [2026-06-09] kb_to_wiki ingest | 4 created, 0 updated

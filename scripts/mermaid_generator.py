@@ -663,7 +663,10 @@ class MermaidGenerator:
             else:
                 name = getattr(ec, 'name', 'UNKNOWN')
                 code = getattr(ec, 'code', '000')
-            
+
+            # 确保 code 是字符串
+            code = str(code) if code is not None else '000'
+
             if code.startswith('4'):
                 http_status = '4xx Client Error'
             elif code.startswith('5'):

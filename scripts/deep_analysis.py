@@ -20,204 +20,310 @@ import argparse
 import json
 import sys
 import time
+import signal
 from pathlib import Path
 from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 
-def run_full_analysis(project_path: str, output_dir: str, 
+# ── 超时处理 ─────────────────────────────────────────────────
+
+class TimeoutError(Exception):
+    pass
+
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError("Stage timeout")
+
+
+def _run_with_timeout(fn, *args, timeout: int = 120, stage_name: str = "") -> Dict:
+    """带超时的步骤执行，失败不中断整体流程."""
+    print(f"🔍 {stage_name}...")
+    try:
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
+        result = fn(*args)
+        signal.alarm(0)
+        return result or {}
+    except TimeoutError:
+        msg = f"{stage_name} 超时 ({timeout}s)"
+        print(f"   ⚠️  {msg}, 跳过")
+        return {"_timeout": True, "_error": msg}
+    except Exception as e:
+        msg = f"{stage_name} 失败: {e}"
+        print(f"   ❌ {msg}")
+        return {"_error": msg}
+
+
+# ── 主分析函数 ───────────────────────────────────────────────
+
+def run_full_analysis(project_path: str, output_dir: str,
                       max_files: Optional[int] = None,
                       include_cross_repo: bool = False,
-                      cross_repo_paths: Optional[List[str]] = None) -> Dict:
+                      cross_repo_paths: Optional[List[str]] = None,
+                      stage_timeout: int = 120) -> Dict:
     """运行完整分析流程."""
     t0 = time.time()
-    results = {"stages": {}, "total_time": 0, "errors": []}
-    
-    # ── Stage 1: 项目检测 ────────────────────────────────────────
-    from project_auto_detector import detect_project, generate_profile
-    print("🔍 Stage 1: 项目检测...")
-    det = detect_project(project_path)
-    if "error" in det:
-        results["errors"].append(det["error"])
+    results = {"stages": {}, "total_time": 0, "errors": [], "warnings": []}
+
+    # ── Stage 1: 项目检测 ──────────────────────────────────────
+    det = _run_with_timeout(_detect_project, project_path, timeout=30,
+                           stage_name="Stage 1: 项目检测")
+    if "_error" in det:
+        results["errors"].append(det["_error"])
+        results["total_time"] = time.time() - t0
         return results
-    
-    profile = generate_profile(det)
+
+    profile = _run_with_timeout(_generate_profile, det, timeout=10,
+                               stage_name="Stage 1b: 生成Profile")
     results["stages"]["detection"] = det
-    print(f"   语言={det['language']} 框架={det['framework']} 架构={det['architecture']} "
-          f"规模={det['scale']} 文件数={det['total_files']}")
-    
+    results["stages"]["profile"] = profile
+    lang = det.get("language", "go")
+    repo_max = max_files or det.get("max_files", 2000)
+
+    # 大项目降速策略
+    if det.get("scale") == "large" and repo_max > 2000:
+        repo_max = min(repo_max, 1500)
+        results["warnings"].append(f"大项目降速: max_files={repo_max}")
+        print(f"   ⚠️  大项目降速优化: max_files={repo_max}")
+
     # ── Stage 2: 代码库扫描 ──────────────────────────────────────
-    print("🔍 Stage 2: 代码库扫描...")
+    scan_result = _run_with_timeout(
+        _scan_codebase, project_path, lang, repo_max,
+        timeout=180, stage_name="Stage 2: 代码库扫描"
+    )
+    results["stages"]["scan"] = scan_result
+    if "_error" in scan_result:
+        results["errors"].append(scan_result["_error"])
+        ir = None
+    else:
+        ir = scan_result.get("ir")
+
+    # ── Stage 3: 业务流程提取 ─────────────────────────────────────
+    if lang == "go" and ir is not None:
+        go_flows = _run_with_timeout(
+            _analyze_go_flows, project_path, ir,
+            timeout=180, stage_name="Stage 3: Go流程提取"
+        )
+        results["stages"]["go_flows"] = go_flows
+        if "_error" not in go_flows:
+            ir.go_business_flows = go_flows.get("flows", {})
+
+        spex_flows = _run_with_timeout(
+            _analyze_spex, project_path,
+            timeout=120, stage_name="Stage 3b: SPX分析"
+        )
+        results["stages"]["spex_flows"] = spex_flows
+        if "_error" not in spex_flows:
+            ir.spex_business_flows = spex_flows.get("traces", {})
+
+        yaml_wf = _run_with_timeout(
+            _analyze_yaml_workflows, project_path,
+            timeout=60, stage_name="Stage 3c: YAML工作流"
+        )
+        results["stages"]["yaml_workflows"] = yaml_wf
+
+    # ── Stage 4: 架构模式检测 ────────────────────────────────────
+    pattern_result = _run_with_timeout(
+        _detect_patterns, project_path,
+        timeout=60, stage_name="Stage 4: 模式检测"
+    )
+    results["stages"]["patterns"] = pattern_result
+    if "_error" not in pattern_result and ir is not None:
+        ir.architectural_patterns = pattern_result
+
+    # ── Stage 5: 跨仓库分析 ──────────────────────────────────────
+    if include_cross_repo and cross_repo_paths:
+        cross_result = _run_with_timeout(
+            _analyze_cross_repo, project_path, cross_repo_paths,
+            timeout=180, stage_name="Stage 5: 跨仓库分析"
+        )
+        results["stages"]["cross_repo"] = cross_result
+
+    # ── Stage 6: 生成 Mermaid 图 ─────────────────────────────────
+    diagram_result = _run_with_timeout(
+        _generate_diagrams, ir, results.get("stages", {}),
+        timeout=60, stage_name="Stage 6: Mermaid图生成"
+    )
+    results["stages"]["diagrams"] = diagram_result
+
+    # ── Stage 7: 生成业务摘要 ────────────────────────────────────
+    summary = _generate_executive_summary(det, ir, results)
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    (out_path / "summary.md").write_text(summary, encoding="utf-8")
+    results["stages"]["summary"] = {"output": str(out_path / "summary.md")}
+
+    # ── 保存完整结果 ─────────────────────────────────────────────
+    results["total_time"] = time.time() - t0
+    results["ir_summary"] = {
+        "language": det.get("language"),
+        "framework": det.get("framework"),
+        "architecture": det.get("architecture"),
+        "scale": det.get("scale"),
+        "total_files": det.get("total_files", 0),
+        "structs": len(ir.structs) if ir else 0,
+        "functions": len(ir.functions) if ir else 0,
+        "routes": len(ir.routes) if ir else 0,
+    }
+
+    output_json = out_path / "analysis_result.json"
+    output_json.write_text(json.dumps(_make_serializable(results), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(f"\n✅ 分析完成! 耗时 {results['total_time']:.1f}s")
+    print(f"   输出目录: {output_dir}")
+    print(f"   摘要文件: {out_path / 'summary.md'}")
+    if results["errors"]:
+        print(f"   ⚠️  错误数: {len(results['errors'])}")
+    if results["warnings"]:
+        print(f"   ⚠️  警告数: {len(results['warnings'])}")
+
+    return results
+
+
+# ── 各阶段实现 ────────────────────────────────────────────────
+
+def _detect_project(path: str) -> Dict:
+    from project_auto_detector import detect_project
+    return detect_project(path)
+
+
+def _generate_profile(det: Dict) -> Dict:
+    from project_auto_detector import generate_profile
+    return generate_profile(det)
+
+
+def _scan_codebase(path: str, language: str, max_files: int) -> Dict:
     from learn_repo import GoScanner, PythonScanner, JavaScanner
-    lang = det["language"]
-    repo_max = max_files or det["max_files"]
-    
     scanner_map = {"go": GoScanner, "python": PythonScanner, "java": JavaScanner}
-    scanner_cls = scanner_map.get(lang, GoScanner)
+    scanner_cls = scanner_map.get(language, GoScanner)
     scanner = scanner_cls()
-    
-    ir = scanner.scan_directory(Path(project_path), max_files=repo_max)
-    results["stages"]["scan"] = {
-        "language": lang,
+    ir = scanner.scan_directory(Path(path), max_files=max_files)
+    return {
+        "ir": ir,
         "structs": len(ir.structs),
         "functions": len(ir.functions),
         "routes": len(ir.routes),
         "entry_points": len(ir.entry_points),
     }
-    print(f"   {len(ir.structs)} structs, {len(ir.functions)} functions, "
-          f"{len(ir.routes)} routes, {len(ir.entry_points)} entry points")
-    
-    # ── Stage 3: 业务流程提取 ─────────────────────────────────────
-    print("🔍 Stage 3: 业务流程提取...")
-    if lang == "go":
-        from go_flow_analyzer import analyze_go_agent, analyze_spex_processors
-        from deep_flow_extractor import extract_deep_flows
-        
-        # 找 agent 目录
-        agent_dirs = []
-        for pattern in ["app/agent", "app/*/agent", "app/admin/agent"]:
-            for d in Path(project_path).rglob(pattern.split("/")[-1]):
-                if (d / "workflow").exists():
-                    agent_dirs.append(str(d))
-        
-        if agent_dirs:
-            # Go 源码分析
-            try:
-                go_result = analyze_go_agent(agent_dirs[0], [project_path])
-                ir.go_business_flows[agent_dirs[0]] = go_result
-                entries = go_result.get("entry_points", [])
-                results["stages"]["go_flows"] = {"entries": len(entries)}
-            except Exception as e:
-                results["errors"].append(f"go_flows: {e}")
-            
-            # SPX 处理器分析
-            spex_dir = Path(project_path) / "app" / "admin" / "spexprocessor"
-            if spex_dir.exists():
-                try:
-                    spex_result = analyze_spex_processors(project_path)
-                    ir.spex_business_flows[project_path] = spex_result
-                    traces = spex_result.get("traces", {})
-                    results["stages"]["spex_flows"] = {"traces": len(traces)}
-                except Exception as e:
-                    results["errors"].append(f"spex_flows: {e}")
-            
-            # YAML 工作流分析
-            try:
-                deep_result = extract_deep_flows(agent_dirs, [project_path])
-                ir.agent_workflows = deep_result
-                total_wf = sum(len(d.get("workflows", {})) for d in deep_result.values())
-                results["stages"]["yaml_workflows"] = {"workflows": total_wf}
-            except Exception as e:
-                results["errors"].append(f"yaml_workflows: {e}")
-    
-    # ── Stage 4: 架构模式检测 ────────────────────────────────────
-    print("🔍 Stage 4: 架构模式检测...")
-    try:
-        from go_flow_analyzer import analyze_patterns
-        pattern_results = analyze_patterns([project_path])
-        ir.architectural_patterns = pattern_results
-        results["stages"]["patterns"] = {
-            "state_machines": len(pattern_results.get("state_machines", [])),
-            "redis_locks": len(pattern_results.get("redis_locks", [])),
-            "kafka_consumers": len(pattern_results.get("kafka_patterns", [])),
-            "retry_logic": len(pattern_results.get("retry_logic", [])),
-            "idempotency": len(pattern_results.get("idempotency", [])),
-            "task_groups": len(pattern_results.get("task_group_patterns", [])),
-            "enums": len(pattern_results.get("enums", [])),
-        }
-        print(f"   状态机={results['stages']['patterns']['state_machines']}, "
-              f"Redis锁={results['stages']['patterns']['redis_locks']}, "
-              f"Kafka={results['stages']['patterns']['kafka_consumers']}, "
-              f"枚举={results['stages']['patterns']['enums']}")
-    except Exception as e:
-        results["errors"].append(f"patterns: {e}")
-    
-    # ── Stage 5: 跨仓库分析 ──────────────────────────────────────
-    if include_cross_repo and cross_repo_paths:
-        print("🔍 Stage 5: 跨仓库调用分析...")
+
+
+def _analyze_go_flows(path: str, ir) -> Dict:
+    from go_flow_analyzer import analyze_go_agent
+    from deep_flow_extractor import extract_deep_flows
+
+    # 找 agent 目录
+    agent_dirs = []
+    for pattern in ["app/agent", "app/*/agent", "app/admin/agent"]:
+        parts = pattern.split("/")
+        for d in Path(path).rglob(parts[-1]):
+            if (d / "workflow").exists():
+                agent_dirs.append(str(d))
+
+    flows = {}
+    if agent_dirs:
         try:
-            from cross_repo_flow import analyze_cross_repo
-            all_paths = [project_path] + cross_repo_paths
-            cross_result = analyze_cross_repo(all_paths, max_files=3000)
-            results["stages"]["cross_repo"] = {
-                "calls": len(cross_result.get("calls", [])),
-                "services": len(set(
-                    c.get("caller", "").split("/")[-3] 
-                    for c in cross_result.get("calls", [])
-                )),
-            }
-            print(f"   跨仓库调用={results['stages']['cross_repo']['calls']}")
+            result = analyze_go_agent(agent_dirs[0], [path])
+            flows[agent_dirs[0]] = result
         except Exception as e:
-            results["errors"].append(f"cross_repo: {e}")
-    
-    # ── Stage 6: 生成 Mermaid 图 ─────────────────────────────────
-    print("🔍 Stage 6: 生成 Mermaid 流程图...")
+            return {"_error": f"go_agent: {e}"}
+
+    try:
+        deep_result = extract_deep_flows(agent_dirs, [path])
+        ir.agent_workflows = deep_result
+    except Exception:
+        pass
+
+    return {"flows": flows}
+
+
+def _analyze_spex(path: str) -> Dict:
+    from go_flow_analyzer import analyze_spex_processors
+    spex_dir = Path(path) / "app" / "admin" / "spexprocessor"
+    if not spex_dir.exists():
+        return {"_skipped": "spexprocessor目录不存在"}
+    try:
+        result = analyze_spex_processors(path)
+        return {"traces": result.get("traces", {})}
+    except Exception as e:
+        return {"_error": f"spex: {e}"}
+
+
+def _analyze_yaml_workflows(path: str) -> Dict:
+    from deep_flow_extractor import extract_deep_flows
+    agent_dirs = []
+    for pattern in ["app/agent", "app/*/agent"]:
+        parts = pattern.split("/")
+        for d in Path(path).rglob(parts[-1]):
+            if (d / "workflow").exists():
+                agent_dirs.append(str(d))
+    try:
+        result = extract_deep_flows(agent_dirs, [path])
+        total = sum(len(d.get("workflows", {})) for d in result.values())
+        return {"workflows": total, "agents": len(result)}
+    except Exception as e:
+        return {"_error": str(e)}
+
+
+def _detect_patterns(path: str) -> Dict:
+    from go_flow_analyzer import analyze_patterns
+    return analyze_patterns([path])
+
+
+def _analyze_cross_repo(path: str, cross_paths: List[str]) -> Dict:
+    from cross_repo_flow import analyze_cross_repo
+    all_paths = [path] + cross_paths
+    result = analyze_cross_repo(all_paths, max_files=2000)
+    calls = result.get("calls", [])
+    services = set()
+    for c in calls:
+        caller = c.get("caller", "")
+        pkg = caller.split("/")
+        if len(pkg) >= 3:
+            services.add(pkg[-3])
+    return {"calls": len(calls), "services": len(services)}
+
+
+def _generate_diagrams(ir, stages: Dict) -> Dict:
+    from mermaid_generator import MermaidGenerator
+
+    # 确保 flow_data 中的 cross_repo 是 dict
+    cross_repo_val = stages.get("cross_repo", {})
+    if not isinstance(cross_repo_val, dict):
+        cross_repo_val = {}
+
+    # 转换 entry_points 格式（IRDocument 是字符串列表，Mermaid 需要 dict）
+    raw_entry_points = getattr(ir, "entry_points", []) or []
+    if raw_entry_points and isinstance(raw_entry_points[0], str):
+        entry_points = [{"name": ep, "file": "", "calls": []} for ep in raw_entry_points[:10]]
+    else:
+        entry_points = raw_entry_points[:10]
+
     flow_data = {
         "spex_traces": getattr(ir, "spex_business_flows", {}) or {},
         "go_flows": getattr(ir, "go_business_flows", {}) or {},
         "patterns": getattr(ir, "architectural_patterns", {}) or {},
-        "cross_repo": results.get("stages", {}).get("cross_repo", {}),
-        "entry_points": getattr(ir, "entry_points", [])[:10],
+        "cross_repo": cross_repo_val,
+        "entry_points": entry_points,
     }
-    
-    try:
-        from mermaid_generator import MermaidGenerator
-        gen = MermaidGenerator({
-            "packages": getattr(ir, "packages", {}) or {},
-            "call_graph": getattr(ir, "call_graph", []) or [],
-            "entity_tables": getattr(ir, "entity_tables", []) or [],
-            "routes": getattr(ir, "routes", []) or [],
-            "functions": getattr(ir, "functions", []) or [],
-            "services": getattr(ir, "services", []) or [],
-            "core_flows": getattr(ir, "core_flows", []) or [],
-            "structs": getattr(ir, "structs", []) or [],
-            "error_codes": getattr(ir, "error_codes", []) or [],
-            "configs": getattr(ir, "configs", []) or [],
-        }, flow_data=flow_data)
-        
-        diagrams = gen.generate_all_diagrams()
-        out_path = Path(output_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
-        
-        diagram_count = 0
-        for name, content in diagrams.items():
-            if content and "mermaid" in content.lower():
-                (out_path / f"{name}.md").write_text(content, encoding="utf-8")
-                diagram_count += 1
-        
-        results["stages"]["diagrams"] = {"count": diagram_count}
-        print(f"   生成 {diagram_count} 张 Mermaid 图")
-    except Exception as e:
-        results["errors"].append(f"diagrams: {e}")
-    
-    # ── Stage 7: 生成业务摘要 ────────────────────────────────────
-    print("🔍 Stage 7: 生成业务摘要...")
-    summary = _generate_executive_summary(det, ir, results)
-    (Path(output_dir) / "summary.md").write_text(summary, encoding="utf-8")
-    
-    # ── 保存完整结果 ─────────────────────────────────────────────
-    results["total_time"] = time.time() - t0
-    results["ir_summary"] = {
-        "language": det["language"],
-        "framework": det["framework"],
-        "architecture": det["architecture"],
-        "scale": det["scale"],
-        "total_files": det["total_files"],
-        "structs": len(ir.structs),
-        "functions": len(ir.functions),
-        "routes": len(ir.routes),
-        "entry_points": len(ir.entry_points),
-    }
-    
-    output_json = Path(output_dir) / "analysis_result.json"
-    output_json.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    
-    print(f"\n✅ 分析完成! 耗时 {results['total_time']:.1f}s")
-    print(f"   输出目录: {output_dir}")
-    print(f"   摘要文件: {output_json.parent / 'summary.md'}")
-    
-    return results
+
+    gen = MermaidGenerator({
+        "packages": getattr(ir, "packages", {}) or {},
+        "call_graph": getattr(ir, "call_graph", []) or [],
+        "entity_tables": getattr(ir, "entity_tables", []) or [],
+        "routes": getattr(ir, "routes", []) or [],
+        "functions": getattr(ir, "functions", []) or [],
+        "services": getattr(ir, "services", []) or [],
+        "core_flows": getattr(ir, "core_flows", []) or [],
+        "structs": getattr(ir, "structs", []) or [],
+        "error_codes": getattr(ir, "error_codes", []) or [],
+        "configs": getattr(ir, "configs", []) or [],
+    }, flow_data=flow_data)
+
+    diagrams = gen.generate_all_diagrams()
+    out_path = Path(".").absolute()  # Will be overwritten
+    return {"diagrams": diagrams}
 
 
 def _generate_executive_summary(det: Dict, ir, results: Dict) -> str:
@@ -242,15 +348,15 @@ def _generate_executive_summary(det: Dict, ir, results: Dict) -> str:
         "",
         f"| 指标 | 数量 |",
         f"|------|------|",
-        f"| Struct | {len(ir.structs)} |",
-        f"| Function | {len(ir.functions)} |",
-        f"| Route | {len(ir.routes)} |",
-        f"| Entry Points | {len(getattr(ir, 'entry_points', []))} |",
+        f"| Struct | {len(ir.structs) if ir else 0} |",
+        f"| Function | {len(ir.functions) if ir else 0} |",
+        f"| Route | {len(ir.routes) if ir else 0} |",
+        f"| Entry Points | {len(getattr(ir, 'entry_points', [])) if ir else 0} |",
         "",
     ]
-    
+
     # 业务逻辑
-    if hasattr(ir, 'business_logic') and ir.business_logic:
+    if ir and hasattr(ir, 'business_logic') and ir.business_logic:
         lines.append("## 二、核心业务流程")
         lines.append("")
         for bl in ir.business_logic[:5]:
@@ -259,9 +365,9 @@ def _generate_executive_summary(det: Dict, ir, results: Dict) -> str:
             desc = bl.get('description', '')[:100]
             lines.append(f"- `{route}` → `{handler}`: {desc}")
         lines.append("")
-    
+
     # 架构模式
-    patterns = getattr(ir, 'architectural_patterns', {})
+    patterns = getattr(ir, 'architectural_patterns', {}) if ir else {}
     if patterns:
         lines.append("## 三、架构模式")
         lines.append("")
@@ -269,44 +375,75 @@ def _generate_executive_summary(det: Dict, ir, results: Dict) -> str:
         if sm:
             lines.append("### 状态机")
             for item in sm[:5]:
-                lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']} — {item['pattern']}")
+                lines.append(f"- `{item['func']}` @ {item['file']}:{item['line']}")
+                states = item.get('states', item.get('transitions', []))
+                if states:
+                    lines.append(f"  {', '.join(states[:3])}")
             lines.append("")
-        
+
         redis = patterns.get('redis_locks', [])
         if redis:
             lines.append("### Redis 分布式锁")
             for item in redis[:5]:
                 lines.append(f"- `{item['func']}` — {item['desc']}")
             lines.append("")
-        
+
         retry = patterns.get('retry_logic', [])
         if retry:
             lines.append("### 重试机制")
             for item in retry[:5]:
                 lines.append(f"- `{item['func']}` — {item['desc']}")
             lines.append("")
-        
+
         kafka = patterns.get('kafka_patterns', [])
         if kafka:
             lines.append("### Kafka 消息队列")
             for item in kafka[:5]:
                 lines.append(f"- `{item['func']}` — {item['desc']}")
             lines.append("")
-    
-    # 跨仓库
-    stages = results.get("stages", {})
-    cross = stages.get("cross_repo", {})
-    if cross.get("calls"):
-        lines.append("## 四、跨仓库依赖")
+
+        enums = patterns.get('enums', [])
+        if enums:
+            lines.append("### 枚举/常量定义")
+            lines.append(f"检测到 {len(enums)} 组枚举定义")
+            for item in enums[:5]:
+                lines.append(f"- `{item['file']}` ({item['type']}, {item['count']}个): {', '.join(item['names'][:4])}")
+            lines.append("")
+
+    # 警告信息
+    warnings = results.get("warnings", [])
+    if warnings:
+        lines.append("## 四、注意事项")
         lines.append("")
-        lines.append(f"- 跨仓库调用: {cross['calls']}")
-        lines.append(f"- 涉及服务: {cross.get('services', 0)}")
+        for w in warnings[:5]:
+            lines.append(f"- ⚠️  {w}")
         lines.append("")
-    
+
     lines.append("---")
     lines.append(f"*Generated in {results.get('total_time', 0):.1f}s by biz-delivery deep analysis*")
-    
+
     return "\n".join(lines)
+
+
+def _make_serializable(obj):
+    """将对象转换为可JSON序列化的格式."""
+    import json
+    if isinstance(obj, dict):
+        return {k: _make_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_make_serializable(item) for item in obj]
+    elif hasattr(obj, '__dict__'):
+        # IRDocument 等自定义对象 → 转为 dict
+        return {k: _make_serializable(v) for k, v in obj.__dict__.items()
+                if not k.startswith('_')}
+    elif isinstance(obj, set):
+        return list(obj)
+    elif isinstance(obj, Path):
+        return str(obj)
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='replace')
+    else:
+        return obj
 
 
 if __name__ == "__main__":
@@ -316,12 +453,14 @@ if __name__ == "__main__":
     parser.add_argument("--max-files", type=int, default=None, help="最大扫描文件数")
     parser.add_argument("--cross-repo", action="store_true", help="启用跨仓库分析")
     parser.add_argument("--cross-paths", nargs="*", help="额外仓库路径")
+    parser.add_argument("--timeout", type=int, default=120, help="每步超时秒数")
     args = parser.parse_args()
-    
+
     run_full_analysis(
         project_path=args.path,
         output_dir=args.output,
         max_files=args.max_files,
         include_cross_repo=args.cross_repo,
         cross_repo_paths=args.cross_paths,
+        stage_timeout=args.timeout,
     )
