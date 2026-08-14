@@ -2649,13 +2649,35 @@ class ReviewEngine(EngineBase):
                 else:
                     prompt_parts.append(f"- **{name}**: {desc}")
             prompt_parts.append("")
+        # 服务拓扑
+        if profile_data.get("service_topology"):
+            prompt_parts.append("## 服务拓扑（从 profile 配置）")
+            for svc in profile_data["service_topology"].get("services", []):
+                name = svc.get("name", "unknown")
+                desc = svc.get("description", "")
+                deps = svc.get("dependencies", [])
+                if deps:
+                    prompt_parts.append(f"- **{name}**: {desc} → 依赖: {deps}")
+                else:
+                    prompt_parts.append(f"- **{name}**: {desc}")
+            prompt_parts.append("")
+
+        # 证据查询结果 — placed EARLY so it survives truncation
+        if filtered.get('evidence'):
+            prompt_parts.append("## 代码库证据（基于 PRD 关键词查询，按相关度加权）")
+            prompt_parts.append("")
+            prompt_parts.append("**权重规则**: function/route = 1.5x | struct = 1.2x | entity_table = 1.0x | business_logic = 0.8x")
+            prompt_parts.append("")
+            prompt_parts.extend(self._format_weighted_evidence(filtered.get('evidence', []), top_n=20))
+            prompt_parts.append("")
+
         # 注入知识摘要
         summary_file = Path(self.kb_dir) / "summary.md" if self.kb_dir else None
         if summary_file and summary_file.exists():
             prompt_parts.append("## 项目知识摘要（从代码自动提取）")
             prompt_parts.append(summary_file.read_text(encoding='utf-8'))
             prompt_parts.append("")
-        
+
         # 注入知识库（从 ryan-personal-knowledge 自动选择相关知识）
         kb_refs = self._get_kb_references(prd_text)
         if kb_refs:
@@ -2665,15 +2687,7 @@ class ReviewEngine(EngineBase):
             prompt_parts.append("")
 
         prompt_parts.append(self._build_test_coverage_section(ir))
-        
-        # 证据查询结果（使用 base_engine 共享格式化方法）
-        if filtered.get('evidence'):
-            prompt_parts.append("## 代码库证据（基于 PRD 关键词查询，按相关度加权）")
-            prompt_parts.append("")
-            prompt_parts.append("**权重规则**: function/route = 1.5x | struct = 1.2x | entity_table = 1.0x | business_logic = 0.8x")
-            prompt_parts.append("")
-            prompt_parts.extend(self._format_weighted_evidence(filtered.get('evidence', []), top_n=20))
-        
+
         # 预检查结果（从 _run_prechecks + _validate_business_rules 自动检测）
         if filtered.get('prechecks'):
             prompt_parts.append("## 预检查结果（自动检测）")
@@ -2963,9 +2977,8 @@ class ReviewEngine(EngineBase):
         prompt_parts.append("```")
         prompt_parts.append("")
         
-        prompt = "\n".join(prompt_parts)
+        prompt = self.build_prompt_with_budget(prompt_parts, engine="review")
         return prompt
-
     def _get_kb_references(self, prd_text: str) -> List[str]:
         """根据 PRD 内容，从知识库选择相关知识 — 通用版。
 

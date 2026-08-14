@@ -13,7 +13,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
 from learn_repo import GoScanner, IRDocument
@@ -54,7 +54,8 @@ def _truncate_to_budget(text: str, max_tokens: int, min_tokens: int = 100) -> Tu
     ratio = max_tokens / current_tokens
     trunc_len = int(len(text) * ratio)
     trunc_len = max(trunc_len, min_tokens * 3.5)
-    return text[:trunc_len] + "\n\n... [内容被截断，原始文本超出token限制]", current_tokens
+    truncated = text[:trunc_len] + "\n\n... [内容被截断，原始文本超出token限制]"
+    return truncated, _estimate_tokens(truncated)
 
 
 def _chunk_prompt(prompt: str, chunk_size_tokens: int = 8000,
@@ -171,14 +172,17 @@ class EngineBase:
             if repo_path and not Path(repo_path).exists():
                 print(f"⚠️  Repository path does not exist: {repo_path}")
 
-        # Infer kb_dir from profile or project structure
+        # Infer kb_dir and package_registry from profile or project structure
         self.kb_dir = None
+        self.package_registry = None
         repo_paths = [r.get("path", "") for r in self.repos if r.get("path")]
         if repo_paths:
             rp = Path(repo_paths[0])
             kb_candidate = rp.parent / "knowledge" / self.business_domain
             if kb_candidate.exists():
                 self.kb_dir = str(kb_candidate)
+            # Initialize package registry for Go repos
+            self._init_package_registry(rp)
 
     # ── Profile helpers ─────────────────────────
 
@@ -283,7 +287,61 @@ class EngineBase:
         print(f"  ⚠️  Module filter '{self.module_filter}' matched no items, using full IR")
         return ir
 
-    # ── Incremental / Parallel Scan Support ─────
+    # ── Package Registry ────────────────────────
+
+    def _init_package_registry(self, repo_path: Path):
+        """Initialize package registry for Go repos."""
+        lang = next((r.get("language", "go") for r in self.repos if r.get("path") == str(repo_path)), "go")
+        if lang != "go":
+            return
+        try:
+            from .package_registry import PackageRegistry
+            reg = PackageRegistry(str(repo_path), language="go")
+            if reg.load():
+                self.package_registry = reg
+            else:
+                # Build registry if not cached or stale
+                print(f"  🔧 Building package registry for {repo_path}...")
+                reg.build()
+                self.package_registry = reg
+        except Exception as e:
+            print(f"  ⚠️  Failed to init package registry: {e}")
+
+    def _get_relevant_packages(self, prd_keywords: List[str], max_packages: int = 15) -> Set[str]:
+        """Get packages relevant to PRD keywords using package registry."""
+        if not self.package_registry:
+            return set()
+        try:
+            relevant = self.package_registry.find_relevant_packages(prd_keywords, max_packages=max_packages)
+            result = set(relevant)
+            # Also include transitive dependencies
+            for pkg in relevant[:5]:  # top 5 most relevant
+                deps = self.package_registry.get_transitive_deps(pkg, depth=1)
+                result.update(deps)
+            return result
+        except Exception:
+            return set()
+
+    # ── Token-aware section limits ──────────────
+
+    def _compute_dynamic_limit(self, total_items: int, budget_per_section: int,
+                               avg_tokens_per_item: int = 40) -> int:
+        """Compute dynamic limit for a section based on token budget.
+
+        Args:
+            total_items: Total number of items available
+            budget_per_section: Token budget allocated for this section
+            avg_tokens_per_item: Approximate tokens per item (route ~40, struct ~60, etc.)
+
+        Returns:
+            Number of items to include (capped by total_items and effective max_files)
+        """
+        if total_items == 0:
+            return 0
+        max_by_budget = budget_per_section // max(avg_tokens_per_item, 1)
+        # Use a sensible default when max_files is not configured (e.g. in tests)
+        effective_max = max(self.max_files, 100) if self.max_files > 0 else 100
+        return min(total_items, max_by_budget, effective_max)
 
     def _get_scan_cache_dir(self) -> Optional[str]:
         """Infer a cache directory for incremental scanning."""
@@ -470,16 +528,30 @@ class EngineBase:
     # ── Evidence querying ───────────────────────
 
     def _query_evidence_for_prd(self, prd_text: str, cache_dir: str = "") -> dict:
-        """Query evidence from codebase using PRD keywords."""
+        """Query evidence from codebase using PRD keywords.
+
+        Evidence count is dynamically scaled based on IR size and context budget.
+        """
         from _common import query_evidence_for_prd as qefp
         profile_data = self._normalize_profile(self.profile)
+
+        # Dynamic evidence count: scale with IR size but cap at context budget
+        ir_size_estimate = len(prd_text) + sum(
+            len(getattr(self, attr, [])) * 50
+            for attr in ['business_domain', 'business_domain']
+        )
+        # Allocate ~4000 tokens for evidence (out of 16000 total budget)
+        evidence_budget = 4000
+        avg_tokens_per_evidence = 120  # each evidence item is ~100-150 tokens
+        dynamic_max = min(max(ir_size_estimate // 200, 30), evidence_budget // avg_tokens_per_evidence, 80)
+
         return qefp(
             prd_text=prd_text,
             profile=profile_data,
             wiki_path=self.wiki_path or "",
             cache_dir=cache_dir,
             top_k_per_query=5,
-            max_total=30,
+            max_total=dynamic_max,
             kb_dir=self.kb_dir,
         )
 
@@ -525,11 +597,14 @@ class EngineBase:
         return parts
 
     def _build_routes_section(self, ir: IRDocument, label: str = "关键路由", limit: int = 30) -> str:
-        """Format routes for prompt injection."""
+        """Format routes for prompt injection. Limit is dynamically computed from IR size."""
         if not ir.routes:
             return ""
-        lines = [f"## {label}（前{limit}条）"]
-        for route in ir.routes[:limit]:
+        # Dynamic limit: allocate ~2000 tokens for routes section
+        dynamic_limit = self._compute_dynamic_limit(len(ir.routes), budget_per_section=2000, avg_tokens_per_item=50)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
+        lines = [f"## {label}（前{actual_limit}条）"]
+        for route in ir.routes[:actual_limit]:
             method = getattr(route, 'method', 'GET').upper()
             path = getattr(route, 'path', '?')
             handler = getattr(route, 'handler', '?')
@@ -541,8 +616,11 @@ class EngineBase:
         """Format business logic call chains for prompt injection."""
         if not ir.business_logic:
             return ""
-        lines = [f"## {label}（入口点调用链）"]
-        for bl in ir.business_logic[:limit]:
+        # Dynamic limit: allocate ~3000 tokens (each entry is ~200-300 tokens)
+        dynamic_limit = self._compute_dynamic_limit(len(ir.business_logic), budget_per_section=3000, avg_tokens_per_item=250)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
+        lines = [f"## {label}（入口点调用链，前{actual_limit}个）"]
+        for bl in ir.business_logic[:actual_limit]:
             route = bl.get('route', '?')
             method = bl.get('method', 'GET')
             handler = bl.get('handler', '?')
@@ -565,8 +643,10 @@ class EngineBase:
         """Format entity-table mappings for prompt injection."""
         if not ir.entity_tables:
             return ""
-        lines = ["## Entity-Table 映射（前{}张）".format(limit)]
-        for et in ir.entity_tables[:limit]:
+        dynamic_limit = self._compute_dynamic_limit(len(ir.entity_tables), budget_per_section=1500, avg_tokens_per_item=30)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
+        lines = ["## Entity-Table 映射（前{}张）".format(actual_limit)]
+        for et in ir.entity_tables[:actual_limit]:
             entity = et.get('entity', '?') if isinstance(et, dict) else '?'
             table = et.get('table', '?') if isinstance(et, dict) else '?'
             lines.append(f"- `{entity}` → `{table}`")
@@ -577,8 +657,10 @@ class EngineBase:
         """Format error codes for prompt injection."""
         if not ir.error_codes:
             return ""
-        lines = ["## 错误码（前{}个）".format(limit)]
-        for ec in ir.error_codes[:limit]:
+        dynamic_limit = self._compute_dynamic_limit(len(ir.error_codes), budget_per_section=2000, avg_tokens_per_item=40)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
+        lines = ["## 错误码（前{}个）".format(actual_limit)]
+        for ec in ir.error_codes[:actual_limit]:
             name = ec.get('name', '?') if isinstance(ec, dict) else '?'
             code = ec.get('code', '?') if isinstance(ec, dict) else '?'
             msg = ec.get('message', '') if isinstance(ec, dict) else ''
@@ -602,8 +684,10 @@ class EngineBase:
         """Format SQL operations for prompt injection."""
         if not ir.sql_operations:
             return ""
-        lines = ["## SQL 操作示例（前{}个）".format(limit)]
-        for sq in ir.sql_operations[:limit]:
+        dynamic_limit = self._compute_dynamic_limit(len(ir.sql_operations), budget_per_section=1500, avg_tokens_per_item=50)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
+        lines = ["## SQL 操作示例（前{}个）".format(actual_limit)]
+        for sq in ir.sql_operations[:actual_limit]:
             op = sq.get('sql_operation', '?') if isinstance(sq, dict) else '?'
             table = sq.get('table', '?') if isinstance(sq, dict) else '?'
             file = sq.get('file', '?') if isinstance(sq, dict) else '?'
@@ -630,8 +714,11 @@ class EngineBase:
         """Format core business flows for prompt injection."""
         if not hasattr(ir, 'core_flows') or not ir.core_flows:
             return ""
+        # Dynamic: allocate ~2000 tokens, each flow is ~200 tokens
+        dynamic_limit = self._compute_dynamic_limit(len(ir.core_flows), budget_per_section=2000, avg_tokens_per_item=200)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
         lines = ["## 核心业务流程（从代码自动推断）"]
-        for cf in ir.core_flows[:limit]:
+        for cf in ir.core_flows[:actual_limit]:
             flow_name = cf.get('flow_name', '?')
             entry_point = cf.get('entry_point', '?')
             route_prefix = cf.get('route_prefix', '?')
@@ -650,8 +737,10 @@ class EngineBase:
         """Format package structure for architecture diagram generation."""
         if not hasattr(ir, 'packages') or not ir.packages:
             return ""
+        dynamic_limit = self._compute_dynamic_limit(len(ir.packages), budget_per_section=3000, avg_tokens_per_item=100)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
         lines = ["## 包结构（用于架构图生成）"]
-        for pkg_name, pkg_data in list(ir.packages.items())[:limit]:
+        for pkg_name, pkg_data in list(ir.packages.items())[:actual_limit]:
             files = pkg_data.get('files', []) if isinstance(pkg_data, dict) else []
             funcs = pkg_data.get('functions', []) if isinstance(pkg_data, dict) else []
             structs = pkg_data.get('structs', {}) if isinstance(pkg_data, dict) else {}
@@ -669,8 +758,10 @@ class EngineBase:
         """Format call graph edges for service relationship diagrams."""
         if not hasattr(ir, 'call_graph') or not ir.call_graph:
             return ""
+        dynamic_limit = self._compute_dynamic_limit(len(ir.call_graph), budget_per_section=2000, avg_tokens_per_item=40)
+        actual_limit = min(limit, dynamic_limit) if limit > 0 else dynamic_limit
         lines = ["## 调用关系（用于服务关系图）"]
-        for edge in ir.call_graph[:limit]:
+        for edge in ir.call_graph[:actual_limit]:
             if isinstance(edge, dict):
                 caller = edge.get('caller', '?')
                 callee = edge.get('callee', '?')
