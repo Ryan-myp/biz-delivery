@@ -267,8 +267,9 @@ def _analyze_yaml_workflows(path: str) -> Dict:
 
 
 def _detect_patterns(path: str) -> Dict:
-    from go_flow_analyzer import analyze_patterns
-    return analyze_patterns([path])
+    """使用通用模式检测器."""
+    from universal_pattern_detector import detect_patterns
+    return detect_patterns([path])
 
 
 def _analyze_cross_repo(path: str, cross_paths: List[str]) -> Dict:
