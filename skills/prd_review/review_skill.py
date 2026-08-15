@@ -22,73 +22,73 @@ class PRDReviewSkill(SkillBase):
         },
         "missing_requirements": {
             "name": "缺少需求描述",
-            "pattern": r"##\s*(需求|功能|业务目标)",
+            "pattern": r"##[^\n]*?(需求|功能)",
             "severity": "P0",
             "message": "PRD 应包含需求描述章节",
         },
         "missing_goals": {
             "name": "缺少业务目标",
-            "pattern": r"##\s*(业务目标|目标|goal|目的|背景)",
+            "pattern": r"##[^\n]*?(业务目标|目标|背景)",
             "severity": "P0",
             "message": "PRD 应说明业务目标和背景",
         },
         "missing_timeline": {
             "name": "缺少时间规划",
-            "pattern": r"##\s*(时间|排期|里程碑|schedule)",
+            "pattern": r"##[^\n]*?(时间|排期|里程碑)",
             "severity": "P1",
             "message": "PRD 应包含时间规划章节",
         },
         "missing_dependencies": {
             "name": "缺少依赖说明",
-            "pattern": r"##\s*(依赖|前置|依赖项|dependency)",
+            "pattern": r"##[^\n]*?(依赖|前置)",
             "severity": "P1",
             "message": "PRD 应说明依赖关系",
         },
         "missing_rollback": {
             "name": "缺少回滚方案",
-            "pattern": r"##\s*(回滚|rollback|降级|fallback)",
+            "pattern": r"##[^\n]*?(回滚|降级)",
             "severity": "P1",
             "message": "PRD 应包含回滚方案",
         },
         "missing_monitoring": {
             "name": "缺少监控方案",
-            "pattern": r"##\s*(监控|monitoring|告警|alert)",
+            "pattern": r"##[^\n]*?(监控|告警)",
             "severity": "P2",
             "message": "PRD 应包含监控方案",
         },
         "missing_risk": {
             "name": "缺少风险评估",
-            "pattern": r"##\s*(风险|risk|预案|contingency)",
+            "pattern": r"##[^\n]*?(风险|预案)",
             "severity": "P1",
             "message": "PRD 应包含风险评估",
         },
         "missing_metrics": {
             "name": "缺少成功指标",
-            "pattern": r"##\s*(指标|metric|成功标准|success)",
+            "pattern": r"##[^\n]*?(指标|成功标准)",
             "severity": "P1",
             "message": "PRD 应定义成功指标",
         },
         "missing_api_design": {
             "name": "缺少接口设计",
-            "pattern": r"##\s*(接口|API|endpoint|契约)",
+            "pattern": r"##[^\n]*?(接口|API)",
             "severity": "P2",
             "message": "PRD 应包含接口设计说明",
         },
         "missing_data_model": {
             "name": "缺少数据模型",
-            "pattern": r"##\s*(数据|model|schema|实体)",
+            "pattern": r"##[^\n]*?(数据|model|实体)",
             "severity": "P2",
             "message": "PRD 应包含数据模型说明",
         },
         "missing_security": {
             "name": "缺少安全考虑",
-            "pattern": r"##\s*(安全|security|权限|auth)",
+            "pattern": r"##[^\n]*?(安全|权限)",
             "severity": "P1",
             "message": "PRD 应包含安全考虑",
         },
         "missing_performance": {
             "name": "缺少性能要求",
-            "pattern": r"##\s*(性能|performance|QPS|延迟)",
+            "pattern": r"##[^\n]*?(性能|QPS|延迟)",
             "severity": "P1",
             "message": "PRD 应包含性能要求",
         },
@@ -100,7 +100,7 @@ class PRDReviewSkill(SkillBase):
         },
         "missing_acceptance_criteria": {
             "name": "缺少验收标准",
-            "pattern": r"##\s*(验收|acceptance|测试标准|验证)",
+            "pattern": r"##[^\n]*?(验收|测试标准|验证)",
             "severity": "P1",
             "message": "PRD 应包含验收标准",
         },
@@ -140,10 +140,11 @@ class PRDReviewSkill(SkillBase):
     def _check_rules(self, prd_content: str) -> List[Dict]:
         """检查所有规则"""
         issues = []
-        
+
         for rule_name, rule in self.RULES.items():
             pattern = rule["pattern"]
-            flags = rule.get("flags", 0)
+            # 使用 MULTILINE 标志确保匹配所有行
+            flags = rule.get("flags", 0) | re.MULTILINE
             matches = re.search(pattern, prd_content, flags | re.IGNORECASE)
             
             # 对于必须存在的章节，如果未找到则报错
