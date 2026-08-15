@@ -180,13 +180,69 @@ class TestCaseSkillV2(SkillBase):
 
         return apis[:10]
 
+    def _detect_domain(self, prd: str) -> str:
+        """识别 PRD 所属领域"""
+        domain_scores = {
+            'advertising': 0,
+            'agent': 0,
+            'ecommerce': 0,
+            'finance': 0,
+            'fullstack': 0,
+        }
+
+        # 广告领域关键词
+        ad_keywords = ['竞价', 'RTB', 'DSP', 'SSP', '广告', '出价', '曝光', '点击',
+                       '归因', 'ROI', 'eCPM', 'pCTR', '反作弊', '创意', '素材']
+        for kw in ad_keywords:
+            if kw in prd:
+                domain_scores['advertising'] += 1
+
+        # Agent 领域关键词
+        agent_keywords = ['Agent', 'LLM', 'RAG', 'ReAct', '工具调用', '记忆系统',
+                         'Multi-Agent', 'Planner', 'Function Calling', 'MCP']
+        for kw in agent_keywords:
+            if kw in prd:
+                domain_scores['agent'] += 1
+
+        # 电商领域关键词
+        ecommerce_keywords = ['订单', '商品', '库存', '支付', '购物车', '促销', '优惠券']
+        for kw in ecommerce_keywords:
+            if kw in prd:
+                domain_scores['ecommerce'] += 1
+
+        # 金融领域关键词
+        finance_keywords = ['交易', '账户', '风控', '合规', '清算', '对账']
+        for kw in finance_keywords:
+            if kw in prd:
+                domain_scores['finance'] += 1
+
+        # 根据得分确定领域
+        max_score = max(domain_scores.values())
+        if max_score == 0:
+            return 'fullstack'
+
+        detected_domain = max(domain_scores, key=domain_scores.get)
+        return detected_domain
+
     def _generate_test_cases(self, title: str, requirements: List[Dict],
-                              metrics: List[Dict], apis: List[Dict]) -> List[Dict]:
+                              metrics: List[Dict], apis: List[Dict], domain: str = None) -> List[Dict]:
         """生成测试用例 - 基于实际需求生成有意义的内容"""
         cases = []
         case_id = 1
 
-        # 1. 基于功能需求生成用例
+        # 1. 添加领域特定场景
+        if domain and domain in self.DOMAIN_SCENARIOS:
+            for scenario in self.DOMAIN_SCENARIOS[domain]:
+                cases.append({
+                    "id": f"DOM-{case_id:03d}",
+                    "type": scenario['type'],
+                    "name": scenario['name'],
+                    "steps": scenario['steps'],
+                    "domain": domain,
+                })
+                case_id += 1
+
+        # 2. 基于功能需求生成用例
         for i, req in enumerate(requirements[:8]):
             req_text = req['text'][:50]
 
@@ -214,7 +270,7 @@ class TestCaseSkillV2(SkillBase):
             })
             case_id += 1
 
-        # 2. 基于指标生成性能用例
+        # 3. 基于指标生成性能用例
         for metric in metrics[:3]:
             if metric.get('unit') in ['ms', 's', 'min']:
                 cases.append({
@@ -228,7 +284,7 @@ class TestCaseSkillV2(SkillBase):
                 })
                 case_id += 1
 
-        # 3. 基于 API 生成接口用例
+        # 4. 基于 API 生成接口用例
         for api in apis[:3]:
             cases.append({
                 "id": f"API-{case_id:03d}",
@@ -241,7 +297,7 @@ class TestCaseSkillV2(SkillBase):
             })
             case_id += 1
 
-        # 4. 边界用例
+        # 5. 边界用例
         cases.append({
             "id": f"BDY-{case_id:03d}",
             "type": "boundary",
@@ -255,24 +311,40 @@ class TestCaseSkillV2(SkillBase):
 
         return cases
 
-    def _generate_markdown(self, title: str, cases: List[Dict]) -> str:
+    def _generate_markdown(self, title: str, cases: List[Dict], domain: str = None) -> str:
         """生成 Markdown 测试用例文档"""
         lines = [f"# 测试用例：{title}", ""]
+        if domain:
+            lines.append(f"**领域**: {domain}")
+            lines.append("")
 
         # 分组
-        by_type = {'positive': [], 'negative': [], 'boundary': [], 'performance': []}
+        by_type = {'positive': [], 'negative': [], 'boundary': [], 'performance': [], 'security': []}
         for c in cases:
-            by_type[c['type']].append(c)
+            t = c.get('type', 'positive')
+            if t in by_type:
+                by_type[t].append(c)
 
         # 正向用例
         if by_type['positive']:
             lines.append("## 正向用例")
             lines.append("")
             for c in by_type['positive']:
-                lines.append(f"### {c['id']} {c['title']}")
-                lines.append(f"- **前置条件**: {c['precondition']}")
-                lines.append(f"- **操作步骤**: {c['steps']}")
-                lines.append(f"- **预期结果**: {c['expected']}")
+                lines.append(f"### {c.get('id', '')} {c.get('title', c.get('name', ''))}")
+                if 'precondition' in c:
+                    lines.append(f"- **前置条件**: {c['precondition']}")
+                lines.append(f"- **操作步骤**: {c.get('steps', '')}")
+                lines.append(f"- **预期结果**: {c.get('expected', '')}")
+                lines.append("")
+
+        # 领域特定用例
+        domain_cases = [c for c in cases if c.get('domain')]
+        if domain_cases:
+            lines.append(f"## 领域特定测试 ({domain})")
+            lines.append("")
+            for c in domain_cases:
+                lines.append(f"### {c.get('id', '')} {c.get('name', c.get('title', ''))}")
+                lines.append(f"- **步骤**: {c.get('steps', '')}")
                 lines.append("")
 
         # 异常用例
