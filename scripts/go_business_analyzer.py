@@ -17,17 +17,19 @@ from collections import defaultdict
 class GoBusinessAnalyzer:
     """Go 项目业务语义分析器."""
     
-    # 功能关键词映射
+    # 功能关键词映射 - 使用更精确的关键词避免误判
     FEATURE_KEYWORDS = {
-        'ads': ['ad', 'ads', 'campaign', 'adgroup', 'creative', 'bid'],
-        'video': ['video', 'avatar', 'sadtalker', 'digital_human', 'media'],
-        'voice': ['voice', 'audio', 'tts', 'speech', 'sound'],
-        'data': ['data', 'analytics', 'report', 'dashboard', 'metric'],
-        'user': ['user', 'account', 'auth', 'permission', 'profile'],
-        'order': ['order', 'billing', 'payment', 'invoice', 'transaction'],
-        'search': ['search', 'query', 'index', 'discover'],
-        'mq': ['kafka', 'rabbitmq', 'message', 'queue', 'event'],
-        'task': ['task', 'job', 'worker', 'scheduler', 'cron'],
+        'ads': ['advertising', 'campaign', 'adgroup', 'creative', 'bid', 'rtb', 'dsp', 'ssp'],
+        'video': ['video', 'avatar', 'sadtalker', 'digital_human', 'media', 'streaming'],
+        'voice': ['voice', 'audio', 'tts', 'speech', 'sound', 'clone'],
+        'data': ['data', 'analytics', 'report', 'dashboard', 'metric', 'statistics'],
+        'user': ['user', 'account', 'auth', 'permission', 'profile', 'rbac'],
+        'order': ['order', 'billing', 'payment', 'invoice', 'transaction', 'checkout'],
+        'search': ['search', 'query', 'index', 'discover', 'elasticsearch'],
+        'mq': ['kafka', 'rabbitmq', 'message', 'queue', 'event', 'pubsub'],
+        'task': ['task', 'job', 'worker', 'scheduler', 'cron', 'workflow'],
+        'ai': ['ai', 'llm', 'gpt', 'claude', 'prompt', 'embedding', 'rag'],
+        'framework': ['eino', 'gin', 'fiber', 'echo', 'spex', 'kitex'],
     }
     
     def __init__(self, project_path: str):

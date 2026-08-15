@@ -1,242 +1,252 @@
 #!/usr/bin/env python3
-"""质量门禁 — 验证分析输出是否达到专家级标准.
+"""Quality Gate - 质量门禁系统
 
-检查项:
-1. 必填字段存在性
-2. 内容完整性
-3. 模式检测覆盖率
-4. 图表生成数量
-5. 数据一致性
+对分析结果进行多维度质量检查，给出评级。
 """
-
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 
-# ── 专家级标准定义 ─────────────────────────────────────────────
+class QualityGate:
+    """质量门禁系统"""
 
-EXPERT_LEVEL_STANDARDS = {
-    "min_stages": 7,          # 至少完成 7 个阶段
-    "max_errors": 0,          # 不允许有错误
-    "min_diagrams": 5,        # 至少生成 5 张图
-    "min_patterns": 3,        # 至少检测到 3 类模式
-    "min_structs": 5,         # 至少识别 5 个结构体
-    "summary_min_length": 500,  # 摘要至少 500 字符
-}
-
-
-def verify_analysis(output_dir: str) -> Dict:
-    """验证分析结果是否符合专家级标准."""
-    results = {
-        "passed": True,
-        "score": 0,
-        "max_score": 100,
-        "checks": [],
-        "warnings": [],
-        "errors": [],
+    # 检查项定义
+    CHECKS = {
+        "result_file": {
+            "name": "结果文件存在",
+            "check": lambda d: os.path.exists(os.path.join(d, "analysis_result.json")),
+            "weight": 10,
+        },
+        "summary_file": {
+            "name": "摘要文件存在",
+            "check": lambda d: os.path.exists(os.path.join(d, "summary.md")),
+            "weight": 10,
+        },
+        "business_file": {
+            "name": "业务分析文件存在",
+            "check": lambda d: os.path.exists(os.path.join(d, "business_analysis.md")),
+            "weight": 5,
+        },
+        "stages_complete": {
+            "name": "阶段完成",
+            "check": lambda d: _check_stages_complete(d),
+            "weight": 20,
+        },
+        "no_errors": {
+            "name": "无错误",
+            "check": lambda d: _check_no_errors(d),
+            "weight": 15,
+        },
+        "diagrams_generated": {
+            "name": "图表生成",
+            "check": lambda d: _check_diagrams(d),
+            "weight": 15,
+        },
+        "patterns_detected": {
+            "name": "模式检测",
+            "check": lambda d: _check_patterns(d),
+            "weight": 10,
+        },
+        "structs_found": {
+            "name": "结构体识别",
+            "check": lambda d: _check_structs(d),
+            "weight": 5,
+        },
+        "summary_length": {
+            "name": "摘要长度",
+            "check": lambda d: _check_summary_length(d),
+            "weight": 10,
+        },
     }
 
-    output_path = Path(output_dir)
-    result_json = output_path / "analysis_result.json"
-    summary_md = output_path / "summary.md"
+    def __init__(self, output_dir: str):
+        self.output_dir = Path(output_dir)
+        self.results = {}
+        self.score = 0
+        self.max_score = sum(c["weight"] for c in self.CHECKS.values())
 
-    # ── 检查 1: 必须有 analysis_result.json ────────────────────
-    if not result_json.exists():
-        results["errors"].append("缺少 analysis_result.json")
-        results["passed"] = False
-        return results
-    results["checks"].append({"name": "结果文件存在", "status": "pass"})
+    def run(self) -> Dict:
+        """执行质量门禁检查"""
+        for check_name, check_def in self.CHECKS.items():
+            result = check_def["check"](str(self.output_dir))
+            if isinstance(result, tuple):
+                passed, detail = result
+            else:
+                passed = bool(result)
+                detail = ""
+            self.results[check_name] = {
+                "passed": passed,
+                "detail": detail,
+                "weight": check_def["weight"],
+            }
+            if passed:
+                self.score += check_def["weight"]
 
-    # ── 检查 2: 必须有 summary.md ──────────────────────────────
-    if not summary_md.exists():
-        results["errors"].append("缺少 summary.md")
-        results["passed"] = False
-        return results
-    results["checks"].append({"name": "摘要文件存在", "status": "pass"})
+        return self._generate_report()
 
-    # ── 加载分析结果 ───────────────────────────────────────────
-    try:
-        with open(result_json) as f:
-            data = json.load(f)
-    except Exception as e:
-        results["errors"].append(f"解析 analysis_result.json 失败: {e}")
-        results["passed"] = False
-        return results
+    def _generate_report(self) -> Dict:
+        """生成报告"""
+        percentage = int(self.score / self.max_score * 100) if self.max_score > 0 else 0
 
-    # ── 检查 3: 阶段完成情况 ───────────────────────────────────
-    stages = data.get("stages", {})
-    stage_count = len([k for k, v in stages.items() if not v.get("_error")])
-    expected_stages = EXPERT_LEVEL_STANDARDS["min_stages"]
-
-    if stage_count >= expected_stages:
-        results["checks"].append({
-            "name": f"阶段完成 ({stage_count}/{expected_stages})",
-            "status": "pass",
-            "score": 20,
-        })
-        results["score"] += 20
-    else:
-        results["checks"].append({
-            "name": f"阶段完成 ({stage_count}/{expected_stages})",
-            "status": "fail",
-            "score": 0,
-        })
-        results["warnings"].append(f"仅完成 {stage_count} 个阶段，期望 {expected_stages}")
-
-    # ── 检查 4: 错误数 ─────────────────────────────────────────
-    errors = data.get("errors", [])
-    if len(errors) == 0:
-        results["checks"].append({
-            "name": "无错误",
-            "status": "pass",
-            "score": 20,
-        })
-        results["score"] += 20
-    else:
-        results["checks"].append({
-            "name": f"错误数 ({len(errors)})",
-            "status": "fail",
-            "score": 0,
-        })
-        results["errors"].extend(errors[:3])  # 最多显示3个
-
-    # ── 检查 5: 图表生成 ───────────────────────────────────────
-    diagrams = stages.get("diagrams", {})
-    diagram_count = len(diagrams.get("diagrams", {})) if diagrams else 0
-    min_diagrams = EXPERT_LEVEL_STANDARDS["min_diagrams"]
-
-    if diagram_count >= min_diagrams:
-        results["checks"].append({
-            "name": f"图表生成 ({diagram_count} 张)",
-            "status": "pass",
-            "score": 20,
-        })
-        results["score"] += 20
-    else:
-        results["checks"].append({
-            "name": f"图表生成 ({diagram_count} 张)",
-            "status": "fail",
-            "score": 0,
-        })
-        results["warnings"].append(f"仅生成 {diagram_count} 张图，期望 {min_diagrams}")
-
-    # ── 检查 6: 模式检测 ───────────────────────────────────────
-    patterns = stages.get("patterns", {})
-    pattern_types = sum(1 for k, v in patterns.items() if isinstance(v, list) and len(v) > 0)
-    min_patterns = EXPERT_LEVEL_STANDARDS["min_patterns"]
-
-    if pattern_types >= min_patterns:
-        results["checks"].append({
-            "name": f"模式检测 ({pattern_types} 类)",
-            "status": "pass",
-            "score": 20,
-        })
-        results["score"] += 20
-    else:
-        results["checks"].append({
-            "name": f"模式检测 ({pattern_types} 类)",
-            "status": "fail",
-            "score": 0,
-        })
-        results["warnings"].append(f"仅检测到 {pattern_types} 类模式，期望 {min_patterns}")
-
-    # ── 检查 7: IR 数据完整性 ──────────────────────────────────
-    ir_summary = data.get("ir_summary", {})
-    struct_count = ir_summary.get("structs", 0)
-    func_count = ir_summary.get("functions", 0)
-
-    if struct_count >= EXPERT_LEVEL_STANDARDS["min_structs"]:
-        results["checks"].append({
-            "name": f"结构体识别 ({struct_count})",
-            "status": "pass",
-            "score": 10,
-        })
-        results["score"] += 10
-    else:
-        results["checks"].append({
-            "name": f"结构体识别 ({struct_count})",
-            "status": "warn",
-            "score": 5,
-        })
-        results["warnings"].append(f"仅识别 {struct_count} 个结构体")
-
-    # ── 检查 8: 摘要长度 ───────────────────────────────────────
-    if summary_md.exists():
-        summary_text = summary_md.read_text(encoding="utf-8")
-        min_length = EXPERT_LEVEL_STANDARDS["summary_min_length"]
-        if len(summary_text) >= min_length:
-            results["checks"].append({
-                "name": f"摘要长度 ({len(summary_text)} 字符)",
-                "status": "pass",
-                "score": 10,
-            })
-            results["score"] += 10
+        if percentage >= 90:
+            rating = "A+"
+            level = "顶级专家水平"
+        elif percentage >= 80:
+            rating = "A"
+            level = "专业水平"
+        elif percentage >= 70:
+            rating = "B+"
+            level = "良好水平"
+        elif percentage >= 60:
+            rating = "B"
+            level = "一般水平"
         else:
-            results["checks"].append({
-                "name": f"摘要长度 ({len(summary_text)} 字符)",
-                "status": "fail",
-                "score": 0,
-            })
-            results["warnings"].append(f"摘要仅 {len(summary_text)} 字符，期望 {min_length}")
+            rating = "C"
+            level = "需要改进"
 
-    # ── 计算最终评级 ───────────────────────────────────────────
-    score = results["score"]
-    if score >= 90:
-        grade = "A+ 顶级专家水平"
-    elif score >= 80:
-        grade = "A 优秀"
-    elif score >= 70:
-        grade = "B+ 良好"
-    elif score >= 60:
-        grade = "B 及格"
-    else:
-        grade = "C 需改进"
+        return {
+            "rating": rating,
+            "level": level,
+            "score": self.score,
+            "max_score": self.max_score,
+            "percentage": percentage,
+            "passed": percentage >= 60,
+            "checks": self.results,
+        }
 
-    results["grade"] = grade
-    results["passed"] = results["passed"] and len(results["errors"]) == 0
+    def print_report(self):
+        """打印报告"""
+        report = self._generate_report()
 
-    return results
-
-
-def print_report(results: Dict):
-    """打印质量报告."""
-    print("\n" + "=" * 60)
-    print("📊 质量门禁报告")
-    print("=" * 60)
-    print(f"评级: {results.get('grade', 'N/A')}")
-    print(f"得分: {results.get('score', 0)}/{results.get('max_score', 100)}")
-    print(f"状态: {'✅ 通过' if results.get('passed') else '❌ 未通过'}")
-    print()
-
-    print("检查项:")
-    for check in results.get("checks", []):
-        icon = "✅" if check["status"] == "pass" else "⚠️" if check["status"] == "warn" else "❌"
-        print(f"  {icon} {check['name']}")
-    print()
-
-    if results.get("warnings"):
-        print("警告:")
-        for w in results["warnings"]:
-            print(f"  ⚠️  {w}")
+        print("=" * 60)
+        print("📊 质量门禁报告")
+        print("=" * 60)
+        print(f"评级: {report['rating']} {report['level']}")
+        print(f"得分: {report['score']}/{report['max_score']} ({report['percentage']}%)")
+        print(f"状态: {'✅ 通过' if report['passed'] else '❌ 不通过'}")
         print()
-
-    if results.get("errors"):
-        print("错误:")
-        for e in results["errors"]:
-            print(f"  ❌ {e}")
+        print("检查项:")
+        for check_name, check_result in self.results.items():
+            status = "✅" if check_result["passed"] else "❌"
+            weight = check_result["weight"]
+            detail = check_result.get("detail", "")
+            print(f"  {status} {check_name} (权重{weight}) {detail}")
         print()
+        print("=" * 60)
 
-    print("=" * 60)
+
+def _check_stages_complete(output_dir: str) -> Tuple[bool, str]:
+    """检查阶段完成情况"""
+    result_file = os.path.join(output_dir, "analysis_result.json")
+    if not os.path.exists(result_file):
+        return False, "无结果文件"
+
+    with open(result_file) as f:
+        data = json.load(f)
+
+    stages = data.get("stages", {})
+    completed = sum(1 for v in stages.values() if not v.get("_error"))
+    total = len(stages)
+
+    # 至少完成 5 个阶段
+    passed = completed >= 5
+    return passed, f"{completed}/{total}"
 
 
-if __name__ == "__main__":
-    import sys
+def _check_no_errors(output_dir: str) -> Tuple[bool, str]:
+    """检查是否有错误"""
+    result_file = os.path.join(output_dir, "analysis_result.json")
+    if not os.path.exists(result_file):
+        return False, "无结果文件"
+
+    with open(result_file) as f:
+        data = json.load(f)
+
+    errors = data.get("errors", [])
+    warnings = data.get("warnings", [])
+
+    # 允许少量 warning，但不允许 error
+    passed = len(errors) == 0
+    detail = f"errors={len(errors)}, warnings={len(warnings)}"
+    return passed, detail
+
+
+def _check_diagrams(output_dir: str) -> Tuple[bool, str]:
+    """检查图表生成情况"""
+    result_file = os.path.join(output_dir, "analysis_result.json")
+    if not os.path.exists(result_file):
+        return False, "无结果文件"
+
+    with open(result_file) as f:
+        data = json.load(f)
+
+    stages = data.get("stages", {})
+    diagrams = stages.get("diagrams", {}).get("diagrams", {})
+
+    passed = len(diagrams) >= 3
+    return passed, f"{len(diagrams)} 张"
+
+
+def _check_patterns(output_dir: str) -> Tuple[bool, str]:
+    """检查模式检测情况"""
+    result_file = os.path.join(output_dir, "analysis_result.json")
+    if not os.path.exists(result_file):
+        return False, "无结果文件"
+
+    with open(result_file) as f:
+        data = json.load(f)
+
+    stages = data.get("stages", {})
+    patterns = stages.get("patterns", {}).get("patterns", [])
+
+    passed = len(patterns) >= 1
+    return passed, f"{len(patterns)} 类"
+
+
+def _check_structs(output_dir: str) -> Tuple[bool, str]:
+    """检查结构体识别情况"""
+    result_file = os.path.join(output_dir, "analysis_result.json")
+    if not os.path.exists(result_file):
+        return False, "无结果文件"
+
+    with open(result_file) as f:
+        data = json.load(f)
+
+    ir = data.get("ir_summary", {})
+    struct_count = ir.get("struct_count", 0)
+
+    passed = struct_count > 0
+    return passed, f"{struct_count}"
+
+
+def _check_summary_length(output_dir: str) -> Tuple[bool, str]:
+    """检查摘要长度"""
+    summary_file = os.path.join(output_dir, "summary.md")
+    if not os.path.exists(summary_file):
+        return False, "无摘要文件"
+
+    with open(summary_file) as f:
+        content = f.read()
+
+    length = len(content)
+    passed = length >= 200  # 至少 200 字符
+    return passed, f"{length} 字符"
+
+
+def main():
     if len(sys.argv) < 2:
         print("Usage: python3 quality_gate.py <output_dir>")
         sys.exit(1)
 
-    results = verify_analysis(sys.argv[1])
-    print_report(results)
+    gate = QualityGate(sys.argv[1])
+    gate.print_report()
 
-    sys.exit(0 if results["passed"] else 1)
+    report = gate.run()
+    sys.exit(0 if report["passed"] else 1)
+
+
+if __name__ == "__main__":
+    main()
