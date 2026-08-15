@@ -59,51 +59,55 @@ class PythonBusinessAnalyzer:
     
     def _extract_project_info(self):
         """从 README 和 main.py 提取项目信息."""
-        # 查找 README
-        for readme in ['README.md', 'README', 'readme.md']:
-            p = self.path / readme
-            if p.exists():
-                text = p.read_text(errors='ignore')[:5000]
-                # 提取标题
-                lines = text.split('\n')
-                for line in lines[:10]:
-                    if line.startswith('# '):
-                        self.result['project_name'] = line[2:].strip()
-                        break
-                # 提取描述
-                for line in lines:
-                    if line.startswith('##') or line.startswith('###'):
-                        break
-                    if line and not line.startswith('#') and len(line) > 20:
-                        self.result['description'] = line.strip()[:200]
-                        break
-                break
-        
-        # 从 main.py 提取
+        # 1. 优先从 main.py docstring 提取
         main_py = self.path / 'main.py'
         if main_py.exists():
             text = main_py.read_text(errors='ignore')
-            # 查找 docstring
-            doc_match = re.search(r'""".*?"""', text, re.DOTALL)
+            # 查找顶层 docstring
+            doc_match = re.search(r'^"""(.+?)"""', text, re.DOTALL | re.MULTILINE)
             if doc_match:
-                doc = doc_match.group(0)
-                for line in doc.split('\n'):
+                doc = doc_match.group(1).strip()
+                lines = doc.split('\n')
+                # 第一行非空且长度合适作为简介
+                for line in lines:
                     line = line.strip()
-                    if line and not line.startswith('"""') and len(line) > 30:
-                        self.result['description'] = line[:200]
+                    if line and len(line) > 10 and len(line) < 200:
+                        self.result['description'] = line
+                        # 尝试提取项目名称
+                        name_match = re.search(r'([A-Za-z][\w\s]*平台|Smart\s+\w+|[\w]+\s+Platform)', line, re.I)
+                        if name_match:
+                            self.result['project_name'] = name_match.group(1).strip()
                         break
         
-        # 从 pyproject.toml 或 setup.py 提取
+        # 2. 查找 README
+        if not self.result['project_name']:
+            for readme in ['README.md', 'README', 'readme.md']:
+                p = self.path.parent / readme  # 在项目根目录查找
+                if p.exists():
+                    text = p.read_text(errors='ignore')[:5000]
+                    lines = text.split('\n')
+                    for line in lines[:10]:
+                        if line.startswith('# '):
+                            self.result['project_name'] = line[2:].strip()
+                            break
+                    if self.result['project_name']:
+                        break
+        
+        # 3. 从目录名推断
+        if not self.result['project_name']:
+            self.result['project_name'] = self.path.name.replace('_', '-').title()
+        
+        # 4. 从 pyproject.toml / setup.py 提取
         for config in ['pyproject.toml', 'setup.py', 'setup.cfg']:
-            p = self.path / config
+            p = self.path.parent / config
             if p.exists():
                 text = p.read_text(errors='ignore')[:2000]
+                name_match = re.search(r'name\s*=\s*["\'](.+?)["\']', text)
+                if name_match:
+                    self.result['project_name'] = name_match.group(1)
                 desc_match = re.search(r'description\s*=\s*["\'](.+?)["\']', text)
                 if desc_match:
                     self.result['description'] = desc_match.group(1)[:200]
-                name_match = re.search(r'name\s*=\s*["\'](.+?)["\']', text)
-                if name_match and not self.result['project_name']:
-                    self.result['project_name'] = name_match.group(1)
                 break
     
     def _extract_features(self):
@@ -165,26 +169,35 @@ class PythonBusinessAnalyzer:
             'pattern': 'unknown',
             'components': [],
         }
-        
-        # 检测框架
-        for py_file in list(self.path.rglob('*.py'))[:50]:
+
+        # 检测框架 - 扫描更多文件
+        framework_found = False
+        for py_file in list(self.path.rglob('*.py'))[:100]:
+            if '__pycache__' in str(py_file):
+                continue
             text = py_file.read_text(errors='ignore')
-            if 'fastapi' in text.lower():
-                arch['framework'] = 'fastapi'
-            elif 'flask' in text.lower():
-                arch['framework'] = 'flask'
-            elif 'django' in text.lower():
-                arch['framework'] = 'django'
-            break
-        
+            text_lower = text.lower()
+            if not framework_found:
+                if 'fastapi' in text_lower:
+                    arch['framework'] = 'fastapi'
+                    framework_found = True
+                elif 'flask' in text_lower:
+                    arch['framework'] = 'flask'
+                    framework_found = True
+                elif 'django' in text_lower:
+                    arch['framework'] = 'django'
+                    framework_found = True
+
         # 检测架构模式
-        has_celery = any('celery' in f.read_text(errors='ignore').lower() 
-                        for f in list(self.path.rglob('*.py'))[:30])
-        has_redis = any('redis' in f.read_text(errors='ignore').lower() 
-                       for f in list(self.path.rglob('*.py'))[:30])
-        has_sqlalchemy = any('sqlalchemy' in f.read_text(errors='ignore').lower() 
-                            for f in list(self.path.rglob('*.py'))[:30])
-        
+        has_celery = any('celery' in f.read_text(errors='ignore').lower()
+                        for f in list(self.path.rglob('*.py'))[:50])
+        has_redis = any('redis' in f.read_text(errors='ignore').lower()
+                       for f in list(self.path.rglob('*.py'))[:50])
+        has_sqlalchemy = any('sqlalchemy' in f.read_text(errors='ignore').lower()
+                            for f in list(self.path.rglob('*.py'))[:50])
+        has_asyncio = any('asyncio' in f.read_text(errors='ignore')
+                         for f in list(self.path.rglob('*.py'))[:50])
+
         if has_celery:
             arch['pattern'] = 'celery_async'
             arch['components'].append({'name': 'Celery Worker', 'type': 'async_task'})
@@ -192,12 +205,15 @@ class PythonBusinessAnalyzer:
             arch['components'].append({'name': 'Redis', 'type': 'cache_queue'})
         if has_sqlalchemy:
             arch['components'].append({'name': 'SQLAlchemy', 'type': 'orm'})
-        
+        if has_asyncio:
+            arch['components'].append({'name': 'AsyncIO', 'type': 'async_runtime'})
+
         # 检测数据库
         db_files = list(self.path.rglob('*database*.py')) + list(self.path.rglob('*db*.py'))
-        if db_files:
+        if db_files or any('sqlite' in f.read_text(errors='ignore').lower()
+                          for f in list(self.path.rglob('*.py'))[:30]):
             arch['components'].append({'name': 'Database', 'type': 'storage'})
-        
+
         self.result['architecture'] = arch
     
     def _extract_api_routes(self):
