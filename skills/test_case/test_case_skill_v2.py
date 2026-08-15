@@ -1,8 +1,8 @@
 """
-测试用例生成 Skill v2 - 增强版
+测试用例生成 Skill v3.0 - 资深专家版
 
-基于 PRD 内容，提取实际需求，生成有意义的测试用例。
-支持提取数字指标、接口路径、业务场景。
+基于 PRD 内容，提取实际需求，生成场景化测试用例。
+支持领域自适应、场景挖掘、边界覆盖。
 """
 import re
 from typing import Dict, Any, List
@@ -10,7 +10,35 @@ from ..base import SkillBase, SkillResult
 
 
 class TestCaseSkillV2(SkillBase):
-    """测试用例生成 Skill - 增强版"""
+    """测试用例生成 Skill - 资深专家版"""
+
+    # 领域特定测试场景模板
+    DOMAIN_SCENARIOS = {
+        'advertising': [
+            {'name': '竞价延迟测试', 'type': 'performance', 'steps': '发送竞价请求，测量 P99 延迟是否 < 100ms'},
+            {'name': '预算超投测试', 'type': 'negative', 'steps': '设置日预算 100 元，模拟并发请求验证不会超投'},
+            {'name': '降级策略测试', 'type': 'negative', 'steps': '模拟画像服务超时，验证降级到规则出价'},
+            {'name': '反作弊拦截测试', 'type': 'negative', 'steps': '构造虚假流量请求，验证被识别并拦截'},
+        ],
+        'agent': [
+            {'name': 'Tool调用正确性测试', 'type': 'positive', 'steps': '调用工具获取数据，验证返回结果格式正确'},
+            {'name': '记忆检索准确性测试', 'type': 'positive', 'steps': '发送相关历史对话，验证 Agent 能检索到相关信息'},
+            {'name': '多Agent协作测试', 'type': 'positive', 'steps': '设计需要多个 Agent 协作的任务，验证分工正确'},
+            {'name': 'Token成本控制测试', 'type': 'performance', 'steps': '监控长对话的 Token 消耗，验证在预算内'},
+        ],
+        'ecommerce': [
+            {'name': '并发下单测试', 'type': 'performance', 'steps': '模拟 1000 用户同时下单，验证库存扣减正确'},
+            {'name': '优惠券叠加测试', 'type': 'boundary', 'steps': '使用多个优惠券组合下单，验证折扣计算正确'},
+            {'name': '支付超时测试', 'type': 'negative', 'steps': '模拟支付网关超时，验证订单状态回滚'},
+            {'name': '库存不足测试', 'type': 'negative', 'steps': '下单时库存为 0，验证正确提示并拒绝下单'},
+        ],
+        'finance': [
+            {'name': '交易一致性测试', 'type': 'positive', 'steps': '执行转账操作，验证源账户扣款和目标账户收款一致'},
+            {'name': '风控拦截测试', 'type': 'negative', 'steps': '构造可疑交易，验证风控系统正确拦截'},
+            {'name': '对账准确性测试', 'type': 'positive', 'steps': '生成对账文件，验证与交易系统数据一致'},
+            {'name': '并发交易测试', 'type': 'performance', 'steps': '模拟高并发交易，验证系统稳定性'},
+        ],
+    }
 
     def run(self, input_data: Dict[str, Any]) -> SkillResult:
         """生成测试用例"""
@@ -19,24 +47,27 @@ class TestCaseSkillV2(SkillBase):
             return SkillResult(success=False, errors=errors)
 
         prd_content = input_data["prd_content"]
+        profile = input_data.get("profile", {})
 
         # 提取关键信息
         title = self._extract_title(prd_content)
         requirements = self._extract_requirements(prd_content)
         metrics = self._extract_metrics(prd_content)
         apis = self._extract_apis(prd_content)
+        domain = self._detect_domain(prd_content)
 
         # 生成测试用例
-        test_cases = self._generate_test_cases(title, requirements, metrics, apis)
+        test_cases = self._generate_test_cases(title, requirements, metrics, apis, domain)
 
         # 分类统计
         positive = [c for c in test_cases if c['type'] == 'positive']
         negative = [c for c in test_cases if c['type'] == 'negative']
         boundary = [c for c in test_cases if c['type'] == 'boundary']
         performance = [c for c in test_cases if c['type'] == 'performance']
+        security = [c for c in test_cases if c['type'] == 'security']
 
         # 生成 Markdown 内容
-        test_content = self._generate_markdown(title, test_cases)
+        test_content = self._generate_markdown(title, test_cases, domain)
 
         return SkillResult(
             success=True,
@@ -46,12 +77,14 @@ class TestCaseSkillV2(SkillBase):
                 "negative_count": len(negative),
                 "boundary_count": len(boundary),
                 "performance_count": len(performance),
+                "security_count": len(security),
                 "total_count": len(test_cases),
                 "test_content": test_content,
                 "metrics_found": metrics,
                 "apis_found": apis,
+                "domain": domain,
             },
-            metadata={"skill": "test_case_v2"}
+            metadata={"skill": "test_case_v3", "domain": domain}
         )
 
     def _extract_title(self, prd_content: str) -> str:
