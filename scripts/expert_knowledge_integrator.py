@@ -18,8 +18,21 @@ class ExpertKnowledgeIntegrator:
 
     def _init_bridge(self):
         """初始化桥接器"""
-        from .ryan_knowledge_bridge import RyanKnowledgeBridge
-        self.bridge = RyanKnowledgeBridge(str(self.kb_path))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "ryan_knowledge_bridge",
+            str(self.kb_path.parent.parent / 'biz-delivery' / 'scripts' / 'ryan_knowledge_bridge.py')
+        )
+        # 尝试直接导入
+        try:
+            from scripts.ryan_knowledge_bridge import RyanKnowledgeBridge
+            self.bridge = RyanKnowledgeBridge(str(self.kb_path))
+        except ImportError:
+            #  fallback 直接使用模块
+            import sys
+            sys.path.insert(0, str(self.kb_path.parent.parent / 'biz-delivery' / 'scripts'))
+            from ryan_knowledge_bridge import RyanKnowledgeBridge
+            self.bridge = RyanKnowledgeBridge(str(self.kb_path))
 
     def get_architecture_patterns(self) -> Dict:
         """获取架构模式知识"""
