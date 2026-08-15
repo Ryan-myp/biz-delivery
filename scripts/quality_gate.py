@@ -249,9 +249,8 @@ def main():
         sys.exit(1)
 
     gate = QualityGate(sys.argv[1])
-    gate.print_report()
-
     report = gate.run()
+    gate.print_report()
     sys.exit(0 if report["passed"] else 1)
 
 
