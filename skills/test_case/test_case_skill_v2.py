@@ -352,7 +352,8 @@ class TestCaseSkillV2(SkillBase):
             lines.append("## 异常用例")
             lines.append("")
             for c in by_type['negative']:
-                lines.append(f"### {c['id']} {c['title']}")
+                title = c.get('title') or c.get('name', '')
+                lines.append(f"### {c['id']} {title}")
                 lines.append(f"- **异常场景**: {c['scenario']}")
                 lines.append(f"- **操作步骤**: {c['steps']}")
                 lines.append(f"- **预期结果**: {c['expected']}")
@@ -363,7 +364,8 @@ class TestCaseSkillV2(SkillBase):
             lines.append("## 边界用例")
             lines.append("")
             for c in by_type['boundary']:
-                lines.append(f"### {c['id']} {c['title']}")
+                title = c.get('title') or c.get('name', '')
+                lines.append(f"### {c['id']} {title}")
                 lines.append(f"- **边界条件**: {c['condition']}")
                 lines.append(f"- **操作步骤**: {c['steps']}")
                 lines.append(f"- **预期结果**: {c['expected']}")
@@ -374,7 +376,8 @@ class TestCaseSkillV2(SkillBase):
             lines.append("## 性能用例")
             lines.append("")
             for c in by_type['performance']:
-                lines.append(f"### {c['id']} {c['title']}")
+                title = c.get('title') or c.get('name', '')
+                lines.append(f"### {c['id']} {title}")
                 lines.append(f"- **性能指标**: {c['condition']}")
                 lines.append(f"- **操作步骤**: {c['steps']}")
                 lines.append(f"- **预期结果**: {c['expected']}")
