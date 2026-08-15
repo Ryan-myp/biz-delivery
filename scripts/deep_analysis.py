@@ -155,6 +155,24 @@ def run_full_analysis(project_path: str, output_dir: str,
     (out_path / "summary.md").write_text(summary, encoding="utf-8")
     results["stages"]["summary"] = {"output": str(out_path / "summary.md")}
 
+    # ── Stage 7b: Python 项目业务语义分析 ────────────────────────
+    if lang == "python":
+        try:
+            from python_business_analyzer import analyze_python_project, generate_business_summary
+            print("🔍 Stage 7b: Python 业务语义分析...")
+            biz_analysis = analyze_python_project(project_path)
+            biz_summary = generate_business_summary(biz_analysis)
+            (out_path / "business_analysis.md").write_text(biz_summary, encoding="utf-8")
+            results["stages"]["business_analysis"] = {
+                "output": str(out_path / "business_analysis.md"),
+                "features": len(biz_analysis.get("features", [])),
+                "routes": len(biz_analysis.get("api_routes", [])),
+                "modules": len(biz_analysis.get("modules", [])),
+            }
+            print(f"   检测到 {len(biz_analysis.get('features', []))} 个功能模块")
+        except Exception as e:
+            results["warnings"].append(f"business_analysis: {e}")
+
     # ── 保存完整结果 ─────────────────────────────────────────────
     results["total_time"] = time.time() - t0
     results["ir_summary"] = {
