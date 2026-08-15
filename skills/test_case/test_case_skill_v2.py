@@ -354,9 +354,9 @@ class TestCaseSkillV2(SkillBase):
             for c in by_type['negative']:
                 title = c.get('title') or c.get('name', '')
                 lines.append(f"### {c['id']} {title}")
-                lines.append(f"- **异常场景**: {c['scenario']}")
-                lines.append(f"- **操作步骤**: {c['steps']}")
-                lines.append(f"- **预期结果**: {c['expected']}")
+                lines.append(f"- **异常场景**: {c.get('scenario', '')}")
+                lines.append(f"- **操作步骤**: {c.get('steps', '')}")
+                lines.append(f"- **预期结果**: {c.get('expected', '')}")
                 lines.append("")
 
         # 边界用例
@@ -366,9 +366,9 @@ class TestCaseSkillV2(SkillBase):
             for c in by_type['boundary']:
                 title = c.get('title') or c.get('name', '')
                 lines.append(f"### {c['id']} {title}")
-                lines.append(f"- **边界条件**: {c['condition']}")
-                lines.append(f"- **操作步骤**: {c['steps']}")
-                lines.append(f"- **预期结果**: {c['expected']}")
+                lines.append(f"- **边界条件**: {c.get('condition', '')}")
+                lines.append(f"- **操作步骤**: {c.get('steps', '')}")
+                lines.append(f"- **预期结果**: {c.get('expected', '')}")
                 lines.append("")
 
         # 性能用例
@@ -378,9 +378,9 @@ class TestCaseSkillV2(SkillBase):
             for c in by_type['performance']:
                 title = c.get('title') or c.get('name', '')
                 lines.append(f"### {c['id']} {title}")
-                lines.append(f"- **性能指标**: {c['condition']}")
-                lines.append(f"- **操作步骤**: {c['steps']}")
-                lines.append(f"- **预期结果**: {c['expected']}")
+                lines.append(f"- **性能指标**: {c.get('condition', '')}")
+                lines.append(f"- **操作步骤**: {c.get('steps', '')}")
+                lines.append(f"- **预期结果**: {c.get('expected', '')}")
                 lines.append("")
 
         return "\n".join(lines)
