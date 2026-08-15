@@ -161,10 +161,15 @@ class ExpertPRDReviewer:
         }
         return suggestions.get(rule_name, '请参考相关文档完善')
     
-    def _generate_report(self, rule_result: Dict, kb_analysis: Dict, expert_issues: List) -> Dict:
+    def _generate_report(self, rule_result, kb_analysis: Dict, expert_issues: List) -> Dict:
         """生成专家报告"""
-        # 统计问题
-        all_issues = rule_result.get('output', {}).get('issues', []) + expert_issues
+        # 处理 SkillResult 对象
+        if hasattr(rule_result, 'output'):
+            issues = rule_result.output.get('issues', [])
+        else:
+            issues = rule_result.get('output', {}).get('issues', [])
+        
+        all_issues = issues + expert_issues
         p0 = [i for i in all_issues if i.get('severity') == 'P0']
         p1 = [i for i in all_issues if i.get('severity') == 'P1']
         p2 = [i for i in all_issues if i.get('severity') == 'P2']
@@ -244,7 +249,7 @@ class ExpertPRDReviewer:
         
         report_lines.append("")
         report_lines.append(f"**审查时间**: {self._get_timestamp()}")
-        report_lines.append(f"**规则引擎**: {len(rule_result.get('output', {}).get('issues', []))} 条规则")
+        report_lines.append(f"**规则引擎**: {len(rule_result.output.get('issues', []) if hasattr(rule_result, 'output') else rule_result.get('output', {}).get('issues', []))} 条规则")
         report_lines.append(f"**知识库**: {len(kb_analysis.get('recommendations', []))} 条建议")
         
         return {
@@ -255,6 +260,7 @@ class ExpertPRDReviewer:
             'issues': all_issues,
             'kb_analysis': kb_analysis,
             'report': '\n'.join(report_lines),
+            'raw_rule_result': rule_result,
         }
     
     def _get_timestamp(self) -> str:
