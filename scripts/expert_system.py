@@ -1108,6 +1108,73 @@ class SeniorExpertSystem:
 
         return list(set(cross_domains))[:2]  # 去重，最多返回2个
 
+    def detect_patterns(self, prd: str, domain: str) -> List[Dict]:
+        """检测项目模式"""
+        patterns = []
+
+        if re.search(r'(?i)(QPS|qps|吞吐量|throughput|延迟|latency|P99|P95)', prd):
+            patterns.append({
+                'type': 'performance',
+                'name': '高性能需求',
+                'indicators': ['QPS', '延迟', 'P99'],
+                'suggestions': ['考虑缓存策略', '评估异步化处理', '设计限流降级方案'],
+            })
+
+        if re.search(r'(?i)(一致|atomic|事务|transaction|ACID|强一致)', prd):
+            patterns.append({
+                'type': 'consistency',
+                'name': '强一致性需求',
+                'indicators': ['事务', 'ACID', '强一致'],
+                'suggestions': ['使用本地事务或分布式事务', '考虑最终一致性场景', '设计补偿机制'],
+            })
+
+        if re.search(r'(?i)(并发|concurrent|锁|lock|竞态|race)', prd):
+            patterns.append({
+                'type': 'concurrency',
+                'name': '高并发场景',
+                'indicators': ['并发', '锁', '竞态'],
+                'suggestions': ['使用分布式锁', '考虑无锁数据结构', '设计幂等接口'],
+            })
+
+        if re.search(r'(?i)(实时|realtime|real-time|流|stream|Kafka)', prd):
+            patterns.append({
+                'type': 'realtime',
+                'name': '实时计算需求',
+                'indicators': ['实时', '流', 'Kafka'],
+                'suggestions': ['评估 Flink/Spark Streaming', '设计背压机制', '考虑消息堆积处理'],
+            })
+
+        if re.search(r'(?i)(安全|security|加密|encrypt|鉴权|auth|权限|permission)', prd):
+            patterns.append({
+                'type': 'security',
+                'name': '安全敏感场景',
+                'indicators': ['加密', '鉴权', '权限'],
+                'suggestions': ['使用 Vault 管理密钥', '实施零信任架构', '添加操作审计日志'],
+            })
+
+        if re.search(r'(?i)(扩展|scale|elastic|水平|横向)', prd):
+            patterns.append({
+                'type': 'scalability',
+                'name': '高可扩展需求',
+                'indicators': ['扩展', '弹性', '水平'],
+                'suggestions': ['设计无状态服务', '使用 K8s 自动扩缩容', '考虑分库分表'],
+            })
+
+        return patterns
+
+    def get_pattern_recommendations(self, patterns: List[Dict]) -> List[Dict]:
+        """根据模式生成推荐"""
+        recommendations = []
+        for pattern in patterns:
+            for suggestion in pattern.get('suggestions', []):
+                recommendations.append({
+                    'type': pattern['type'],
+                    'pattern': pattern['name'],
+                    'recommendation': suggestion,
+                    'priority': '高' if pattern['type'] in ['security', 'consistency'] else '中',
+                })
+        return recommendations
+
 
 if __name__ == '__main__':
     import sys
