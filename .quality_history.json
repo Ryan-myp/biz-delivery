@@ -6,5 +6,13 @@
     "percentage": 40,
     "rating": "C",
     "passed": false
+  },
+  {
+    "timestamp": "2026-08-16T19:54:50.390827",
+    "score": 100,
+    "max_score": 100,
+    "percentage": 100,
+    "rating": "A+",
+    "passed": true
   }
 ]
