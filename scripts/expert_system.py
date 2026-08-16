@@ -961,15 +961,15 @@ class SeniorExpertSystem:
             if kw in prd:
                 scores['logistics'] += 1
 
-        # 检测跨领域项目
-        cross_domains = self._detect_cross_domain(scores, primary_domain)
-
         # 默认全栈
         max_score = max(scores.values())
         if max_score == 0:
             return 'fullstack'
 
         primary_domain = max(scores, key=scores.get)
+
+        # 检测跨领域项目
+        cross_domains = self._detect_cross_domain(scores, primary_domain)
 
         # 如果有跨领域标签，返回主领域+跨领域
         if cross_domains:
