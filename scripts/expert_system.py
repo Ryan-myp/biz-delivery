@@ -869,10 +869,32 @@ class ExpertDecisionEngine:
     def _get_kb_references(self, prd: str, domain: str) -> List[Dict]:
         """获取知识库引用"""
         real_kb = get_kb()
-        results = real_kb.search(prd[:200], domain, limit=5)
+
+        # 提取PRD关键词
+        keywords = []
+        # 中文关键词
+        cn_keywords = re.findall(r'[\u4e00-\u9fa5]{2,4}', prd)
+        keywords.extend(cn_keywords[:10])
+        # 英文关键词
+        en_keywords = re.findall(r'\b[a-zA-Z]{3,}\b', prd)
+        keywords.extend(en_keywords[:5])
+
+        # 多关键词搜索，合并结果
+        all_results = {}
+        for kw in keywords:
+            results = real_kb.search(kw, domain, limit=3)
+            for r in results:
+                path = r['path']
+                if path not in all_results:
+                    all_results[path] = r
+                else:
+                    all_results[path]['score'] += r['score']
+
+        # 按分数排序
+        sorted_results = sorted(all_results.values(), key=lambda x: -x['score'])[:5]
 
         references = []
-        for doc in results:
+        for doc in sorted_results:
             references.append({
                 'title': doc['title'],
                 'path': doc['path'],
