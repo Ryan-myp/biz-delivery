@@ -2322,6 +2322,38 @@ class CoreFlowAnalyzer:
         
         return canonical_map
 
+    def analyze_flow_coverage(self) -> Dict[str, Any]:
+        """Analyze flow coverage — which entities have complete CRUD/state flows.
+        
+        Returns a dict mapping entity names to their coverage status.
+        """
+        coverage = {}
+        # Group flows by entity
+        entity_flows: Dict[str, List[Dict]] = defaultdict(list)
+        for flow in self.infer_flows():
+            for entity in flow.get("entities", []):
+                entity_flows[entity].append(flow)
+        
+        # Check each struct for CRUD coverage
+        for struct in self.structs:
+            sname = struct.get("name", "") if isinstance(struct, dict) else getattr(struct, "name", "")
+            if not sname:
+                continue
+            flows = entity_flows.get(sname, [])
+            has_create = any("create" in str(f).lower() or "build" in str(f).lower() for f in flows)
+            has_read = any("get" in str(f).lower() or "query" in str(f).lower() or "list" in str(f).lower() for f in flows)
+            has_update = any("update" in str(f).lower() or "modify" in str(f).lower() for f in flows)
+            has_delete = any("delete" in str(f).lower() or "remove" in str(f).lower() for f in flows)
+            coverage[sname] = {
+                "has_create": has_create,
+                "has_read": has_read,
+                "has_update": has_update,
+                "has_delete": has_delete,
+                "flow_count": len(flows),
+                "complete": has_create and has_read and has_update and has_delete,
+            }
+        return coverage
+
     def infer_flow_completeness(self) -> List[Dict]:
         """评估每个实体的流程完整性。
         

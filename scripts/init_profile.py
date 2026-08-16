@@ -175,7 +175,7 @@ class ProfileGenerator:
             # 扫描 src/main/java
             java_src = self.repo_path / "src" / "main" / "java"
             if java_src.exists():
-                for pkg in java_src.rglob("*.java")[:20]:
+                for pkg in list(java_src.rglob("*.java"))[:20]:
                     if pkg.parent not in [p for p in self.repo_path.rglob("test")]:
                         module_name = str(pkg.relative_to(java_src).with_suffix(''))
                         modules.append({
@@ -191,7 +191,7 @@ class ProfileGenerator:
         keywords = set()
         
         # 扫描文件名
-        for file in directory.rglob("*")[:50]:
+        for file in list(directory.rglob("*"))[:50]:
             if file.is_file():
                 stem = file.stem
                 keywords.add(stem.lower())

@@ -731,6 +731,8 @@ class GoScanner:
                     continue
 
             # 接受 match 和 context 两种类型
+            if not isinstance(data, dict):
+                continue
             data_type = data.get("type")
             if data_type not in ("match", "context"):
                 continue
@@ -1029,6 +1031,8 @@ class GoScanner:
             dir_path = Path(dir_path)
 
         # 使用 ripgrep 批量扫描（加速版）
+        if not self.use_ripgrep:
+            return self._scan_with_python_re(dir_path, max_files, incremental, changed_files)
         try:
             return self._scan_with_rgrep(dir_path, max_files)
         except Exception as e:
