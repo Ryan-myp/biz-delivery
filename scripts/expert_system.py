@@ -737,7 +737,7 @@ class ExpertDecisionEngine:
         # 基于PRD内容检测风险
         risk_detectors = self._get_risk_detectors(domain)
         for detector in risk_detectors:
-            matched_risks = detector.detect(prd)
+            matched_risks = detector(prd)  # 直接调用函数
             for risk in matched_risks:
                 # 避免重复
                 if not any(r['risk'] == risk['risk'] for r in risks):
