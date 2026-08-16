@@ -102,22 +102,54 @@ class RyanKB:
         """检测文档领域"""
         rel_path = str(path.relative_to(self.KNOWLEDGE_DIR)).lower()
 
+        # 明确领域匹配
         for domain, dirs in self.DOMAIN_DIRS.items():
             for d in dirs:
                 if d and d in rel_path:
                     return domain
 
-        # 默认领域
-        if 'ad' in rel_path or 'dsp' in rel_path or '竞价' in rel_path:
+        # 内容关键词匹配 (用于没有明确目录的文档)
+        content_preview = ""
+        try:
+            content_preview = path.read_text(errors='ignore')[:2000].lower()
+        except:
+            pass
+
+        # 广告相关
+        if any(k in rel_path or k in content_preview for k in ['ad', 'dsp', '竞价', 'rtb', '广告']):
             return 'advertising'
-        if 'agent' in rel_path:
+
+        # Agent相关
+        if any(k in rel_path or k in content_preview for k in ['agent', 'llm', '大模型', 'rag', '工具调用']):
             return 'agent'
-        if 'security' in rel_path or 'jwt' in rel_path:
+
+        # 金融相关
+        if any(k in rel_path or k in content_preview for k in ['支付', '交易', 'finance', ' banking', '风控']):
+            return 'finance'
+
+        # 电商相关
+        if any(k in rel_path or k in content_preview for k in ['电商', '订单', 'inventory', '秒杀', 'commerce']):
+            return 'ecommerce'
+
+        # 安全相关
+        if any(k in rel_path or k in content_preview for k in ['security', 'jwt', '加密', '认证', 'auth']):
             return 'security'
-        if 'kafka' in rel_path or 'elasticsearch' in rel_path:
+
+        # 数据相关
+        if any(k in rel_path or k in content_preview for k in ['kafka', 'elasticsearch', '大数据', '数据仓库']):
             return 'data_engineering'
-        if 'kubernetes' in rel_path or 'cloud' in rel_path:
+
+        # 云原生相关
+        if any(k in rel_path or k in content_preview for k in ['kubernetes', 'docker', '容器', 'service mesh', 'istio']):
             return 'cloud_native'
+
+        # ML相关
+        if any(k in rel_path or k in content_preview for k in ['ml', '机器学习', '模型', '训练', '推理']):
+            return 'ml_ops'
+
+        # DevOps相关
+        if any(k in rel_path or k in content_preview for k in ['ci/cd', 'jenkins', 'gitops', '部署']):
+            return 'devops'
 
         return 'fullstack'
 
