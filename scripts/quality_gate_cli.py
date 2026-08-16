@@ -49,17 +49,17 @@ class QualityGateCLI:
         """保存历史质量数据"""
         self.history_file.write_text(json.dumps(self.history, indent=2, ensure_ascii=False))
 
-    def check(self, output_dir: str, strict: bool = False) -> Dict:
+    def check(self, project_path: str = None, strict: bool = False) -> Dict:
         """执行质量检查"""
         checks = {
-            'result_file': {'name': '分析结果文件', 'weight': 10},
-            'summary_file': {'name': '摘要文件', 'weight': 10},
-            'td_file': {'name': '技术方案', 'weight': 15},
-            'test_cases': {'name': '测试用例', 'weight': 10},
-            'code_review': {'name': '代码审查', 'weight': 15},
-            'no_critical_issues': {'name': '无严重问题', 'weight': 20},
-            'domain_coverage': {'name': '领域覆盖', 'weight': 10},
-            'knowledge_base': {'name': '知识库引用', 'weight': 10},
+            'code_structure': {'name': '代码结构', 'weight': 15},
+            'test_coverage': {'name': '测试覆盖', 'weight': 15},
+            'docs_present': {'name': '文档完整性', 'weight': 10},
+            'no_syntax_errors': {'name': '无语法错误', 'weight': 15},
+            'import_checks': {'name': '导入检查', 'weight': 10},
+            'code_quality': {'name': '代码质量', 'weight': 20},
+            'security_scan': {'name': '安全检查', 'weight': 10},
+            'dependencies': {'name': '依赖健康', 'weight': 5},
         }
 
         result = {
@@ -70,11 +70,11 @@ class QualityGateCLI:
             'passed': False,
         }
 
-        output_path = Path(output_dir)
+        project_path = Path(project_path) if project_path else Path('.')
 
         # 执行检查
         for check_name, check_info in checks.items():
-            passed, detail = self._perform_check(check_name, output_path)
+            passed, detail = self._perform_check(check_name, project_path)
             result['checks'][check_name] = {
                 'passed': passed,
                 'detail': detail,
@@ -102,61 +102,91 @@ class QualityGateCLI:
 
         return result
 
-    def _perform_check(self, check_name: str, output_path: Path) -> tuple:
+    def _perform_check(self, check_name: str, project_path: Path) -> tuple:
         """执行单个检查"""
         try:
-            if check_name == 'result_file':
-                exists = (output_path / 'analysis_result.json').exists()
-                return exists, '结果文件' if exists else '缺少结果文件'
+            if check_name == 'code_structure':
+                has_scripts = (project_path / 'scripts').exists()
+                has_skills = (project_path / 'skills').exists()
+                has_knowledge = (project_path / 'knowledge').exists()
+                passed = has_scripts and has_skills
+                detail = f"scripts={'✅' if has_scripts else '❌'}, skills={'✅' if has_skills else '❌'}"
+                return passed, detail
 
-            elif check_name == 'summary_file':
-                exists = (output_path / 'summary.md').exists()
-                return exists, '摘要文件' if exists else '缺少摘要文件'
+            elif check_name == 'test_coverage':
+                test_files = list(project_path.glob('tests/*.py'))
+                passed = len(test_files) > 0
+                detail = f"测试文件: {len(test_files)} 个"
+                return passed, detail
 
-            elif check_name == 'td_file':
-                exists = (output_path / 'tech_design.md').exists()
-                return exists, '技术方案' if exists else '缺少技术方案'
+            elif check_name == 'docs_present':
+                md_files = list(project_path.glob('*.md'))
+                has_readme = (project_path / 'README.md').exists()
+                passed = has_readme or len(md_files) > 0
+                detail = f"Markdown文档: {len(md_files)} 个"
+                return passed, detail
 
-            elif check_name == 'test_cases':
-                exists = (output_path / 'test_cases').exists() or \
-                         any(f.startswith('test_') for f in output_path.glob('*test*'))
-                return exists, '测试用例目录' if exists else '缺少测试用例'
+            elif check_name == 'no_syntax_errors':
+                py_files = list(project_path.rglob('*.py'))[:30]
+                errors = 0
+                for f in py_files:
+                    try:
+                        compile(f.read_text(), str(f), 'exec')
+                    except SyntaxError:
+                        errors += 1
+                passed = errors == 0
+                detail = f"检查 {len(py_files)} 个文件, 错误: {errors}"
+                return passed, detail
 
-            elif check_name == 'code_review':
-                exists = (output_path / 'code_review_result.json').exists()
-                return exists, '代码审查结果' if exists else '缺少代码审查'
+            elif check_name == 'import_checks':
+                try:
+                    import sys
+                    sys.path.insert(0, str(project_path))
+                    from scripts.expert_system import SeniorExpertSystem
+                    passed = True
+                    detail = "核心模块导入成功"
+                except Exception as e:
+                    passed = False
+                    detail = f"导入失败: {str(e)[:30]}"
+                return passed, detail
 
-            elif check_name == 'no_critical_issues':
-                # 检查是否有 P0 问题
-                result_file = output_path / 'analysis_result.json'
-                if result_file.exists():
-                    data = json.loads(result_file.read_text())
-                    issues = data.get('issues', [])
-                    p0_count = sum(1 for i in issues if i.get('severity') == 'P0')
-                    return p0_count == 0, f'{p0_count} 个 P0 问题'
-                return True, '无结果文件，跳过检查'
+            elif check_name == 'code_quality':
+                py_files = list(project_path.rglob('*.py'))
+                total_lines = 0
+                has_type_hints = 0
+                for f in py_files[:15]:
+                    try:
+                        content = f.read_text()
+                        lines = len(content.split('\n'))
+                        total_lines += lines
+                        if '->' in content or ': Dict' in content or ': List' in content:
+                            has_type_hints += 1
+                    except:
+                        pass
+                passed = total_lines > 100 and has_type_hints > 0
+                detail = f"代码 {total_lines} 行, {has_type_hints} 个文件含类型注解"
+                return passed, detail
 
-            elif check_name == 'domain_coverage':
-                # 检查领域覆盖率
-                result_file = output_path / 'analysis_result.json'
-                if result_file.exists():
-                    data = json.loads(result_file.read_text())
-                    feasibility = data.get('analysis', {}).get('technical_feasibility', {})
-                    coverage = feasibility.get('coverage_rate', 0)
-                    return coverage >= 0.7, f'覆盖率 {coverage:.0%}'
-                return True, '无结果文件，跳过检查'
+            elif check_name == 'security_scan':
+                security_issues = 0
+                py_files = list(project_path.rglob('*.py'))[:30]
+                for f in py_files:
+                    content = f.read_text(errors='ignore')
+                    if 'password' in content.lower() and '=' in content:
+                        security_issues += 1
+                    if 'eval(' in content and '#' not in content.split('eval(')[0][-10:]:
+                        security_issues += 1
+                passed = security_issues == 0
+                detail = f"潜在安全问题: {security_issues} 个"
+                return passed, detail
 
-            elif check_name == 'knowledge_base':
-                # 检查知识库引用
-                result_file = output_path / 'analysis_result.json'
-                if result_file.exists():
-                    data = json.loads(result_file.read_text())
-                    suggestions = data.get('analysis', {}).get('optimization_suggestions', [])
-                    has_kb = any(s.get('reference') for s in suggestions)
-                    return has_kb, '有知识库引用' if has_kb else '缺少知识库引用'
-                return True, '无结果文件，跳过检查'
+            elif check_name == 'dependencies':
+                req_file = project_path / 'requirements.txt'
+                passed = req_file.exists()
+                detail = f"requirements.txt: {'存在' if passed else '缺失'}"
+                return passed, detail
 
-            return True, '未知检查项'
+            return False, '未知检查项'
 
         except Exception as e:
             return False, f'检查异常: {str(e)}'
@@ -188,7 +218,7 @@ class QualityGateCLI:
             </tr>'''
 
         rating_color = {
-            'A+': '#28a745', 'A': '#20c997', 'B+": '#17a2b8',
+            'A+': '#28a745', 'A': '#20c997', 'B+': '#17a2b8',
             'B': '#ffc107', 'C': '#dc3545'
         }.get(result['rating'], '#6c757d')
 
@@ -247,10 +277,10 @@ class QualityGateCLI:
         """获取质量趋势"""
         cutoff = datetime.now().timestamp() - days * 86400
         recent = [h for h in self.history if datetime.fromisoformat(h['timestamp']).timestamp() > cutoff]
-        
+
         if not recent:
             return {'trend': 'no_data', 'checks': []}
-        
+
         scores = [h['percentage'] for h in recent]
         trend = 'stable'
         if len(scores) >= 2:
@@ -258,7 +288,7 @@ class QualityGateCLI:
                 trend = 'improving'
             elif scores[-1] < scores[0]:
                 trend = 'declining'
-        
+
         return {
             'trend': trend,
             'period_days': days,
@@ -274,23 +304,23 @@ def main():
     """CLI 入口"""
     parser = argparse.ArgumentParser(description='biz-delivery Quality Gate')
     parser.add_argument('command', choices=['check', 'report', 'trend'], help='命令')
-    parser.add_argument('--output-dir', '-o', default='./output', help='输出目录')
+    parser.add_argument('--project', '-p', default='.', help='项目路径')
     parser.add_argument('--format', '-f', choices=['html', 'json', 'text'], default='text', help='输出格式')
     parser.add_argument('--strict', action='store_true', help='严格模式')
     parser.add_argument('--days', type=int, default=7, help='趋势查询天数')
-    
+
     args = parser.parse_args()
-    
+
     gate = QualityGateCLI()
-    
+
     if args.command == 'check':
-        result = gate.check(args.output_dir, args.strict)
-        
+        result = gate.check(args.project, args.strict)
+
         if args.format == 'html':
-            report_path = gate.generate_html_report(result, f'{args.output_dir}/quality_report.html')
+            report_path = gate.generate_html_report(result, f'{args.project}/quality_report.html')
             print(f'HTML 报告已生成: {report_path}')
         elif args.format == 'json':
-            report_path = gate.generate_json_report(result, f'{args.output_dir}/quality_report.json')
+            report_path = gate.generate_json_report(result, f'{args.project}/quality_report.json')
             print(f'JSON 报告已生成: {report_path}')
         else:
             print(f'\n质量门禁结果:')
@@ -301,16 +331,16 @@ def main():
             for name, data in result['checks'].items():
                 icon = '✅' if data['passed'] else '❌'
                 print(f'  {icon} {data["detail"]} ({data["weight"]}分)')
-    
+
     elif args.command == 'report':
-        result = gate.check(args.output_dir, args.strict)
+        result = gate.check(args.project, args.strict)
         if args.format == 'html':
-            report_path = gate.generate_html_report(result, f'{args.output_dir}/quality_report.html')
+            report_path = gate.generate_html_report(result, f'{args.project}/quality_report.html')
             print(f'报告已生成: {report_path}')
         elif args.format == 'json':
-            report_path = gate.generate_json_report(result, f'{args.output_dir}/quality_report.json')
+            report_path = gate.generate_json_report(result, f'{args.project}/quality_report.json')
             print(f'报告已生成: {report_path}')
-    
+
     elif args.command == 'trend':
         trend = gate.get_trend(args.days)
         print(f'\n质量趋势 (最近 {args.days} 天):')

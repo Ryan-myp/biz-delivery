@@ -146,6 +146,20 @@ class RyanKB:
                         doc_scores[path] = 0
                     doc_scores[path] += 1
 
+        # 也搜索标题
+        title_index = {}
+        for doc in self.docs.values():
+            title_lower = doc.title.lower()
+            for word in query_words:
+                if word in title_lower:
+                    if doc.path not in title_index:
+                        title_index[doc.path] = 0
+                    title_index[doc.path] += 2  # 标题匹配权重更高
+
+        # 合并分数
+        for path, score in title_index.items():
+            doc_scores[path] = doc_scores.get(path, 0) + score
+
         # 排序并过滤
         sorted_docs = sorted(doc_scores.items(), key=lambda x: -x[1])
         for path, score in sorted_docs[:limit]:
