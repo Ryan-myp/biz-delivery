@@ -1,0 +1,47 @@
+name: biz-delivery PR Review
+
+on:
+  pull_request:
+    branches: [main, master]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run biz-delivery review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python scripts/pr_review_bot.py analyze --pr-data << 'EOF'
+          {
+            "title": "${{ github.event.pull_request.title }}",
+            "body": "${{ github.event.pull_request.body }}",
+            "files": ${{ toJSON(github.event.pull_request.files) }}
+          }
+          EOF
+      
+      - name: Post review comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/pr_review_bot.py comment >> /tmp/review_comment.txt
+          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/review_comment.txt
+      
+      - name: Quality gate check
+        run: |
+          python scripts/pr_review_bot.py check
