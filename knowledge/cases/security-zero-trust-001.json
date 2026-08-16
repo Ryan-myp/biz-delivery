@@ -1,0 +1,54 @@
+{
+  "case_id": "security-zero-trust-001",
+  "domain": "security",
+  "sub_domain": "security+finance",
+  "prd_summary": "零信任架构实施，微服务间mTLS认证",
+  "issues_found": [
+    {
+      "name": "证书管理复杂",
+      "severity": "P1",
+      "message": "大量服务证书手动管理，易出错"
+    },
+    {
+      "name": "密钥轮转中断服务",
+      "severity": "P1",
+      "message": "密钥更新时导致短暂不可用"
+    },
+    {
+      "name": "访问策略配置繁琐",
+      "severity": "P2",
+      "message": "每个服务单独配置策略，维护成本高"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "使用cert-manager自动管理证书生命周期",
+      "effective": true,
+      "impact": "证书管理自动化，减少90%人工操作"
+    },
+    {
+      "solution": "实现无缝密钥轮转，平滑过渡",
+      "effective": true,
+      "impact": "密钥更新零中断"
+    },
+    {
+      "solution": "统一策略管理平台，可视化配置",
+      "effective": true,
+      "impact": "策略配置效率提升5倍"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "零信任架构实施要渐进式，先核心服务",
+    "证书自动化是必须的，否则运维成本太高",
+    "密钥轮转必须平滑，不能中断服务",
+    "访问策略要集中管理，避免分散配置"
+  ],
+  "metrics": {
+    "service_coverage": "100%",
+    "certificate_auto_renewal": "100%",
+    "policy_management_time_reduction": "80%"
+  },
+  "quality_score": 91,
+  "timestamp": "2024-01-26T10:00:00Z"
+}

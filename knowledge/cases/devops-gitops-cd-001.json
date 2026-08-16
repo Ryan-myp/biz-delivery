@@ -1,0 +1,54 @@
+{
+  "case_id": "devops-gitops-cd-001",
+  "domain": "devops",
+  "sub_domain": "devops+cloud_native",
+  "prd_summary": "GitOps持续部署，ArgoCD实施",
+  "issues_found": [
+    {
+      "name": "应用状态漂移",
+      "severity": "P1",
+      "message": "手动kubectl edit导致与Git配置不一致"
+    },
+    {
+      "name": "部署回滚困难",
+      "severity": "P1",
+      "message": "缺乏自动回滚机制"
+    },
+    {
+      "name": "多环境管理复杂",
+      "severity": "P2",
+      "message": "dev/staging/prod环境配置难以统一管理"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "启用ArgoCD自我修复，自动同步Git配置",
+      "effective": true,
+      "impact": "状态漂移自动修复"
+    },
+    {
+      "solution": "配置自动回滚策略，失败自动回退",
+      "effective": true,
+      "impact": "部署失败恢复时间从小时级降到分钟级"
+    },
+    {
+      "solution": "使用Kustomize管理多环境配置差异",
+      "effective": true,
+      "impact": "环境配置复用率80%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "GitOps核心是单一数据源，禁止手动修改集群",
+    "自动回滚是CI/CD的必备能力",
+    "多环境配置要用参数化工具管理",
+    "部署过程要有完整审计日志"
+  ],
+  "metrics": {
+    "deployment_frequency": "daily",
+    "rollback_time_min": 5,
+    "config_drift_detected": "100%"
+  },
+  "quality_score": 89,
+  "timestamp": "2024-01-27T10:00:00Z"
+}

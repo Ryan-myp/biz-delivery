@@ -1,0 +1,54 @@
+{
+  "case_id": "cloud-native-service-mesh-002",
+  "domain": "cloud_native",
+  "sub_domain": "cloud_native+devops",
+  "prd_summary": "Service Mesh渐进式迁移，零停机上线",
+  "issues_found": [
+    {
+      "name": " sidecar资源占用高",
+      "severity": "P1",
+      "message": "Istio sidecar默认配置CPU请求过高"
+    },
+    {
+      "name": "灰度发布策略不完善",
+      "severity": "P1",
+      "message": "缺乏基于权重的流量灰度"
+    },
+    {
+      "name": "可观测性不足",
+      "severity": "P2",
+      "message": "缺少分布式追踪和指标采集"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "优化sidecar资源请求，CPU从500m降到100m",
+      "effective": true,
+      "impact": "集群容量提升5倍"
+    },
+    {
+      "solution": "配置VirtualService权重路由，逐步灰度",
+      "effective": true,
+      "impact": "零停机迁移"
+    },
+    {
+      "solution": "集成Prometheus+Grafana+Jaeger",
+      "effective": true,
+      "impact": "全链路可观测"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "Service Mesh迁移要渐进式，不能一刀切",
+    "sidecar资源优化很重要，影响集群容量",
+    "可观测性必须同步建设，否则无法排查问题",
+    "灰度发布要配合自动化回滚机制"
+  ],
+  "metrics": {
+    "migration_duration_hours": 48,
+    "zero_downtime": true,
+    "resource_savings": "80%"
+  },
+  "quality_score": 88,
+  "timestamp": "2024-01-24T10:00:00Z"
+}

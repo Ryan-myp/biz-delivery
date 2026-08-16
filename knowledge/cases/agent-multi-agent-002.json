@@ -1,0 +1,54 @@
+{
+  "case_id": "agent-multi-agent-002",
+  "domain": "agent",
+  "sub_domain": "agent+ml_ops",
+  "prd_summary": "多Agent协作系统，支持任务分解和结果聚合",
+  "issues_found": [
+    {
+      "name": "Agent循环无终止条件",
+      "severity": "P0",
+      "message": "Agent可能陷入无限循环，Token消耗失控"
+    },
+    {
+      "name": "Tool调用无超时控制",
+      "severity": "P1",
+      "message": "外部API调用可能阻塞整个系统"
+    },
+    {
+      "name": "记忆检索无缓存",
+      "severity": "P1",
+      "message": "每次对话都重新检索向量库，延迟高"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "设置最大迭代次数(10次)和Token预算",
+      "effective": true,
+      "impact": "防止无限循环，成本控制"
+    },
+    {
+      "solution": "Tool调用超时设置为5秒，失败重试2次",
+      "effective": true,
+      "impact": "系统响应时间可控"
+    },
+    {
+      "solution": "记忆检索引入Redis缓存，TTL 10分钟",
+      "effective": true,
+      "impact": "检索延迟从200ms降到10ms"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "Agent系统必须设置终止条件和预算限制",
+    "Tool调用要有超时和重试机制",
+    "记忆检索必须缓存，否则延迟不可接受",
+    "多Agent协作需要明确的通信协议"
+  ],
+  "metrics": {
+    "token_cost_reduction": "60%",
+    "response_latency_ms": 800,
+    "agent_loop_prevention": "100%"
+  },
+  "quality_score": 90,
+  "timestamp": "2024-01-21T10:00:00Z"
+}

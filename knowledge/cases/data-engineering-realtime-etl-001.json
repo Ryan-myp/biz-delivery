@@ -1,0 +1,54 @@
+{
+  "case_id": "data-engineering-realtime-etl-001",
+  "domain": "data_engineering",
+  "sub_domain": "data_engineering+ml_ops",
+  "prd_summary": "实时数仓建设，Flink+Kafka架构",
+  "issues_found": [
+    {
+      "name": "数据倾斜",
+      "severity": "P0",
+      "message": "热点key导致部分TaskManager负载过高"
+    },
+    {
+      "name": "背压处理不当",
+      "severity": "P1",
+      "message": "下游消费慢导致上游积压"
+    },
+    {
+      "name": "状态后端配置不当",
+      "severity": "P1",
+      "message": "RocksDB状态大小超出内存限制"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "KeyBy前加随机前缀打散，结束后去除",
+      "effective": true,
+      "impact": "负载均衡，吞吐提升3倍"
+    },
+    {
+      "solution": "配置背压监控，慢消费自动告警",
+      "effective": true,
+      "impact": "问题发现时间从小时级降到分钟级"
+    },
+    {
+      "solution": "调整RocksDB blockSize和内存配置",
+      "effective": true,
+      "impact": "状态查询延迟降低50%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "数据倾斜是实时计算最常见的问题，必须提前设计",
+    "背压监控是生产环境的必备能力",
+    "状态后端配置需要根据实际数据量调优",
+    "Flink版本升级要谨慎，注意兼容性"
+  ],
+  "metrics": {
+    "throughput_per_sec": 500000,
+    "latency_p99_ms": 100,
+    "data_skew_ratio": 1.2
+  },
+  "quality_score": 87,
+  "timestamp": "2024-01-25T10:00:00Z"
+}

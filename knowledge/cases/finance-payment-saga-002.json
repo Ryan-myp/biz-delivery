@@ -1,0 +1,54 @@
+{
+  "case_id": "finance-payment-saga-002",
+  "domain": "finance",
+  "sub_domain": "finance+security",
+  "prd_summary": "支付系统Saga分布式事务，保证最终一致性",
+  "issues_found": [
+    {
+      "name": "Saga补偿机制缺失",
+      "severity": "P0",
+      "message": "部分步骤失败后无补偿，导致数据不一致"
+    },
+    {
+      "name": "支付回调重复处理",
+      "severity": "P0",
+      "message": "网络抖动导致回调重复，订单状态混乱"
+    },
+    {
+      "name": "对账机制缺失",
+      "severity": "P1",
+      "message": "缺少日终对账，异常无法及时发现"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "实现完整Saga编排，每步都有补偿操作",
+      "effective": true,
+      "impact": "数据一致性100%"
+    },
+    {
+      "solution": "支付回调幂等处理，基于订单号去重",
+      "effective": true,
+      "impact": "消除重复支付"
+    },
+    {
+      "solution": "每日自动对账，差异告警",
+      "effective": true,
+      "impact": "异常发现时间从小时级降到分钟级"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "支付系统必须实现Saga补偿机制",
+    "所有回调接口必须幂等处理",
+    "对账是金融系统的底线，必须每日执行",
+    "关键操作必须有审计日志"
+  ],
+  "metrics": {
+    "consistency_rate": "100%",
+    "repeated_payment_rate": "0%",
+    "reconciliation_time_min": 5
+  },
+  "quality_score": 94,
+  "timestamp": "2024-01-23T10:00:00Z"
+}

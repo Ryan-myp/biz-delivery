@@ -1,0 +1,55 @@
+{
+  "case_id": "ecommerce-flash-sale-002",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+finance",
+  "prd_summary": "秒杀系统设计，支撑100万QPS瞬时流量",
+  "issues_found": [
+    {
+      "name": "数据库直接承压",
+      "severity": "P0",
+      "message": "秒杀请求直接打到DB，导致数据库崩溃"
+    },
+    {
+      "name": "库存超卖",
+      "severity": "P0",
+      "message": "并发扣库存存在竞态条件"
+    },
+    {
+      "name": "价格计算精度问题",
+      "severity": "P1",
+      "message": "使用浮点数计算金额，存在精度损失"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "Redis预扣库存+消息队列异步落库",
+      "effective": true,
+      "impact": "DB QPS从100万降到1万"
+    },
+    {
+      "solution": "Redis Lua脚本原子扣库存",
+      "effective": true,
+      "impact": "零超卖"
+    },
+    {
+      "solution": "金额使用Decimal或整数(分)存储",
+      "effective": true,
+      "impact": "消除精度误差"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "秒杀系统必须用Redis做缓冲，不能直接打DB",
+    "库存扣减必须原子操作，Lua脚本是最佳选择",
+    "金额计算必须用Decimal，禁止浮点数",
+    "需要限流降级，保护核心服务"
+  ],
+  "metrics": {
+    "peak_qps": 1000000,
+    "db_qps_after": 10000,
+    "overstock_rate": "0%",
+    "response_time_ms": 50
+  },
+  "quality_score": 93,
+  "timestamp": "2024-01-22T10:00:00Z"
+}
