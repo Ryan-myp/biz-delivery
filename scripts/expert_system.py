@@ -731,6 +731,12 @@ class ExpertDecisionEngine:
             feasibility = '高' if feasibility in ['中', '低'] else feasibility
             coverage_rate = min(1.0, coverage_rate + tech_count * 0.1)
 
+        return {
+            'items_checked': results,
+            'coverage_rate': coverage_rate,
+            'feasibility': feasibility,
+        }
+
     def _assess_risks(self, prd: str, domain: str) -> List[Dict]:
         """风险评估 - 增强版"""
         domain_kb = self.kb.get_domain_knowledge(domain)
