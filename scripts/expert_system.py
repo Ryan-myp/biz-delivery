@@ -205,8 +205,9 @@ class DomainKnowledgeEngine:
                 '存储类不支持持久化',
             ],
             reference_docs=[
-                'knowledge/kubernetes/kubernetes-best-practices.md',
-                'knowledge/cloud-native/cloud-native-patterns.md',
+                'knowledge/infra/kubernetes-scheduler-source.md',
+                'knowledge/mesh/service-mesh-istio-deep.md',
+                'knowledge/devops/k8s-helm-deep.md',
             ]
         )
 
@@ -231,8 +232,8 @@ class DomainKnowledgeEngine:
                 '告警疲劳',
             ],
             reference_docs=[
-                'knowledge/devops/ci-cd-pipeline-guide.md',
-                'knowledge/infra/infrastructure-as-code.md',
+                'knowledge/devops/k8s-production-deep.md',
+                'knowledge/infra/docker-storage-driver.md',
             ]
         )
 
@@ -257,8 +258,8 @@ class DomainKnowledgeEngine:
                 '存储成本失控',
             ],
             reference_docs=[
-                'knowledge/bigdata/big-data-architecture.md',
-                'knowledge/clickhouse/clickhouse-optimization.md',
+                'knowledge/bigdata/data-warehouse-deep.md',
+                'knowledge/big-data/realtime-data-pipeline-deep.md',
             ]
         )
 
@@ -283,8 +284,9 @@ class DomainKnowledgeEngine:
                 '供应链攻击',
             ],
             reference_docs=[
-                'knowledge/security/security-best-practices.md',
-                'knowledge/jwt/jwt-security-guide.md',
+                'knowledge/security/security-architecture-deep.md',
+                'knowledge/jwt/jwt-authentication-deep.md',
+                'knowledge/https/https-security-deep-dive.md',
             ]
         )
 
@@ -309,8 +311,8 @@ class DomainKnowledgeEngine:
                 '训练数据泄露',
             ],
             reference_docs=[
-                'knowledge/ml/ml-production-guide.md',
-                'knowledge/agent-ai/llm-inference-optimization.md',
+                'knowledge/ml/ml-system-architecture-deep.md',
+                'knowledge/ml/model-serving-deep.md',
             ]
         )
 
@@ -335,8 +337,8 @@ class DomainKnowledgeEngine:
                 '服务器过载',
             ],
             reference_docs=[
-                'knowledge/gaming/game-server-architecture.md',
-                'knowledge/network/network-optimization.md',
+                'knowledge/network/websocket-realtime-deep.md',
+                'knowledge/algorithm/graph-algorithms-deep.md',
             ]
         )
 
@@ -361,8 +363,8 @@ class DomainKnowledgeEngine:
                 '协议不兼容',
             ],
             reference_docs=[
-                'knowledge/iot/iot-platform-design.md',
-                'knowledge/messaging/mqtt-protocol-guide.md',
+                'knowledge/middleware/rabbitmq-nats-deep.md',
+                'knowledge/middleware/message-queue-design.md',
             ]
         )
 
@@ -387,8 +389,8 @@ class DomainKnowledgeEngine:
                 '单租户影响其他租户',
             ],
             reference_docs=[
-                'knowledge/saas/multi-tenant-architecture.md',
-                'knowledge/architecture/tenancy-patterns.md',
+                'knowledge/前沿/saas-agent-trend-deep.md',
+                'knowledge/前沿/saas-agent-2026-deep.md',
             ]
         )
 
@@ -413,8 +415,8 @@ class DomainKnowledgeEngine:
                 '热门内容撑爆数据库',
             ],
             reference_docs=[
-                'knowledge/social/feed-system-design.md',
-                'knowledge/database/graph-database-guide.md',
+                'knowledge/archive/versioned/neo4j-graph-db-deep-v2_1786438150.md',
+                'knowledge/middleware/message-queue-advanced.md',
             ]
         )
 
@@ -439,8 +441,8 @@ class DomainKnowledgeEngine:
                 '库存不准',
             ],
             reference_docs=[
-                'knowledge/logistics/supply-chain-optimization.md',
-                'knowledge/algorithm/path-finding-algorithms.md',
+                'knowledge/security/zero-trust-mtls-supply-chain.md',
+                'knowledge/algorithm/graph-algorithms-deep.md',
             ]
         )
 
@@ -675,7 +677,57 @@ class ExpertDecisionEngine:
             'finance': {
                 '安全': '加密存储 + 传输 TLS + 审计日志',
                 '合规': '数据脱敏 + 权限控制 + 操作审计',
-            }
+            },
+            'cloud_native': {
+                '节点故障': '多可用区部署 + Pod 副本 + 自动恢复',
+                '网络异常': '服务网格熔断 + 重试 + 超时',
+                '存储问题': 'PV/PVC 分离 + 备份策略',
+            },
+            'devops': {
+                '部署失败': '蓝绿部署 + 自动回滚 + 灰度发布',
+                '配置漂移': 'GitOps + 声明式配置 + 持续比对',
+                '告警疲劳': '智能聚合 + 分级告警 + 静默策略',
+            },
+            'data_engineering': {
+                '数据延迟': '流式处理 + 增量计算 + 缓存预热',
+                '数据质量': '数据校验 + 血缘追踪 + 质量门禁',
+                '存储成本': '冷热分离 + 压缩存储 + 生命周期管理',
+            },
+            'security': {
+                '数据泄露': '加密存储 + 访问控制 + 审计日志',
+                '权限提升': '最小权限 + 持续验证 + 微隔离',
+                '供应链': '依赖扫描 + 签名验证 + SBOM',
+            },
+            'ml_ops': {
+                '模型退化': '持续监控 + 自动重训练 + A/B 测试',
+                '推理延迟': '模型优化 + 缓存 + 边缘推理',
+                '数据泄露': '数据脱敏 + 访问控制 + 审计',
+            },
+            'gaming': {
+                '延迟高': '服务端权威 + 客户端预测 + 插值',
+                '外挂': '客户端校验 + 服务端验证 + 行为分析',
+                '服务器过载': '弹性扩容 + 负载均衡 + 限流',
+            },
+            'iot': {
+                '设备掉线': '本地缓存 + 断点续传 + 心跳检测',
+                '数据丢失': '边缘缓冲 + 批量上报 + 确认机制',
+                '协议不兼容': '统一适配层 + 协议转换 + 标准化',
+            },
+            'saas': {
+                '数据泄露': '行级隔离 + 租户认证 + 审计日志',
+                '计费错误': '独立计量 + 对账机制 + 人工复核',
+                '单租户影响': '资源配额 + 隔离部署 + 降级策略',
+            },
+            'social': {
+                'Feed 延迟': '混合扩散 + 分页加载 + 预计算',
+                '消息重复': '消息 ID 去重 + 幂等处理',
+                '数据库压力': '读写分离 + 分库分表 + 缓存',
+            },
+            'logistics': {
+                '配送延误': '实时调度 + 动态路径 + 预警机制',
+                '货物丢失': '全程追踪 + 电子封签 + 异常告警',
+                '库存不准': '实时同步 + 盘点机制 + 差异分析',
+            },
         }
 
         domain_mits = mitigations.get(domain, {})
