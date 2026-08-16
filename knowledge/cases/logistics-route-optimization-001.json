@@ -1,0 +1,54 @@
+{
+  "case_id": "logistics-route-optimization-001",
+  "domain": "logistics",
+  "sub_domain": "logistics+ml_ops",
+  "prd_summary": "物流路径优化系统，降低配送成本",
+  "issues_found": [
+    {
+      "name": "路径规划慢",
+      "severity": "P0",
+      "message": "大规模路径规划耗时超过实时要求"
+    },
+    {
+      "name": "动态因素考虑不足",
+      "severity": "P1",
+      "message": "未考虑交通、天气等动态因素"
+    },
+    {
+      "name": "车辆调度不合理",
+      "severity": "P1",
+      "message": "车辆空驶率高，资源浪费"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "遗传算法+实时路况API+预计算路网",
+      "effective": true,
+      "impact": "路径规划时间从30秒降到2秒"
+    },
+    {
+      "solution": "实时数据接入+动态重规划",
+      "effective": true,
+      "impact": "配送准时率提升20%"
+    },
+    {
+      "solution": "智能调度算法+车辆共享",
+      "effective": true,
+      "impact": "空驶率从30%降到10%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "路径规划算法要平衡质量和速度",
+    "实时数据是必须的",
+    "调度优化能直接降低成本",
+    "要考虑多种约束条件"
+  ],
+  "metrics": {
+    "route_planning_time_sec": 2,
+    "on_time_rate_lift": "20%",
+    "empty_run_rate_reduction": "66%"
+  },
+  "quality_score": 88,
+  "timestamp": "2024-03-05T10:00:00Z"
+}

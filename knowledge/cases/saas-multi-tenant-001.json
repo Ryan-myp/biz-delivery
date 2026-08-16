@@ -1,0 +1,54 @@
+{
+  "case_id": "saas-multi-tenant-001",
+  "domain": "saas",
+  "sub_domain": "saas+security",
+  "prd_summary": "多租户SaaS平台，数据隔离与共享",
+  "issues_found": [
+    {
+      "name": "租户数据隔离",
+      "severity": "P0",
+      "message": "数据库层面租户数据可能交叉"
+    },
+    {
+      "name": "资源争抢",
+      "severity": "P1",
+      "message": "大客户占用过多资源影响其他租户"
+    },
+    {
+      "name": "个性化需求",
+      "severity": "P2",
+      "message": "不同租户功能需求差异大"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "Schema per tenant+行级安全策略",
+      "effective": true,
+      "impact": "数据隔离100%保证"
+    },
+    {
+      "solution": "资源配额+排队机制+优先级调度",
+      "effective": true,
+      "impact": "资源争抢问题消除"
+    },
+    {
+      "solution": "插件化架构+Feature Flag",
+      "effective": true,
+      "impact": "个性化需求支持率95%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "多租户数据隔离是底线",
+    "资源配额要提前规划",
+    "插件化是SaaS的必然选择",
+    "Feature Flag要统一管理"
+  ],
+  "metrics": {
+    "data_isolation_rate": "100%",
+    "resource_contention_incidents": 0,
+    "customization_support_rate": "95%"
+  },
+  "quality_score": 92,
+  "timestamp": "2024-03-03T10:00:00Z"
+}

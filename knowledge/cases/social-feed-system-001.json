@@ -1,0 +1,54 @@
+{
+  "case_id": "social-feed-system-001",
+  "domain": "social",
+  "sub_domain": "social+ml_ops",
+  "prd_summary": "社交Feed流系统，亿级用户推荐",
+  "issues_found": [
+    {
+      "name": " feed构建慢",
+      "severity": "P0",
+      "message": "大V粉丝多，Push模式构建Feed超时"
+    },
+    {
+      "name": "内容推荐不准",
+      "severity": "P1",
+      "message": "推荐算法效果差，用户流失高"
+    },
+    {
+      "name": "实时性不足",
+      "severity": "P1",
+      "message": "新内容不能及时出现在Feed中"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "推拉结合模式：大V用Pull，小V用Push",
+      "effective": true,
+      "impact": "Feed构建延迟从5s降到200ms"
+    },
+    {
+      "solution": "深度学习排序模型+实时特征",
+      "effective": true,
+      "impact": "点击率提升35%"
+    },
+    {
+      "solution": "Kafka消息队列+流式处理",
+      "effective": true,
+      "impact": "内容可见延迟从分钟级降到秒级"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "Feed流要用推拉结合，不能一刀切",
+    "推荐算法是社交产品的核心",
+    "实时性是用户体验的关键",
+    "要根据用户体量差异化处理"
+  ],
+  "metrics": {
+    "feed_build_latency_ms": 200,
+    "ctr_lift": "35%",
+    "content_freshness_sec": 3
+  },
+  "quality_score": 90,
+  "timestamp": "2024-03-04T10:00:00Z"
+}

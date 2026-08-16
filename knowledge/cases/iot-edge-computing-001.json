@@ -1,0 +1,54 @@
+{
+  "case_id": "iot-edge-computing-001",
+  "domain": "iot",
+  "sub_domain": "iot+cloud_native",
+  "prd_summary": "边缘计算物联网平台，百万设备接入",
+  "issues_found": [
+    {
+      "name": "设备连接数限制",
+      "severity": "P0",
+      "message": "单服务器连接数上限导致无法扩容"
+    },
+    {
+      "name": "边缘节点管理复杂",
+      "severity": "P1",
+      "message": "数百个边缘节点配置维护困难"
+    },
+    {
+      "name": "数据一致性",
+      "severity": "P1",
+      "message": "边缘与云端数据同步存在延迟和冲突"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "EMQX集群+连接池优化+分片部署",
+      "effective": true,
+      "impact": "单节点连接数从1万提升到10万"
+    },
+    {
+      "solution": "Ansible自动化配置+GitOps管理",
+      "effective": true,
+      "impact": "节点部署时间从小时级降到分钟级"
+    },
+    {
+      "solution": "MQTT Last Will+双向同步+冲突解决",
+      "effective": true,
+      "impact": "数据同步延迟从分钟级降到秒级"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "IoT平台要提前规划连接数规模",
+    "边缘节点管理要自动化",
+    "数据同步要考虑离线场景",
+    "协议选择很关键，MQTT是IoT标准"
+  ],
+  "metrics": {
+    "connections_per_node": 100000,
+    "deploy_time_min": 5,
+    "sync_latency_sec": 3
+  },
+  "quality_score": 89,
+  "timestamp": "2024-03-02T10:00:00Z"
+}

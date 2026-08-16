@@ -1,0 +1,54 @@
+{
+  "case_id": "gaming-realtime-multiplayer-001",
+  "domain": "gaming",
+  "sub_domain": "gaming+cloud_native",
+  "prd_summary": "实时多人在线游戏服务器，支持万人同时在线",
+  "issues_found": [
+    {
+      "name": "同步延迟",
+      "severity": "P0",
+      "message": "游戏状态同步延迟超过100ms，影响体验"
+    },
+    {
+      "name": "服务器扩容困难",
+      "severity": "P1",
+      "message": "突发流量时扩容响应慢"
+    },
+    {
+      "name": "状态一致性",
+      "severity": "P1",
+      "message": "分布式环境下游戏状态难以保持一致"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "WebSocket长连接+KCP协议优化+本地预测",
+      "effective": true,
+      "impact": "同步延迟从200ms降到50ms"
+    },
+    {
+      "solution": "Kubernetes HPA自动扩缩容+预置节点池",
+      "effective": true,
+      "impact": "扩容时间从10分钟降到1分钟"
+    },
+    {
+      "solution": "CRDT冲突解决算法+状态快照",
+      "effective": true,
+      "impact": "状态一致性问题消除"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "游戏同步延迟是关键体验指标",
+    "自动扩缩容是必备能力",
+    "分布式游戏状态一致性是难题",
+    "本地预测能显著改善体验"
+  ],
+  "metrics": {
+    "sync_latency_ms": 50,
+    "scale_time_min": 1,
+    "concurrent_players": 10000
+  },
+  "quality_score": 91,
+  "timestamp": "2024-03-01T10:00:00Z"
+}
