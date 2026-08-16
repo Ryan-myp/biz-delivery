@@ -1,0 +1,54 @@
+{
+  "case_id": "data-engineering-realtime-dashboard-003",
+  "domain": "data_engineering",
+  "sub_domain": "data_engineering+visualization",
+  "prd_summary": "实时数据看板，支持百万级数据秒级查询",
+  "issues_found": [
+    {
+      "name": "查询性能差",
+      "severity": "P0",
+      "message": "千万级数据查询延迟超过10秒"
+    },
+    {
+      "name": "实时更新延迟",
+      "severity": "P1",
+      "message": "数据从写入到可见延迟超过1分钟"
+    },
+    {
+      "name": "并发查询冲突",
+      "severity": "P1",
+      "message": "多用户同时查询导致服务不可用"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "ClickHouse列式存储+物化视图",
+      "effective": true,
+      "impact": "查询延迟从10s降到200ms"
+    },
+    {
+      "solution": "Kafka流式写入+实时聚合",
+      "effective": true,
+      "impact": "数据可见延迟从1分钟降到5秒"
+    },
+    {
+      "solution": "查询队列+并发控制+结果缓存",
+      "effective": true,
+      "impact": "服务可用性99.9%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "实时看板必须用列式数据库，OLAP是正确选择",
+    "流式处理是实时性的关键",
+    "并发控制必不可少，否则服务容易崩",
+    "物化视图能大幅提升查询性能"
+  ],
+  "metrics": {
+    "query_latency_ms": 200,
+    "data_freshness_sec": 5,
+    "concurrent_users": 100
+  },
+  "quality_score": 89,
+  "timestamp": "2024-02-17T10:00:00Z"
+}

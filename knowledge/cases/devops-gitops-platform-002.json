@@ -1,0 +1,54 @@
+{
+  "case_id": "devops-gitops-platform-002",
+  "domain": "devops",
+  "sub_domain": "devops+cloud_native",
+  "prd_summary": "GitOps平台搭建，应用全生命周期管理",
+  "issues_found": [
+    {
+      "name": "环境配置漂移",
+      "severity": "P1",
+      "message": "手动修改集群配置导致与Git不一致"
+    },
+    {
+      "name": "部署回滚困难",
+      "severity": "P1",
+      "message": "出问题后回滚操作复杂耗时长"
+    },
+    {
+      "name": "多集群管理混乱",
+      "severity": "P2",
+      "message": "多个集群配置难以统一管理"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "ArgoCD自我修复+配置合规检查",
+      "effective": true,
+      "impact": "配置漂移自动修复"
+    },
+    {
+      "solution": "一键回滚+灰度发布+自动验证",
+      "effective": true,
+      "impact": "回滚时间从30分钟降到2分钟"
+    },
+    {
+      "solution": "Cluster API+多集群GitOps",
+      "effective": true,
+      "impact": "多集群管理效率提升5倍"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "GitOps核心是单一数据源，禁止手动修改集群",
+    "回滚能力是必备基础设施",
+    "多集群要用统一管理方案",
+    "自动化验证是保证质量的关键"
+  ],
+  "metrics": {
+    "rollback_time_min": 2,
+    "config_drift_detection": "100%",
+    "multi_cluster_efficiency": "5x"
+  },
+  "quality_score": 88,
+  "timestamp": "2024-02-19T10:00:00Z"
+}

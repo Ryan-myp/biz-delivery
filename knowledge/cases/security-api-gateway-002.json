@@ -1,0 +1,54 @@
+{
+  "case_id": "security-api-gateway-002",
+  "domain": "security",
+  "sub_domain": "security+cloud_native",
+  "prd_summary": "API网关安全设计，统一鉴权与限流",
+  "issues_found": [
+    {
+      "name": "鉴权逻辑分散",
+      "severity": "P1",
+      "message": "每个服务单独实现鉴权，代码重复且易出错"
+    },
+    {
+      "name": "限流策略缺失",
+      "severity": "P1",
+      "message": "缺少统一的限流机制，容易被恶意请求打爆"
+    },
+    {
+      "name": "敏感数据泄露",
+      "severity": "P2",
+      "message": "响应中可能包含敏感字段"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "统一JWT鉴权+OAuth2.0授权",
+      "effective": true,
+      "impact": "鉴权代码重复率降到0"
+    },
+    {
+      "solution": "令牌桶限流+滑动窗口计数",
+      "effective": true,
+      "impact": "恶意请求拦截率99.9%"
+    },
+    {
+      "solution": "响应字段过滤+数据脱敏",
+      "effective": true,
+      "impact": "敏感数据泄露风险消除"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "API网关要做统一鉴权，不能每个服务各自为政",
+    "限流是必备能力，保护后端服务",
+    "敏感数据要在网关层就过滤掉",
+    "安全要纵深防御，不能只靠一层"
+  ],
+  "metrics": {
+    "auth_code_duplication": "0%",
+    "malicious_request_blocked": "99.9%",
+    "data_leak_incidents": 0
+  },
+  "quality_score": 91,
+  "timestamp": "2024-02-16T10:00:00Z"
+}
