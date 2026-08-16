@@ -907,7 +907,7 @@ class SeniorExpertSystem:
                 scores['ecommerce'] += 1
 
         # 金融关键词
-        for kw in ['交易', '账户', '风控', '合规', '清算']:
+        for kw in ['交易', '账户', '风控', '合规', '清算', '对账', '金融']:
             if kw in prd:
                 scores['finance'] += 1
 
@@ -932,7 +932,7 @@ class SeniorExpertSystem:
                 scores['security'] += 1
 
         # ML 关键词
-        for kw in ['模型', '训练', '推理', 'MLflow', '特征', 'A/B测试', '漂移']:
+        for kw in ['模型', '训练', '推理', 'MLflow', '特征', 'A/B测试', '漂移', '机器学习', '深度学习', '神经网络']:
             if kw in prd:
                 scores['ml_ops'] += 1
 
