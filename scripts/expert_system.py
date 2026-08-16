@@ -10,6 +10,7 @@ Expert System - 资深专家系统
 import json
 import re
 from scripts.performance_optimizer import get_optimizer
+from scripts.ryan_kb_loader import get_kb
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
@@ -553,6 +554,7 @@ class ExpertDecisionEngine:
             'technical_feasibility': self._analyze_technical_feasibility(prd_content, primary_domain),
             'risk_assessment': self._assess_risks(prd_content, primary_domain),
             'optimization_suggestions': self._generate_suggestions(prd_content, primary_domain),
+            'knowledge_references': self._get_kb_references(prd_content, primary_domain),
         }
 
         return analysis
@@ -828,6 +830,19 @@ class ExpertDecisionEngine:
         suggestions = []
         domain_kb = self.kb.get_domain_knowledge(domain)
 
+        # 从真实知识库检索相关内容
+        real_kb = get_kb()
+        kb_results = real_kb.search(prd[:200], domain, limit=3)
+
+        if kb_results:
+            for doc in kb_results:
+                suggestions.append({
+                    'type': 'knowledge_base',
+                    'issue': f"参考知识库: {doc['title']}",
+                    'suggestion': doc['summary'][:150] + '...',
+                    'reference': f"/ryan-personal-knowledge/{doc['path']}",
+                })
+
         # 基于反模式检查
         if domain_kb:
             for anti_pattern in domain_kb.anti_patterns[:3]:
@@ -851,9 +866,24 @@ class ExpertDecisionEngine:
 
         return suggestions
 
+    def _get_kb_references(self, prd: str, domain: str) -> List[Dict]:
+        """获取知识库引用"""
+        real_kb = get_kb()
+        results = real_kb.search(prd[:200], domain, limit=5)
+
+        references = []
+        for doc in results:
+            references.append({
+                'title': doc['title'],
+                'path': doc['path'],
+                'relevance_score': doc['score'],
+                'summary': doc['summary'][:100] + '...' if len(doc['summary']) > 100 else doc['summary'],
+            })
+
+        return references
+
     def _check_anti_pattern(self, prd: str, anti_pattern: str) -> bool:
         """检查是否违反反模式"""
-        # 简单检查：如果 PRD 中没有提到相关关键词，可能违反
         keywords = anti_pattern.split()[:2]
         return not any(kw.lower() in prd.lower() for kw in keywords)
 
