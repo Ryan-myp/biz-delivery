@@ -1,0 +1,54 @@
+{
+  "case_id": "security-penetest-automation-003",
+  "domain": "security",
+  "sub_domain": "security+devops",
+  "prd_summary": "自动化渗透测试平台，持续安全验证",
+  "issues_found": [
+    {
+      "name": "误报率高",
+      "severity": "P1",
+      "message": "自动化扫描误报超过60%"
+    },
+    {
+      "name": "测试覆盖率低",
+      "severity": "P1",
+      "message": "只能检测已知漏洞类型"
+    },
+    {
+      "name": "报告可读性差",
+      "severity": "P2",
+      "message": "报告难以理解，修复指导不明确"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "多层验证：扫描+手动确认+上下文分析",
+      "effective": true,
+      "impact": "误报率从60%降到10%"
+    },
+    {
+      "solution": "ATT&CK框架+自定义检测规则",
+      "effective": true,
+      "impact": "漏洞覆盖率提升3倍"
+    },
+    {
+      "solution": "结构化报告+修复建议+优先级排序",
+      "effective": true,
+      "impact": "修复效率提升50%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "自动化渗透测试必须有多层验证",
+    "误报率太高会淹没真正的问题",
+    "报告要可读性强，有明确修复指导",
+    "持续安全验证是必备能力"
+  ],
+  "metrics": {
+    "false_positive_rate": "10%",
+    "coverage_improvement": "3x",
+    "fix_efficiency_lift": "50%"
+  },
+  "quality_score": 88,
+  "timestamp": "2024-02-24T10:00:00Z"
+}
