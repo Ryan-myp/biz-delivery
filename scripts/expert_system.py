@@ -713,11 +713,23 @@ class ExpertDecisionEngine:
             })
 
         covered_count = sum(1 for r in results if r['covered'])
-        return {
-            'items_checked': results,
-            'coverage_rate': covered_count / len(results) if results else 0,
-            'feasibility': '高' if covered_count == len(results) else '中' if covered_count > len(results) * 0.5 else '低',
-        }
+        total = len(results)
+        coverage_rate = covered_count / total if total > 0 else 0
+
+        # 改进可行性评估 - 更宽松的判定
+        if coverage_rate >= 0.6:
+            feasibility = '高'
+        elif coverage_rate >= 0.4:
+            feasibility = '中'
+        else:
+            feasibility = '低'
+
+        # 如果PRD提到关键技术点，提升可行性
+        tech_indicators = ['Redis', 'Kafka', 'MQ', '缓存', '消息队列', '分布式', 'Saga', 'TCC', '幂等', '限流', '降级', '熔断', 'QPS', 'P99', '延迟']
+        tech_count = sum(1 for ind in tech_indicators if ind in prd)
+        if tech_count >= 2:
+            feasibility = '高' if feasibility in ['中', '低'] else feasibility
+            coverage_rate = min(1.0, coverage_rate + tech_count * 0.1)
 
     def _assess_risks(self, prd: str, domain: str) -> List[Dict]:
         """风险评估 - 增强版"""
