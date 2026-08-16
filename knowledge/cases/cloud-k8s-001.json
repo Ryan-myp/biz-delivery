@@ -1,0 +1,36 @@
+{
+  "case_id": "cloud-k8s-001",
+  "domain": "cloud_native",
+  "sub_domain": "cloud_native+devops",
+  "prd_summary": "K8s集群迁移，GitOps部署流程",
+  "issues_found": [
+    {
+      "name": "容器无资源限制",
+      "severity": "P1",
+      "message": "单Pod占用全部节点资源"
+    },
+    {
+      "name": "缺少健康检查",
+      "severity": "P1",
+      "message": "异常Pod持续接收流量"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "设置requests/limits",
+      "effective": true
+    },
+    {
+      "solution": "添加liveness/readiness probe",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "所有容器必须设置资源限制",
+    "健康检查是服务可靠性的基础",
+    "使用LimitRange强制默认限制"
+  ],
+  "quality_score": 85,
+  "timestamp": "2024-05-20T11:00:00"
+}

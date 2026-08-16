@@ -586,33 +586,116 @@ class ExpertDecisionEngine:
 
     def _analyze_technical_feasibility(self, prd: str, domain: str) -> Dict:
         """分析技术可行性"""
-        domain_kb = self.kb.get_domain_knowledge(domain)
+        # 提取主领域 (处理跨领域如 finance+security)
+        primary_domain = domain.split('+')[0] if '+' in domain else domain
+        domain_kb = self.kb.get_domain_knowledge(primary_domain)
 
-        # 检查是否提到关键技术点
+        # 检查是否提到关键技术点 - 所有15个领域
         checked_items = []
-        if domain == 'advertising':
+        if primary_domain == 'advertising':
             checked_items = [
                 ('竞价延迟', r'(?i)(延迟|latency|P99|<\s*\d+\s*ms)'),
                 ('预算追踪', r'(?i)(预算|budget|预扣)'),
                 ('降级策略', r'(?i)(降级|fallback|容灾)'),
+                ('反作弊', r'(?i)(作弊|fraud|反作弊)'),
             ]
-        elif domain == 'agent':
+        elif primary_domain == 'agent':
             checked_items = [
                 ('Agent模式', r'(?i)(ReAct|Planner|Multi-Agent)'),
                 ('记忆系统', r'(?i)(记忆|memory|上下文)'),
                 ('Tool设计', r'(?i)(Tool|工具|Function.*Calling)'),
+                ('安全Guardrails', r'(?i)(安全|guardrail|限制)'),
             ]
-        elif domain == 'ecommerce':
+        elif primary_domain == 'ecommerce':
             checked_items = [
                 ('并发控制', r'(?i)(并发|锁|分布式)'),
                 ('一致性', r'(?i)(一致| Saga |TCC|事务)'),
                 ('幂等', r'(?i)(幂等|idempotent)'),
+                ('库存管理', r'(?i)(库存|pre扣|超卖)'),
             ]
-        elif domain == 'finance':
+        elif primary_domain == 'finance':
             checked_items = [
                 ('一致性', r'(?i)(一致|事务|ACID)'),
                 ('安全', r'(?i)(安全|加密|脱敏)'),
                 ('审计', r'(?i)(审计|日志|trace)'),
+                ('合规', r'(?i)(合规|regulatory|监管)'),
+            ]
+        elif primary_domain == 'cloud_native':
+            checked_items = [
+                ('资源限制', r'(?i)(limit|request|资源限制)'),
+                ('健康检查', r'(?i)(liveness|readiness|probe)'),
+                ('服务网格', r'(?i)(istio|mesh|熔断|重试)'),
+                ('多可用区', r'(?i)(可用区|AZ|multi.*zone)'),
+            ]
+        elif primary_domain == 'devops':
+            checked_items = [
+                ('CI/CD', r'(?i)(CI/CD|Jenkins|GitLab|流水线)'),
+                ('GitOps', r'(?i)(GitOps|ArgoCD|Flux)'),
+                ('回滚策略', r'(?i)(回滚|rollback|蓝绿|灰度)'),
+                ('监控告警', r'(?i)(Prometheus|Grafana|告警|alert)'),
+            ]
+        elif primary_domain == 'data_engineering':
+            checked_items = [
+                ('批流一体', r'(?i)(Spark|Flink|批流)'),
+                ('数据质量', r'(?i)(质量|血缘|校验)'),
+                ('实时计算', r'(?i)(实时|Kafka|流计算)'),
+                ('成本优化', r'(?i)(成本|压缩|冷热分离)'),
+            ]
+        elif primary_domain == 'security':
+            checked_items = [
+                ('零信任', r'(?i)(零信任|zero.*trust|持续验证)'),
+                ('加密存储', r'(?i)(加密|AES|密钥|Vault)'),
+                ('访问控制', r'(?i)(RBAC|权限|最小权限)'),
+                ('审计日志', r'(?i)(审计|log|不可篡改)'),
+            ]
+        elif primary_domain == 'ml_ops':
+            checked_items = [
+                ('模型服务', r'(?i)(模型服务|Triton|ONNX|推理服务)'),
+                ('特征存储', r'(?i)(特征|feature.*store|特征库)'),
+                ('漂移监控', r'(?i)(漂移|drift|监控|衰减)'),
+                ('A/B测试', r'(?i)(A/B|abtest|实验平台)'),
+            ]
+        elif primary_domain == 'gaming':
+            checked_items = [
+                ('帧同步', r'(?i)(帧同步|state.*sync|确定性的)'),
+                ('反作弊', r'(?i)(反作弊|anti.*cheat|外挂|检测)'),
+                ('心跳检测', r'(?i)(心跳|heartbeat|keepalive)'),
+                ('匹配算法', r'(?i)(ELO|MMR|匹配|ranking)'),
+            ]
+        elif primary_domain == 'iot':
+            checked_items = [
+                ('MQTT', r'(?i)(MQTT|CoAP|协议)'),
+                ('边缘计算', r'(?i)(边缘|edge|本地计算)'),
+                ('设备管理', r'(?i)(设备|OTA|固件|版本)'),
+                ('断点续传', r'(?i)(断点|续传|缓存|离线)'),
+            ]
+        elif primary_domain == 'saas':
+            checked_items = [
+                ('多租户隔离', r'(?i)(租户|tenant|隔离|行级权限)'),
+                ('订阅计费', r'(?i)(订阅|billing|Stripe|计费)'),
+                ('SLA保障', r'(?i)(SLA|可用性|99\.\d+|故障转移)'),
+                ('用量计量', r'(?i)(用量|metering|限流|配额)'),
+            ]
+        elif primary_domain == 'social':
+            checked_items = [
+                ('Feed流', r'(?i)(Feed|信息流|pull.*push|fanout)'),
+                ('即时消息', r'(?i)(即时|websocket|消息|IM)'),
+                ('关系存储', r'(?i)(关系|graph|neo4j|图数据库)'),
+                ('CDN分发', r'(?i)(CDN|边缘|缓存|分发)'),
+            ]
+        elif primary_domain == 'logistics':
+            checked_items = [
+                ('路径优化', r'(?i)(路径|routing|遗传算法|调度)'),
+                ('轨迹追踪', r'(?i)(轨迹|GPS|定位|实时追踪)'),
+                ('仓储管理', r'(?i)(仓储|WMS|拣货|库存)'),
+                ('需求预测', r'(?i)(预测|time.*series|机器学习|需求)'),
+            ]
+        else:  # fullstack or cross-domain
+            checked_items = [
+                ('架构设计', r'(?i)(架构|design|pattern)'),
+                ('性能指标', r'(?i)(性能|performance|P99|QPS|延迟)'),
+                ('容灾方案', r'(?i)(容灾|降级|备份|高可用)'),
+                ('监控告警', r'(?i)(监控|monitor|告警|alert)'),
             ]
 
         results = []

@@ -1,0 +1,36 @@
+{
+  "case_id": "ecom-order-001",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce",
+  "prd_summary": "电商订单系统，双11高并发场景",
+  "issues_found": [
+    {
+      "name": "库存扣减无锁",
+      "severity": "P0",
+      "message": "并发下单导致超卖"
+    },
+    {
+      "name": "支付回调无幂等",
+      "severity": "P0",
+      "message": "重复回调导致重复发货"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "分布式锁+预扣库存",
+      "effective": true
+    },
+    {
+      "solution": "业务唯一键幂等控制",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "高并发场景库存必须预扣+分布式锁",
+    "支付回调必须幂等，使用业务唯一键",
+    "双11场景必须做压测，P99<200ms"
+  ],
+  "quality_score": 88,
+  "timestamp": "2024-03-10T09:00:00"
+}

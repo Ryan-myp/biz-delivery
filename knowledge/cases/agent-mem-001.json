@@ -1,0 +1,36 @@
+{
+  "case_id": "agent-mem-001",
+  "domain": "agent",
+  "sub_domain": "agent",
+  "prd_summary": "Agent记忆系统设计，支持长期记忆检索",
+  "issues_found": [
+    {
+      "name": "记忆检索无缓存",
+      "severity": "P1",
+      "message": "每次检索都调用向量DB"
+    },
+    {
+      "name": "Token无成本控制",
+      "severity": "P1",
+      "message": "长对话Token无限增长"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "Redis缓存热点记忆",
+      "effective": true
+    },
+    {
+      "solution": "上下文压缩+模型分级",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "记忆检索必须加缓存，否则延迟不可接受",
+    "Token成本必须设置上限，防止长对话失控",
+    "短期记忆用内存，长期记忆用向量DB"
+  ],
+  "quality_score": 90,
+  "timestamp": "2024-02-01T14:00:00"
+}

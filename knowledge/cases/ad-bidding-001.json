@@ -1,0 +1,36 @@
+{
+  "case_id": "ad-bidding-001",
+  "domain": "advertising",
+  "sub_domain": "advertising+ml_ops",
+  "prd_summary": "DSP竞价引擎优化，P99延迟从150ms降到80ms",
+  "issues_found": [
+    {
+      "name": "画像查询同步阻塞",
+      "severity": "P0",
+      "message": "画像查询阻塞主线程"
+    },
+    {
+      "name": "预算追踪竞态",
+      "severity": "P0",
+      "message": "并发预算扣减存在竞态"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "画像本地缓存+异步预取",
+      "effective": true
+    },
+    {
+      "solution": "预扣机制+本地计数器",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "画像查询必须异步化，P99延迟是关键指标",
+    "预算追踪使用预扣机制防止超投",
+    "本地缓存TTL设置1-5秒平衡一致性和性能"
+  ],
+  "quality_score": 95,
+  "timestamp": "2024-01-15T10:00:00"
+}

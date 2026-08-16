@@ -1,0 +1,36 @@
+{
+  "case_id": "sec-zero-001",
+  "domain": "security",
+  "sub_domain": "security",
+  "prd_summary": "零信任安全架构设计",
+  "issues_found": [
+    {
+      "name": "API无访问控制",
+      "severity": "P0",
+      "message": "敏感接口未做权限校验"
+    },
+    {
+      "name": "密钥硬编码",
+      "severity": "P0",
+      "message": "生产密钥写在代码中"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "RBAC权限控制",
+      "effective": true
+    },
+    {
+      "solution": "Vault密钥管理",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "所有API必须做权限校验",
+    "密钥必须使用Vault等密钥管理服务",
+    "定期扫描代码仓库泄露的密钥"
+  ],
+  "quality_score": 90,
+  "timestamp": "2024-06-15T08:00:00"
+}
