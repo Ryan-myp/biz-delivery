@@ -720,7 +720,7 @@ class ExpertDecisionEngine:
         }
 
     def _assess_risks(self, prd: str, domain: str) -> List[Dict]:
-        """风险评估"""
+        """风险评估 - 增强版"""
         domain_kb = self.kb.get_domain_knowledge(domain)
         risks = []
 
@@ -730,20 +730,68 @@ class ExpertDecisionEngine:
                 risks.append({
                     'type': 'domain',
                     'risk': risk,
-                    'level': '高' if '超投' in risk or '泄漏' in risk else '中',
+                    'level': self._assess_risk_level(risk, domain),
                     'mitigation': self._get_mitigation(risk, domain),
                 })
 
-            # 检查 PRD 是否提到了风险应对
-            if not re.search(r'(?i)(风险|预案|降级|容灾|backup)', prd):
-                risks.append({
-                    'type': 'missing',
-                    'risk': 'PRD 未提及风险预案',
-                    'level': '高',
-                    'mitigation': '添加风险评估和应急预案章节',
-                })
+        # 基于PRD内容检测风险
+        risk_detectors = self._get_risk_detectors(domain)
+        for detector in risk_detectors:
+            matched_risks = detector.detect(prd)
+            for risk in matched_risks:
+                # 避免重复
+                if not any(r['risk'] == risk['risk'] for r in risks):
+                    risks.append(risk)
 
-        return risks
+        # 检查是否提到风险应对
+        if not re.search(r'(?i)(风险|预案|降级|容灾|backup|fallback)', prd):
+            risks.append({
+                'type': 'missing',
+                'risk': 'PRD未提及风险预案和降级策略',
+                'level': '高',
+                'mitigation': '添加风险评估章节，设计降级和容灾方案',
+            })
+
+        # 检查是否提到监控
+        if not re.search(r'(?i)(监控|monitor|告警|alert|观测|observ)', prd):
+            risks.append({
+                'type': 'missing',
+                'risk': 'PRD未提及监控告警方案',
+                'level': '中',
+                'mitigation': '添加监控告警设计，包括指标采集和异常告警',
+            })
+
+        return risks[:5]  # 最多返回5个风险
+
+    def _assess_risk_level(self, risk: str, domain: str) -> str:
+        """评估风险等级"""
+        high_risk_keywords = ['超投', '泄漏', '资金', '安全', '一致']
+        for kw in high_risk_keywords:
+            if kw in risk:
+                return '高'
+        return '中'
+
+    def _get_risk_detectors(self, domain: str) -> List:
+        """获取风险检测器"""
+        detectors = {
+            'advertising': [
+                lambda prd: [{'risk': '竞价延迟导致流量丢失', 'level': '高', 'mitigation': '优化查询路径，本地缓存画像'}] if '延迟' in prd or 'P99' in prd else [],
+                lambda prd: [{'risk': '预算超投风险', 'level': '高', 'mitigation': '使用预扣机制+异步对账'}] if '预算' in prd and '预扣' not in prd else [],
+            ],
+            'agent': [
+                lambda prd: [{'risk': 'Token成本失控', 'level': '中', 'mitigation': '设置Token预算+成本监控'}] if '成本' in prd or 'Token' in prd else [],
+                lambda prd: [{'risk': 'Agent循环无终止', 'level': '高', 'mitigation': '设置最大迭代次数+Token限制'}] if '循环' in prd or '迭代' in prd else [],
+            ],
+            'ecommerce': [
+                lambda prd: [{'risk': '超卖风险', 'level': '高', 'mitigation': 'Redis原子扣减+分布式锁'}] if '库存' in prd and '预扣' not in prd else [],
+                lambda prd: [{'risk': '并发下单超时', 'level': '高', 'mitigation': '异步订单处理+消息队列'}] if '并发' in prd or 'QPS' in prd else [],
+            ],
+            'finance': [
+                lambda prd: [{'risk': '资金安全风险', 'level': '高', 'mitigation': '加密存储+操作审计+双因素认证'}] if '资金' in prd or '支付' in prd else [],
+                lambda prd: [{'risk': '数据一致性风险', 'level': '高', 'mitigation': 'Saga模式+对账机制'}] if '一致' in prd and 'Saga' not in prd else [],
+            ],
+        }
+        return detectors.get(domain, [])
 
     def _get_mitigation(self, risk: str, domain: str) -> str:
         """获取风险缓解措施"""
@@ -826,21 +874,31 @@ class ExpertDecisionEngine:
         return "根据领域最佳实践设计缓解方案"
 
     def _generate_suggestions(self, prd: str, domain: str) -> List[Dict]:
-        """生成优化建议"""
+        """生成优化建议 - 增强版"""
         suggestions = []
         domain_kb = self.kb.get_domain_knowledge(domain)
 
         # 从真实知识库检索相关内容
         real_kb = get_kb()
-        kb_results = real_kb.search(prd[:200], domain, limit=3)
+        kb_results = real_kb.search(prd[:300], domain, limit=5)
 
         if kb_results:
             for doc in kb_results:
                 suggestions.append({
                     'type': 'knowledge_base',
                     'issue': f"参考知识库: {doc['title']}",
-                    'suggestion': doc['summary'][:150] + '...',
+                    'suggestion': doc['summary'][:200] + '...',
                     'reference': f"/ryan-personal-knowledge/{doc['path']}",
+                })
+
+        # 基于最佳实践生成建议
+        if domain_kb and domain_kb.best_practices:
+            for bp in domain_kb.best_practices[:3]:
+                suggestions.append({
+                    'type': 'best_practice',
+                    'issue': '最佳实践',
+                    'suggestion': f"遵循: {bp}",
+                    'reference': '',
                 })
 
         # 基于反模式检查
@@ -849,7 +907,7 @@ class ExpertDecisionEngine:
                 if self._check_anti_pattern(prd, anti_pattern):
                     suggestions.append({
                         'type': 'anti_pattern',
-                        'issue': anti_pattern,
+                        'issue': f"避免反模式: {anti_pattern}",
                         'suggestion': f"避免 {anti_pattern}，参考最佳实践",
                         'reference': domain_kb.reference_docs[0] if domain_kb.reference_docs else '',
                     })
@@ -858,13 +916,69 @@ class ExpertDecisionEngine:
         success_patterns = self.cases.get_success_patterns(domain)
         for pattern in success_patterns[:2]:
             suggestions.append({
-                'type': 'best_practice',
+                'type': 'success_case',
                 'issue': '可参考的成功经验',
                 'suggestion': pattern,
                 'reference': '',
             })
 
-        return suggestions
+        # 基于性能指标生成建议
+        perf_keywords = ['QPS', '延迟', 'P99', '吞吐量', '并发']
+        for kw in perf_keywords:
+            if kw in prd or kw.lower() in prd.lower():
+                suggestions.append({
+                    'type': 'performance',
+                    'issue': f'性能指标: {kw}',
+                    'suggestion': self._get_performance_suggestion(kw, domain),
+                    'reference': '',
+                })
+                break
+
+        # 基于安全关键词生成建议
+        security_keywords = ['安全', '加密', '权限', '审计', '合规']
+        for kw in security_keywords:
+            if kw in prd:
+                suggestions.append({
+                    'type': 'security',
+                    'issue': f'安全需求: {kw}',
+                    'suggestion': self._get_security_suggestion(kw, domain),
+                    'reference': '',
+                })
+                break
+
+        return suggestions[:8]  # 限制建议数量，保证质量
+
+    def _get_performance_suggestion(self, keyword: str, domain: str) -> str:
+        """获取性能优化建议"""
+        suggestions = {
+            'advertising': '竞价引擎优化：本地缓存画像数据，模型推理并行化，异步上报统计',
+            'agent': 'Agent优化：上下文压缩，Tool调用批处理，模型分级响应',
+            'ecommerce': '高并发优化：Redis预扣库存，消息队列异步落库，限流降级',
+            'finance': '交易性能优化：连接池管理，批量处理，缓存热点数据',
+            'cloud_native': '云原生优化：HPA自动扩缩容，服务网格熔断重试，镜像优化',
+            'gaming': '游戏性能优化：帧同步优化，状态压缩，边缘节点部署',
+            'iot': 'IoT性能优化：边缘计算，数据压缩，批量上报',
+            'saas': 'SaaS性能优化：多租户隔离，查询优化，缓存策略',
+            'social': '社交性能优化：Feed流推拉结合，CDN分发，数据库分片',
+            'logistics': '物流性能优化：路径算法优化，实时数据更新，缓存预热',
+        }
+        return suggestions.get(domain, '根据具体场景进行性能优化')
+
+    def _get_security_suggestion(self, keyword: str, domain: str) -> str:
+        """获取安全优化建议"""
+        suggestions = {
+            'advertising': '广告安全：设备指纹防作弊，API限流防刷，预算追踪审计',
+            'agent': 'Agent安全：输入过滤防注入，输出审核，权限最小化',
+            'ecommerce': '电商安全：支付加密，用户数据脱敏，防爬虫策略',
+            'finance': '金融安全：资金加密存储，操作审计日志，双因素认证',
+            'cloud_native': '云原生安全：mTLS服务网格，RBAC权限控制，密钥管理',
+            'gaming': '游戏安全：客户端校验，服务端权威，反作弊检测',
+            'iot': 'IoT安全：设备认证，数据传输加密，固件签名验证',
+            'saas': 'SaaS安全：租户隔离，数据加密，访问审计',
+            'social': '社交安全：内容审核，隐私保护，反垃圾策略',
+            'logistics': '物流安全：货物追踪，电子封签，异常告警',
+        }
+        return suggestions.get(domain, '根据具体场景加强安全措施')
 
     def _get_kb_references(self, prd: str, domain: str) -> List[Dict]:
         """获取知识库引用"""
