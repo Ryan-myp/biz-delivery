@@ -134,7 +134,7 @@ class VisualizationDashboard:
             fill='toself',
             name='覆盖率',
             line_color=self.colors['primary'],
-            fillcolor=self.colors['primary'] + '30',
+            fillcolor='rgba(67, 97, 238, 0.2)',
         ))
 
         fig.update_layout(
