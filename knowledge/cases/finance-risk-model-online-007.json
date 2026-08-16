@@ -1,0 +1,54 @@
+{
+  "case_id": "finance-risk-model-online-007",
+  "domain": "finance",
+  "sub_domain": "finance+ml_ops",
+  "prd_summary": "风控模型线上化，实时欺诈检测",
+  "issues_found": [
+    {
+      "name": "模型推理延迟",
+      "severity": "P0",
+      "message": "模型推理耗时超过风控时效要求"
+    },
+    {
+      "name": "特征一致性",
+      "severity": "P1",
+      "message": "训练和线上特征不一致导致效果下降"
+    },
+    {
+      "name": "模型版本管理",
+      "severity": "P1",
+      "message": "多版本模型切换混乱"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "TensorRT模型加速+特征预计算",
+      "effective": true,
+      "impact": "推理延迟从200ms降到10ms"
+    },
+    {
+      "solution": "Feast特征平台统一特征管理",
+      "effective": true,
+      "impact": "特征一致性问题解决"
+    },
+    {
+      "solution": "MLflow模型版本管理+灰度发布",
+      "effective": true,
+      "impact": "模型上线效率提升5倍"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "风控模型延迟是关键，必须低于50ms",
+    "特征一致性是线上效果的基础",
+    "模型版本管理要规范化",
+    "A/B测试是模型迭代的标配"
+  ],
+  "metrics": {
+    "inference_latency_ms": 10,
+    "feature_consistency": "100%",
+    "model_deploy_time_min": 5
+  },
+  "quality_score": 92,
+  "timestamp": "2024-02-21T10:00:00Z"
+}

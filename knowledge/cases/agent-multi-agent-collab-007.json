@@ -1,0 +1,54 @@
+{
+  "case_id": "agent-multi-agent-collab-007",
+  "domain": "agent",
+  "sub_domain": "agent+ml_ops",
+  "prd_summary": "多Agent协作系统，复杂任务分解执行",
+  "issues_found": [
+    {
+      "name": "任务分配不均",
+      "severity": "P1",
+      "message": "某些Agent负载过高，其他闲置"
+    },
+    {
+      "name": "通信开销大",
+      "severity": "P1",
+      "message": "Agent间通信消耗过多Token"
+    },
+    {
+      "name": "结果聚合困难",
+      "severity": "P2",
+      "message": "多Agent结果难以有效整合"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "动态负载均衡+任务优先级队列",
+      "effective": true,
+      "impact": "资源利用率提升60%"
+    },
+    {
+      "solution": "二进制通信协议+消息压缩",
+      "effective": true,
+      "impact": "通信开销降低70%"
+    },
+    {
+      "solution": "统一结果格式+智能聚合算法",
+      "effective": true,
+      "impact": "结果整合准确率达95%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "多Agent系统关键在于协调",
+    "负载均衡是必须的，否则效率低",
+    "通信开销要优化，Token很贵",
+    "结果聚合设计要提前规划"
+  ],
+  "metrics": {
+    "resource_utilization_lift": "60%",
+    "communication_cost_reduction": "70%",
+    "aggregation_accuracy": "95%"
+  },
+  "quality_score": 89,
+  "timestamp": "2024-02-23T10:00:00Z"
+}

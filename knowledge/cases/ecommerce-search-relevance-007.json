@@ -1,0 +1,54 @@
+{
+  "case_id": "ecommerce-search-relevance-007",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+ml_ops",
+  "prd_summary": "商品搜索相关性优化，提升转化率",
+  "issues_found": [
+    {
+      "name": "搜索结果不相关",
+      "severity": "P0",
+      "message": "用户搜索关键词与商品匹配度低"
+    },
+    {
+      "name": "排序逻辑单一",
+      "severity": "P1",
+      "message": "只按销量排序，忽略用户个性化"
+    },
+    {
+      "name": "搜索延迟高",
+      "severity": "P1",
+      "message": "复杂查询导致响应时间超过500ms"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "ES分词优化+同义词扩展+Query Rewrite",
+      "effective": true,
+      "impact": "搜索相关性提升40%"
+    },
+    {
+      "solution": "多因子排序：销量+评价+个性化+实时热度",
+      "effective": true,
+      "impact": "点击率提升25%"
+    },
+    {
+      "solution": "ES集群优化+缓存+预计算",
+      "effective": true,
+      "impact": "查询延迟从500ms降到100ms"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "搜索相关性是电商的核心能力",
+    "排序不能单一，要综合考量",
+    "性能优化要从ES集群层面入手",
+    "AB测试是优化搜索效果的必经之路"
+  ],
+  "metrics": {
+    "relevance_lift": "40%",
+    "ctr_lift": "25%",
+    "query_latency_ms": 100
+  },
+  "quality_score": 90,
+  "timestamp": "2024-02-20T10:00:00Z"
+}

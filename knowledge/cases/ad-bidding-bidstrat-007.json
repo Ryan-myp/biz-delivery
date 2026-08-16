@@ -1,0 +1,54 @@
+{
+  "case_id": "ad-bidding-bidstrat-007",
+  "domain": "advertising",
+  "sub_domain": "advertising+finance",
+  "prd_summary": "智能出价策略系统，支持多种竞价模式",
+  "issues_found": [
+    {
+      "name": "出价策略单一",
+      "severity": "P1",
+      "message": "所有广告主使用相同出价策略"
+    },
+    {
+      "name": "预算分配不合理",
+      "severity": "P1",
+      "message": "预算集中在低效媒体"
+    },
+    {
+      "name": "实时调整能力弱",
+      "severity": "P2",
+      "message": "出价调整依赖人工，响应慢"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "多策略支持：oCPM/oCPC/target ROAS/auto bidding",
+      "effective": true,
+      "impact": "广告主选择多样性提升"
+    },
+    {
+      "solution": "智能预算分配+ROI预测",
+      "effective": true,
+      "impact": "整体ROI提升30%"
+    },
+    {
+      "solution": "机器学习自动调参+实时反馈",
+      "effective": true,
+      "impact": "调整响应从小时级降到分钟级"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "智能出价的本质是优化ROI",
+    "多策略满足不同广告主需求",
+    "自动化是趋势，人工调控成本高",
+    "实时反馈是优化的关键"
+  ],
+  "metrics": {
+    "roi_improvement": "30%",
+    "adjustment_latency_min": 5,
+    "strategy_coverage": "100%"
+  },
+  "quality_score": 91,
+  "timestamp": "2024-02-22T10:00:00Z"
+}
