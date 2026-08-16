@@ -1,0 +1,36 @@
+{
+  "case_id": "agent-memory-001",
+  "domain": "agent",
+  "sub_domain": "agent+ml_ops",
+  "prd_summary": "Agent平台记忆系统设计，支持长期记忆和向量检索",
+  "issues_found": [
+    {
+      "name": "记忆检索无缓存",
+      "severity": "P1",
+      "message": "每次对话都重新检索向量库，延迟高"
+    },
+    {
+      "name": "Token成本控制缺失",
+      "severity": "P1",
+      "message": "长对话未控制Token使用量"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "记忆检索引入Redis缓存，TTL 5分钟",
+      "effective": true
+    },
+    {
+      "solution": "对话历史摘要压缩，保留关键信息",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "Agent记忆系统必须考虑缓存策略",
+    "Token成本需要实时监控和预警",
+    "向量检索延迟影响用户体验"
+  ],
+  "quality_score": 88,
+  "timestamp": "2024-01-15T10:00:00Z"
+}

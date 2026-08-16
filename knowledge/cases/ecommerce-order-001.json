@@ -1,0 +1,36 @@
+{
+  "case_id": "ecommerce-order-001",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+finance",
+  "prd_summary": "双11电商订单系统设计，支撑10万QPS",
+  "issues_found": [
+    {
+      "name": "库存扣减并发问题",
+      "severity": "P0",
+      "message": "高并发下单导致库存超卖"
+    },
+    {
+      "name": "支付状态不一致",
+      "severity": "P0",
+      "message": "支付回调重复处理导致订单状态混乱"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "库存预扣机制，异步确认",
+      "effective": true
+    },
+    {
+      "solution": "支付回调幂等处理，分布式锁",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "高并发场景必须使用预扣机制",
+    "支付回调必须幂等处理",
+    "订单状态机要清晰定义合法转换"
+  ],
+  "quality_score": 92,
+  "timestamp": "2024-01-16T10:00:00Z"
+}

@@ -1,0 +1,36 @@
+{
+  "case_id": "cloud-native-migration-001",
+  "domain": "cloud_native",
+  "sub_domain": "cloud_native+devops",
+  "prd_summary": "传统应用云原生迁移，Kubernetes部署",
+  "issues_found": [
+    {
+      "name": "健康检查配置缺失",
+      "severity": "P1",
+      "message": "缺少liveness和readiness probe"
+    },
+    {
+      "name": "资源限制未设置",
+      "severity": "P1",
+      "message": "容器未设置CPU/Memory limit"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "添加健康检查探针，配置超时时间",
+      "effective": true
+    },
+    {
+      "solution": "设置资源请求和限制，防止资源争抢",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "云原生迁移必须配置健康检查",
+    "资源限制是容器稳定性的基础",
+    "服务网格可以提升可观测性"
+  ],
+  "quality_score": 85,
+  "timestamp": "2024-01-17T10:00:00Z"
+}

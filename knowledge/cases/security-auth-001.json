@@ -1,0 +1,36 @@
+{
+  "case_id": "security-auth-001",
+  "domain": "security",
+  "sub_domain": "security+finance",
+  "prd_summary": "金融系统身份认证设计，OAuth2.0+JWT",
+  "issues_found": [
+    {
+      "name": "JWT密钥管理不当",
+      "severity": "P0",
+      "message": "密钥硬编码在代码中"
+    },
+    {
+      "name": "缺少刷新令牌机制",
+      "severity": "P1",
+      "message": "Token过期后需要重新登录"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "使用Vault管理密钥，定期轮换",
+      "effective": true
+    },
+    {
+      "solution": "实现Refresh Token机制，无感刷新",
+      "effective": true
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "密钥绝对不能硬编码",
+    "JWT过期时间不宜过长",
+    "金融系统需要多因素认证"
+  ],
+  "quality_score": 90,
+  "timestamp": "2024-01-18T10:00:00Z"
+}
