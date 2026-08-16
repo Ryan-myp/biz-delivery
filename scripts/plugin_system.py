@@ -268,4 +268,7 @@ if __name__ == '__main__':
         print(f"  ✅ AI决策引擎已加载")
 
     print("\n" + "=" * 60)
-PYEOF
+
+
+if __name__ == '__main__':
+    main()

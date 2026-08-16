@@ -158,10 +158,15 @@ def cmd_cases(args):
     cases = CaseLearningEngine()
     print(f"📚 专家案例库")
 
-    if args.domain:
-        case_list = cases.list_cases(args.domain)
+    # 获取所有案例
+    if hasattr(cases, 'cases'):
+        case_list = cases.cases
     else:
-        case_list = cases.list_cases()
+        case_list = []
+
+    # 按领域过滤
+    if args.domain:
+        case_list = [c for c in case_list if c.domain == args.domain]
 
     print(f"   共 {len(case_list)} 个案例\n")
 
