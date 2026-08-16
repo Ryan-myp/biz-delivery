@@ -1040,25 +1040,25 @@ class SeniorExpertSystem:
             'logistics': 0,
         }
 
-        # 广告关键词
-        for kw in ['竞价', 'RTB', 'DSP', 'SSP', '广告', '出价', '曝光', '点击', '归因', 'ROI']:
+        # 广告关键词 (提高权重)
+        for kw in ['竞价', 'RTB', 'DSP', 'SSP', '广告', '出价', '曝光', '点击', '归因', 'ROI', 'eCPM', 'CPC', 'CPM']:
             if kw in prd:
-                scores['advertising'] += 1
+                scores['advertising'] += 2
 
-        # Agent 关键词
-        for kw in ['Agent', 'LLM', 'RAG', 'ReAct', '记忆', 'Tool']:
+        # Agent 关键词 (提高权重)
+        for kw in ['Agent', 'LLM', 'RAG', 'ReAct', '记忆', 'Tool', 'Prompt', 'Function Calling', '多Agent']:
             if kw in prd:
-                scores['agent'] += 1
+                scores['agent'] += 2
 
-        # 电商关键词
-        for kw in ['订单', '商品', '库存', '支付', '购物车', '优惠券']:
+        # 电商关键词 (提高权重)
+        for kw in ['订单', '商品', '库存', '秒杀', '购物车', '优惠券', '电商', '零售', '发货', '退款', '超卖']:
             if kw in prd:
-                scores['ecommerce'] += 1
+                scores['ecommerce'] += 2
 
-        # 金融关键词
-        for kw in ['交易', '账户', '风控', '合规', '清算', '对账', '金融']:
+        # 金融关键词 (提高权重)
+        for kw in ['交易', '账户', '风控', '合规', '清算', '对账', '金融', '支付', '账务', '资金', 'ACID', 'Saga']:
             if kw in prd:
-                scores['finance'] += 1
+                scores['finance'] += 2
 
         # 云原生关键词
         for kw in ['Kubernetes', 'K8s', '容器', 'Docker', 'Istio', '服务网格', 'Helm']:
