@@ -1,0 +1,55 @@
+{
+  "case_id": "ecommerce-high-concurrency-004",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+cloud_native",
+  "prd_summary": "高并发架构设计，支撑百万级并发请求",
+  "issues_found": [
+    {
+      "name": "数据库连接池耗尽",
+      "severity": "P0",
+      "message": "高并发下数据库连接池被耗尽，请求阻塞"
+    },
+    {
+      "name": "缓存击穿",
+      "severity": "P1",
+      "message": "热点数据过期导致大量请求打到DB"
+    },
+    {
+      "name": "服务雪崩",
+      "severity": "P1",
+      "message": "下游服务故障导致上游连锁响应"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "连接池优化+读写分离+分库分表",
+      "effective": true,
+      "impact": "DB QPS从10万提升到100万"
+    },
+    {
+      "solution": "缓存预热点+逻辑过期+布隆过滤器",
+      "effective": true,
+      "impact": "缓存命中率99%"
+    },
+    {
+      "solution": "熔断降级+限流+超时控制",
+      "effective": true,
+      "impact": "系统可用性99.99%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "高并发系统必须做容量规划和压力测试",
+    "缓存是必备能力，但要防止击穿穿透雪崩",
+    "熔断限流是最后的防线，不能省",
+    "数据库要提前做分库分表设计"
+  ],
+  "metrics": {
+    "concurrent_users": 1000000,
+    "db_qps_before": 100000,
+    "db_qps_after": 1000000,
+    "availability": "99.99%"
+  },
+  "quality_score": 94,
+  "timestamp": "2024-02-04T10:00:00Z"
+}

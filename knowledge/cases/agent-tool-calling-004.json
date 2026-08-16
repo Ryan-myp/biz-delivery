@@ -1,0 +1,54 @@
+{
+  "case_id": "agent-tool-calling-004",
+  "domain": "agent",
+  "sub_domain": "agent+ml_ops",
+  "prd_summary": "Agent Tool调用框架，支持复杂工具链编排",
+  "issues_found": [
+    {
+      "name": "Tool调用失败无重试",
+      "severity": "P1",
+      "message": "工具调用失败后直接返回错误"
+    },
+    {
+      "name": "Tool参数校验缺失",
+      "severity": "P1",
+      "message": "缺少参数合法性检查"
+    },
+    {
+      "name": "调用链路过长",
+      "severity": "P2",
+      "message": "工具链路过深导致延迟累积"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "指数退避重试+熔断机制",
+      "effective": true,
+      "impact": "工具调用成功率从85%提升到99%"
+    },
+    {
+      "solution": "JSON Schema参数校验+默认值",
+      "effective": true,
+      "impact": "参数错误率降到1%"
+    },
+    {
+      "solution": "工具链深度限制+并行调用优化",
+      "effective": true,
+      "impact": "响应延迟降低50%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "Tool调用必须有重试和熔断机制",
+    "参数校验要前置，避免无效调用",
+    "工具链深度要限制，否则延迟不可控",
+    "并行调用能显著提升效率"
+  ],
+  "metrics": {
+    "tool_success_rate": "99%",
+    "avg_call_latency_ms": 200,
+    "chain_depth_limit": 5
+  },
+  "quality_score": 88,
+  "timestamp": "2024-02-07T10:00:00Z"
+}

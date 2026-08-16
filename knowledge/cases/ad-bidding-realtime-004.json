@@ -1,0 +1,54 @@
+{
+  "case_id": "ad-bidding-realtime-004",
+  "domain": "advertising",
+  "sub_domain": "advertising+ml_ops",
+  "prd_summary": "实时出价系统优化，支持动态定价策略",
+  "issues_found": [
+    {
+      "name": "模型推理延迟",
+      "severity": "P0",
+      "message": "ML模型推理耗时超过竞价时限"
+    },
+    {
+      "name": "特征计算瓶颈",
+      "severity": "P1",
+      "message": "实时特征计算成为性能瓶颈"
+    },
+    {
+      "name": "出价策略单一",
+      "severity": "P2",
+      "message": "缺少多策略竞价能力"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "模型TensorRT加速+特征预计算",
+      "effective": true,
+      "impact": "推理延迟从100ms降到5ms"
+    },
+    {
+      "solution": "特征引擎优化+Redis缓存",
+      "effective": true,
+      "impact": "特征计算延迟降到1ms"
+    },
+    {
+      "solution": "多策略竞价框架，支持eCPM/ROI/target CPA",
+      "effective": true,
+      "impact": "广告主选择多样性提升"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "实时竞价系统延迟是关键，必须低于10ms",
+    "模型加速是必须的，TensorRT是标准方案",
+    "特征计算要提前设计，不能临时计算",
+    "多策略竞价提升广告主体验"
+  ],
+  "metrics": {
+    "bid_latency_ms": 5,
+    "feature_latency_ms": 1,
+    "model_throughput_qps": 100000
+  },
+  "quality_score": 93,
+  "timestamp": "2024-02-06T10:00:00Z"
+}
