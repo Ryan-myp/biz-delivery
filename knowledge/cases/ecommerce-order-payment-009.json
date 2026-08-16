@@ -1,0 +1,54 @@
+{
+  "case_id": "ecommerce-order-payment-009",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+finance",
+  "prd_summary": "电商订单支付系统，保证资金安全",
+  "issues_found": [
+    {
+      "name": "支付状态不一致",
+      "severity": "P0",
+      "message": "支付成功但订单状态未更新"
+    },
+    {
+      "name": "重复支付",
+      "severity": "P0",
+      "message": "网络抖动导致用户被重复扣款"
+    },
+    {
+      "name": "退款流程复杂",
+      "severity": "P1",
+      "message": "退款流程缺乏自动化"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "支付回调幂等处理+状态机流转",
+      "effective": true,
+      "impact": "支付状态一致率100%"
+    },
+    {
+      "solution": "分布式锁+唯一索引防重",
+      "effective": true,
+      "impact": "重复支付率0%"
+    },
+    {
+      "solution": "自动化退款流程+人工审核兜底",
+      "effective": true,
+      "impact": "退款处理时间从小时级降到分钟级"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "支付状态必须用状态机管理",
+    "所有支付接口必须幂等",
+    "退款流程要自动化但保留人工审核",
+    "资金安全是电商的底线"
+  ],
+  "metrics": {
+    "payment_consistency": "100%",
+    "duplicate_payment_rate": "0%",
+    "refund_time_min": 5
+  },
+  "quality_score": 93,
+  "timestamp": "2024-03-14T10:00:00Z"
+}
