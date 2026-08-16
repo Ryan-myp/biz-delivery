@@ -318,23 +318,23 @@ class DomainKnowledgeEngine:
         self.knowledge['gaming'] = DomainKnowledge(
             domain='gaming',
             name='游戏平台专家',
-            best_practices:[
+            best_practices=[
                 '实时对战: WebSocket + 状态同步',
                 '匹配系统: ELO/MMR 算法',
                 '反作弊: 客户端校验 + 服务端验证',
                 '全球加速: CDN + 边缘计算',
             ],
-            anti_patterns:[
+            anti_patterns=[
                 '纯客户端逻辑',
                 '无心跳检测',
                 '缺少防作弊机制',
             ],
-            risk_patterns:[
+            risk_patterns=[
                 '延迟导致游戏体验差',
                 '外挂破坏平衡',
                 '服务器过载',
             ],
-            reference_docs:[
+            reference_docs=[
                 'knowledge/gaming/game-server-architecture.md',
                 'knowledge/network/network-optimization.md',
             ]
@@ -344,23 +344,23 @@ class DomainKnowledgeEngine:
         self.knowledge['iot'] = DomainKnowledge(
             domain='iot',
             name='IoT 专家',
-            best_practices:[
+            best_practices=[
                 '设备管理: 统一设备注册 + 认证',
                 '边缘计算: 本地决策 + 云端同步',
                 '协议适配: MQTT + CoAP + HTTP',
                 '数据上报: 批量上传 + 断点续传',
             ],
-            anti_patterns:[
+            anti_patterns=[
                 '直连云端',
                 '无离线处理',
                 '协议混用无适配层',
             ],
-            risk_patterns:[
+            risk_patterns=[
                 '设备掉线',
                 '数据丢失',
                 '协议不兼容',
             ],
-            reference_docs:[
+            reference_docs=[
                 'knowledge/iot/iot-platform-design.md',
                 'knowledge/messaging/mqtt-protocol-guide.md',
             ]
@@ -370,23 +370,23 @@ class DomainKnowledgeEngine:
         self.knowledge['saas'] = DomainKnowledge(
             domain='saas',
             name='SaaS 架构专家',
-            best_practices:[
+            best_practices=[
                 '多租户: 数据库隔离 + 行级权限',
                 '订阅计费: Stripe/Braintree 集成',
                 '租户隔离: 虚拟主机 / 独立数据库',
                 'SLA 保障: 多区域部署 + 自动故障转移',
             ],
-            anti_patterns:[
+            anti_patterns=[
                 '租户数据混存无隔离',
                 '硬编码租户配置',
                 '缺少用量计量',
             ],
-            risk_patterns:[
+            risk_patterns=[
                 '租户数据泄露',
                 '计费错误',
                 '单租户影响其他租户',
             ],
-            reference_docs:[
+            reference_docs=[
                 'knowledge/saas/multi-tenant-architecture.md',
                 'knowledge/architecture/tenancy-patterns.md',
             ]
@@ -396,23 +396,23 @@ class DomainKnowledgeEngine:
         self.knowledge['social'] = DomainKnowledge(
             domain='social',
             name='社交网络专家',
-            best_practices:[
+            best_practices=[
                 'Feed 流: 推拉结合 (Fan-out on write/read)',
                 '即时消息: WebSocket + 消息持久化',
                 '关系存储: Neo4j / 图数据库',
                 '内容分发: CDN + 边缘缓存',
             ],
-            anti_patterns:[
+            anti_patterns=[
                 '全量拉取 Feed',
                 '无消息去重',
                 '关系查询无索引',
             ],
-            risk_patterns:[
+            risk_patterns=[
                 'Feed 延迟高',
                 '消息重复/丢失',
                 '热门内容撑爆数据库',
             ],
-            reference_docs:[
+            reference_docs=[
                 'knowledge/social/feed-system-design.md',
                 'knowledge/database/graph-database-guide.md',
             ]
@@ -422,23 +422,23 @@ class DomainKnowledgeEngine:
         self.knowledge['logistics'] = DomainKnowledge(
             domain='logistics',
             name='物流供应链专家',
-            best_practices:[
+            best_practices=[
                 '路径优化: 遗传算法 + 实时路况',
                 '仓储管理: WMS + 自动拣货',
                 '轨迹追踪: GPS + 地理围栏',
                 '供需预测: 时间序列 + 机器学习',
             ],
-            anti_patterns:[
+            anti_patterns=[
                 '人工排线',
                 '无实时轨迹更新',
                 '库存数据滞后',
             ],
-            risk_patterns:[
+            risk_patterns=[
                 '配送延误',
                 '货物丢失',
                 '库存不准',
             ],
-            reference_docs:[
+            reference_docs=[
                 'knowledge/logistics/supply-chain-optimization.md',
                 'knowledge/algorithm/path-finding-algorithms.md',
             ]
