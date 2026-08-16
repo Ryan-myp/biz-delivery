@@ -9,6 +9,7 @@ Expert System - 资深专家系统
 """
 import json
 import re
+from scripts.performance_optimizer import get_optimizer
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
@@ -938,6 +939,12 @@ class SeniorExpertSystem:
 
     def review(self, prd_content: str, domain: str = None) -> Dict:
         """执行专家审查"""
+        # 性能优化: 检查缓存
+        cache_key = f"review_{hash(prd_content)}_{domain or 'auto'}"
+        cached = get_optimizer().cache.get(cache_key)
+        if cached:
+            return cached
+
         # 如果没有指定领域，自动检测
         if not domain:
             domain = self._detect_domain(prd_content)
@@ -948,13 +955,18 @@ class SeniorExpertSystem:
         # 生成报告
         report = self.decision_engine.generate_review_report(analysis, domain)
 
-        return {
+        result = {
             'success': True,
             'domain': domain,
             'analysis': analysis,
             'report': report,
             'timestamp': datetime.now().isoformat(),
         }
+        
+        # 保存到缓存
+        get_optimizer().cache.set(cache_key, result)
+        
+        return result
 
     def _detect_domain(self, prd: str) -> str:
         """检测领域"""
