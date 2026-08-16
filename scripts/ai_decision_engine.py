@@ -190,9 +190,14 @@ class AIDecisionEngine:
                 # 计算置信度
                 confidence = min(1.0, weighted_score / (len(pattern.indicators) * pattern.weight) + 0.3)
                 pattern_copy = DecisionPattern(
-                    **{k: v for k, v in asdict(pattern).items() if k != 'sources'},
+                    pattern_id=pattern.pattern_id,
+                    name=pattern.name,
+                    description=pattern.description,
+                    indicators=pattern.indicators,
+                    weight=pattern.weight,
+                    success_rate=pattern.success_rate,
+                    sources=[],
                 )
-                pattern_copy.sources = []  # 清空来源
                 matched.append((confidence, pattern_copy))
 
         # 按置信度排序
