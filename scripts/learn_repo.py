@@ -5125,6 +5125,38 @@ def learn_from_repos(profile_path: str, output_dir: str, wiki_path: Optional[str
     # 合并图谱数据到 IR 缓存
     ir_cache.update(ir_cache_extra)
     
+    # Flow completeness & dependency graph (needs ir_cache to be ready)
+    try:
+        importlib.sys = sys  # ensure sys is available
+        analyzer_path = str(Path(__file__).parent / "core_flow_analyzer.py")
+        spec = importlib.util.spec_from_file_location("core_flow_analyzer", analyzer_path)
+        if spec and spec.loader:
+            cfa_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cfa_module)
+            CFA = cfa_module.CoreFlowAnalyzer
+            
+            ir_dict = {
+                'call_graph': ir_cache.get('call_graph', []),
+                'business_logic': ir_cache.get('business_logic', []),
+                'routes': ir_cache.get('routes', []),
+                'functions': ir_cache.get('functions', []),
+                'structs': ir_cache.get('structs', []),
+                'entity_tables': ir_cache.get('entity_tables', []),
+                'core_flows': ir_cache.get('core_flows', []),
+                'services': ir_cache.get('services', []),
+            }
+            
+            analyzer = CFA(ir_dict)
+            ir_cache['flow_completeness'] = analyzer.infer_flow_completeness()
+            ir_cache['flow_dependency_graph'] = analyzer.build_flow_dependency_graph()
+            print(f"  Flow completeness: {len(ir_cache['flow_completeness'])} entities analyzed")
+            fdg = ir_cache['flow_dependency_graph']
+            print(f"  Dependency graph: {fdg.get('node_count', 0)} nodes, {fdg.get('edge_count', 0)} edges")
+    except Exception as e:
+        print(f"  ⚠️  Flow completeness/dependency graph analysis failed: {e}")
+        ir_cache.setdefault('flow_completeness', [])
+        ir_cache.setdefault('flow_dependency_graph', {'nodes': [], 'edges': [], 'node_count': 0, 'edge_count': 0})
+    
     ir_cache_file = Path(knowledge_base_dir) / "ir_cache.json"
     ir_cache_file.write_text(json.dumps(ir_cache, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"  💾 IR cache saved to: {ir_cache_file}")
