@@ -963,8 +963,8 @@ class SeniorExpertSystem:
             'timestamp': datetime.now().isoformat(),
         }
         
-        # 保存到缓存
-        get_optimizer().cache.set(cache_key, result)
+        # 保存到缓存 (只保存value，不包装)
+        get_optimizer().cache._memory_cache[cache_key] = result
         
         return result
 
