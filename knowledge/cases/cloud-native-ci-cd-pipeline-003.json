@@ -1,0 +1,54 @@
+{
+  "case_id": "cloud-native-ci-cd-pipeline-003",
+  "domain": "cloud_native",
+  "sub_domain": "cloud_native+devops",
+  "prd_summary": "云原生CI/CD流水线，支持多环境部署",
+  "issues_found": [
+    {
+      "name": "构建速度慢",
+      "severity": "P1",
+      "message": "镜像构建时间超过10分钟"
+    },
+    {
+      "name": "测试并行度低",
+      "severity": "P1",
+      "message": "单元测试串行执行，耗时过长"
+    },
+    {
+      "name": "部署一致性",
+      "severity": "P2",
+      "message": "多环境配置差异导致部署问题"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "BuildKit多阶段构建+分层缓存",
+      "effective": true,
+      "impact": "构建时间从12分钟降到3分钟"
+    },
+    {
+      "solution": "测试并行化+分布式执行",
+      "effective": true,
+      "impact": "测试时间从30分钟降到8分钟"
+    },
+    {
+      "solution": "Kustomize管理多环境配置",
+      "effective": true,
+      "impact": "环境配置差异问题消失"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "构建优化要从Dockerfile入手，多阶段构建是标配",
+    "测试并行化是缩短流水线时间的关键",
+    "多环境配置要用参数化工具管理",
+    "CI/CD流水线要可观测，每步耗时要有监控"
+  ],
+  "metrics": {
+    "build_time_min": 3,
+    "test_time_min": 8,
+    "total_pipeline_time_min": 15
+  },
+  "quality_score": 88,
+  "timestamp": "2024-02-01T10:00:00Z"
+}

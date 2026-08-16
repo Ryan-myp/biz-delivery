@@ -1,0 +1,54 @@
+{
+  "case_id": "ecommerce-inventory-sync-003",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+data_engineering",
+  "prd_summary": "多仓库存同步系统，实时同步SKU库存",
+  "issues_found": [
+    {
+      "name": "库存同步延迟",
+      "severity": "P0",
+      "message": "WMS库存变更到前端展示延迟超过5秒"
+    },
+    {
+      "name": "并发扣减冲突",
+      "severity": "P0",
+      "message": "同一SKU多个订单同时扣减导致负库存"
+    },
+    {
+      "name": "数据一致性",
+      "severity": "P1",
+      "message": "多仓库存数据偶发不一致"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "WebSocket推送库存变更，延迟降到100ms内",
+      "effective": true,
+      "impact": "库存同步延迟从5s降到100ms"
+    },
+    {
+      "solution": "Redis Lua脚本原子扣减+数据库异步对账",
+      "effective": true,
+      "impact": "零超卖"
+    },
+    {
+      "solution": "每日全量对账+差异自动修复",
+      "effective": true,
+      "impact": "数据一致性问题24小时内发现修复"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "库存同步必须实时，WebSocket是最佳选择",
+    "扣减操作必须原子化，Lua脚本是标准方案",
+    "异步对账是数据一致性的最后一道防线",
+    "多仓场景要考虑库存调拨逻辑"
+  ],
+  "metrics": {
+    "sync_latency_ms": 100,
+    "overstock_rate": "0%",
+    "reconciliation_time_hours": 24
+  },
+  "quality_score": 91,
+  "timestamp": "2024-01-30T10:00:00Z"
+}

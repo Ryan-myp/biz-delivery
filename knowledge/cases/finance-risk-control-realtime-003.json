@@ -1,0 +1,54 @@
+{
+  "case_id": "finance-risk-control-realtime-003",
+  "domain": "finance",
+  "sub_domain": "finance+security+ml_ops",
+  "prd_summary": "实时风控系统，交易风控拦截欺诈",
+  "issues_found": [
+    {
+      "name": "规则引擎性能",
+      "severity": "P0",
+      "message": "风控规则执行延迟超过100ms，影响用户体验"
+    },
+    {
+      "name": "模型推理延迟",
+      "severity": "P1",
+      "message": "ML模型推理耗时过长"
+    },
+    {
+      "name": "规则热更新",
+      "severity": "P1",
+      "message": "风控规则修改需要重启服务"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "规则预编译+决策树优化，延迟降到10ms",
+      "effective": true,
+      "impact": "P99延迟从150ms降到10ms"
+    },
+    {
+      "solution": "模型TensorRT加速+批量推理",
+      "effective": true,
+      "impact": "推理延迟从200ms降到20ms"
+    },
+    {
+      "solution": "规则配置中心+热加载",
+      "effective": true,
+      "impact": "规则修改无需重启，分钟级生效"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "风控系统性能是关键，必须低于100ms",
+    "模型加速是必选项，TensorRT是标准方案",
+    "规则热更新提升运营效率",
+    "风控要平衡安全性和用户体验"
+  ],
+  "metrics": {
+    "rule_latency_ms": 10,
+    "model_latency_ms": 20,
+    "fraud_detection_rate": "99.5%"
+  },
+  "quality_score": 93,
+  "timestamp": "2024-01-31T10:00:00Z"
+}

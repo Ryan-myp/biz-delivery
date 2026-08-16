@@ -1,0 +1,54 @@
+{
+  "case_id": "data-engineering-data-quality-002",
+  "domain": "data_engineering",
+  "sub_domain": "data_engineering+devops",
+  "prd_summary": "数据质量监控系统，保障数据可信",
+  "issues_found": [
+    {
+      "name": "质量规则配置繁琐",
+      "severity": "P1",
+      "message": "每个表单独配置规则，维护成本高"
+    },
+    {
+      "name": "告警不及时",
+      "severity": "P1",
+      "message": "数据质量问题发现延迟超过1小时"
+    },
+    {
+      "name": "根因分析困难",
+      "severity": "P2",
+      "message": "质量问题发生后难以定位原因"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "模板化规则配置+自动生成",
+      "effective": true,
+      "impact": "规则配置效率提升5倍"
+    },
+    {
+      "solution": "实时质量检查+即时告警",
+      "effective": true,
+      "impact": "问题发现时间从小时级降到分钟级"
+    },
+    {
+      "solution": "数据血缘追踪+影响分析",
+      "effective": true,
+      "impact": "根因定位时间从小时级降到10分钟"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "数据质量规则要模板化，降低配置成本",
+    "实时监控是数据质量的底线",
+    "数据血缘是问题排查的关键能力",
+    "质量报告要自动化生成和分发"
+  ],
+  "metrics": {
+    "detection_latency_min": 5,
+    "mttr_min": 10,
+    "data_quality_score": "99.5%"
+  },
+  "quality_score": 87,
+  "timestamp": "2024-02-02T10:00:00Z"
+}

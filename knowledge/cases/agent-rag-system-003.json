@@ -1,0 +1,54 @@
+{
+  "case_id": "agent-rag-system-003",
+  "domain": "agent",
+  "sub_domain": "agent+ml_ops",
+  "prd_summary": "Agent RAG检索系统，支持知识库问答",
+  "issues_found": [
+    {
+      "name": "检索精度低",
+      "severity": "P1",
+      "message": "向量检索返回结果与问题相关性不高"
+    },
+    {
+      "name": "上下文窗口超限",
+      "severity": "P1",
+      "message": "检索结果+问题超出Token限制"
+    },
+    {
+      "name": "幻觉问题",
+      "severity": "P2",
+      "message": "Agent基于错误信息生成回答"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "混合检索：向量+关键词+重排序",
+      "effective": true,
+      "impact": "检索准确率从60%提升到85%"
+    },
+    {
+      "solution": "上下文压缩+摘要提取",
+      "effective": true,
+      "impact": "Token使用量减少40%"
+    },
+    {
+      "solution": "引用溯源+置信度评分",
+      "effective": true,
+      "impact": "幻觉率降到5%以下"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "单一向量检索不够，必须混合检索",
+    "RAG系统要考虑上下文窗口限制",
+    "幻觉问题是RAG的核心挑战，必须做溯源",
+    "重排序模型能显著提升检索质量"
+  ],
+  "metrics": {
+    "retrieval_accuracy": "85%",
+    "hallucination_rate": "5%",
+    "token_savings": "40%"
+  },
+  "quality_score": 89,
+  "timestamp": "2024-01-29T10:00:00Z"
+}

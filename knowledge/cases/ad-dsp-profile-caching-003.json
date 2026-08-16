@@ -1,0 +1,54 @@
+{
+  "case_id": "ad-dsp-profile-caching-003",
+  "domain": "advertising",
+  "sub_domain": "advertising+cloud_native",
+  "prd_summary": "DSP用户画像缓存系统，降低画像查询延迟",
+  "issues_found": [
+    {
+      "name": "缓存穿透",
+      "severity": "P0",
+      "message": "不存在的用户ID反复查询，打到后端服务"
+    },
+    {
+      "name": "缓存击穿",
+      "severity": "P1",
+      "message": "热点key过期瞬间大量请求直达DB"
+    },
+    {
+      "name": "数据一致性",
+      "severity": "P1",
+      "message": "画像更新后缓存未及时失效"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "布隆过滤器拦截无效请求",
+      "effective": true,
+      "impact": "缓存穿透率降到0"
+    },
+    {
+      "solution": "热点key永不过期+逻辑过期",
+      "effective": true,
+      "impact": "击穿风险消除"
+    },
+    {
+      "solution": "画像更新消息队列异步失效缓存",
+      "effective": true,
+      "impact": "数据延迟从秒级降到毫秒级"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "缓存三兄弟：穿透、击穿、雪崩都要提前设计",
+    "布隆过滤器是缓存穿透的标配解决方案",
+    "热点key要用逻辑过期，不要物理过期",
+    "缓存失效要用异步消息，不要同步删除"
+  ],
+  "metrics": {
+    "query_latency_before_ms": 50,
+    "query_latency_after_ms": 2,
+    "cache_hit_rate": "95%"
+  },
+  "quality_score": 92,
+  "timestamp": "2024-01-28T10:00:00Z"
+}
