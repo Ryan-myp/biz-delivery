@@ -1094,7 +1094,7 @@ class ExpertDecisionEngine:
         ])
 
         # 技术可行性
-        tech = analysis.get('technical_feasibility', {})
+        tech = analysis.get('technical_feasibility') or {}
         lines.extend([
             "## 二、技术可行性评估",
             "",
