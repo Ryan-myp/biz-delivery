@@ -38,6 +38,66 @@ class TestCaseSkillV2(SkillBase):
             {'name': '对账准确性测试', 'type': 'positive', 'steps': '生成对账文件，验证与交易系统数据一致'},
             {'name': '并发交易测试', 'type': 'performance', 'steps': '模拟高并发交易，验证系统稳定性'},
         ],
+        'cloud_native': [
+            {'name': '容器资源限制测试', 'type': 'positive', 'steps': '设置 CPU/内存 limit，验证超过限制后被限制'},
+            {'name': '健康检查测试', 'type': 'positive', 'steps': '模拟服务异常，验证 health check 正确返回失败'},
+            {'name': '滚动更新测试', 'type': 'positive', 'steps': '执行滚动更新，验证服务不中断'},
+            {'name': '节点故障测试', 'type': 'negative', 'steps': '模拟节点宕机，验证 Pod 自动迁移'},
+        ],
+        'devops': [
+            {'name': 'CI 流水线测试', 'type': 'positive', 'steps': '提交代码，验证构建、测试、部署全流程'},
+            {'name': '回滚机制测试', 'type': 'negative', 'steps': '模拟部署失败，验证自动回滚到上一版本'},
+            {'name': '多环境部署测试', 'type': 'positive', 'steps': '部署到 dev/test/prod，验证环境隔离'},
+            {'name': '告警通知测试', 'type': 'positive', 'steps': '触发告警规则，验证通知正确发送'},
+        ],
+        'data_engineering': [
+            {'name': 'ETL 数据完整性测试', 'type': 'positive', 'steps': '执行 ETL 任务，验证源数据完整迁移'},
+            {'name': '实时计算延迟测试', 'type': 'performance', 'steps': '发送 Kafka 消息，验证 Flink 处理延迟 < 1s'},
+            {'name': '数据质量检查测试', 'type': 'negative', 'steps': '注入脏数据，验证质量规则正确拦截'},
+            {'name': 'OLAP 查询性能测试', 'type': 'performance', 'steps': '执行复杂聚合查询，验证响应时间 < 3s'},
+        ],
+        'security': [
+            {'name': 'SQL 注入测试', 'type': 'negative', 'steps': '注入 SQL payload，验证被正确过滤'},
+            {'name': 'XSS 攻击测试', 'type': 'negative', 'steps': '注入 JavaScript，验证被转义'},
+            {'name': '越权访问测试', 'type': 'negative', 'steps': '使用低权限账户访问高权限资源，验证被拒绝'},
+            {'name': '密钥泄露测试', 'type': 'negative', 'steps': '检查代码仓库，验证无硬编码密钥'},
+        ],
+        'ml_ops': [
+            {'name': '模型推理准确性测试', 'type': 'positive', 'steps': '输入测试样本，验证预测准确率 > 90%'},
+            {'name': '模型版本切换测试', 'type': 'positive', 'steps': '切换到新版本模型，验证平滑过渡'},
+            {'name': '数据漂移检测测试', 'type': 'negative', 'steps': '注入分布偏移数据，验证触发告警'},
+            {'name': 'A/B 测试框架测试', 'type': 'positive', 'steps': '运行 A/B 实验，验证流量分配和指标对比'},
+        ],
+        'gaming': [
+            {'name': '实时对战延迟测试', 'type': 'performance', 'steps': '模拟 100 玩家同时对战，验证 P99 延迟 < 50ms'},
+            {'name': '匹配系统测试', 'type': 'positive', 'steps': '创建匹配请求，验证 ELO 算法匹配合理对手'},
+            {'name': '反作弊检测测试', 'type': 'negative', 'steps': '注入异常数据包，验证被识别并封禁'},
+            {'name': '排行榜并发测试', 'type': 'performance', 'steps': '模拟万人同时更新排行，验证数据一致性'},
+        ],
+        'iot': [
+            {'name': '设备连接测试', 'type': 'positive', 'steps': '模拟设备上线，验证 MQTT 连接和认证'},
+            {'name': '边缘计算测试', 'type': 'positive', 'steps': '断网模拟，验证边缘节点本地决策'},
+            {'name': '数据上报测试', 'type': 'positive', 'steps': '发送遥测数据，验证批量上传和断点续传'},
+            {'name': 'OTA 升级测试', 'type': 'negative', 'steps': '模拟升级失败，验证回滚机制'},
+        ],
+        'saas': [
+            {'name': '多租户隔离测试', 'type': 'negative', 'steps': '使用租户 A 访问租户 B 数据，验证被拒绝'},
+            {'name': '订阅计费测试', 'type': 'positive', 'steps': '创建订阅，验证计费准确和发票生成'},
+            {'name': '用量计量测试', 'type': 'positive', 'steps': '模拟高用量，验证计量准确和阈值告警'},
+            {'name': 'SLA 保障测试', 'type': 'performance', 'steps': '模拟单租户高负载，验证不影响其他租户'},
+        ],
+        'social': [
+            {'name': 'Feed 流性能测试', 'type': 'performance', 'steps': '模拟百万用户关注，验证 Feed 生成延迟 < 200ms'},
+            {'name': '即时消息测试', 'type': 'positive', 'steps': '发送 WebSocket 消息，验证实时送达和持久化'},
+            {'name': '关系查询测试', 'type': 'positive', 'steps': '查询好友关系，验证图数据库查询性能'},
+            {'name': '推送通知测试', 'type': 'positive', 'steps': '触发通知，验证 APNs/FCM 送达率 > 99%'},
+        ],
+        'logistics': [
+            {'name': '路径优化测试', 'type': 'positive', 'steps': '输入多点配送需求，验证路线最优'},
+            {'name': '实时追踪测试', 'type': 'positive', 'steps': '模拟 GPS 上报，验证轨迹实时更新'},
+            {'name': '仓储出入库测试', 'type': 'positive', 'steps': '执行入库出库，验证库存准确'},
+            {'name': '需求预测测试', 'type': 'positive', 'steps': '输入历史数据，验证预测准确率 > 85%'},
+        ],
     }
 
     def run(self, input_data: Dict[str, Any]) -> SkillResult:

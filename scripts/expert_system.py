@@ -184,6 +184,266 @@ class DomainKnowledgeEngine:
             ]
         )
 
+        # 云原生领域知识
+        self.knowledge['cloud_native'] = DomainKnowledge(
+            domain='cloud_native',
+            name='云原生架构专家',
+            best_practices=[
+                '容器化部署: Docker + Kubernetes',
+                '服务网格: Istio/Linkerd 流量管理',
+                '不可变基础设施: GitOps + ArgoCD',
+                '可观测性: Prometheus + Grafana + Jaeger',
+            ],
+            anti_patterns=[
+                '直接操作生产环境',
+                '无资源配置限制',
+                '硬编码配置',
+            ],
+            risk_patterns=[
+                '节点故障导致服务不可用',
+                '网络策略配置错误',
+                '存储类不支持持久化',
+            ],
+            reference_docs=[
+                'knowledge/kubernetes/kubernetes-best-practices.md',
+                'knowledge/cloud-native/cloud-native-patterns.md',
+            ]
+        )
+
+        # DevOps 领域知识
+        self.knowledge['devops'] = DomainKnowledge(
+            domain='devops',
+            name='DevOps 专家',
+            best_practices=[
+                'CI/CD: 流水线自动化 + 蓝绿部署',
+                '基础设施即代码: Terraform + Ansible',
+                '监控告警: 多层监控 + 智能告警',
+                '混沌工程: 定期故障演练',
+            ],
+            anti_patterns=[
+                '手动部署生产环境',
+                '无回滚机制',
+                '监控缺失',
+            ],
+            risk_patterns=[
+                '部署失败导致服务中断',
+                '配置漂移',
+                '告警疲劳',
+            ],
+            reference_docs=[
+                'knowledge/devops/ci-cd-pipeline-guide.md',
+                'knowledge/infra/infrastructure-as-code.md',
+            ]
+        )
+
+        # 数据工程领域知识
+        self.knowledge['data_engineering'] = DomainKnowledge(
+            domain='data_engineering',
+            name='数据工程专家',
+            best_practices=[
+                '批流一体: Spark + Flink',
+                '数据湖: Delta Lake / Iceberg',
+                '实时计算: Kafka + ClickHouse',
+                '数据质量: 数据血缘 + 质量监控',
+            ],
+            anti_patterns=[
+                'ETL 同步阻塞',
+                '数据孤岛',
+                '缺少数据质量监控',
+            ],
+            risk_patterns=[
+                '数据延迟导致决策失误',
+                '数据质量差',
+                '存储成本失控',
+            ],
+            reference_docs=[
+                'knowledge/bigdata/big-data-architecture.md',
+                'knowledge/clickhouse/clickhouse-optimization.md',
+            ]
+        )
+
+        # 安全工程领域知识
+        self.knowledge['security'] = DomainKnowledge(
+            domain='security',
+            name='安全工程专家',
+            best_practices=[
+                '零信任架构: 持续验证 + 最小权限',
+                '加密存储: AES-256 + 密钥轮换',
+                '安全审计: 操作日志 + 异常检测',
+                '漏洞管理: 定期扫描 + 修复跟踪',
+            ],
+            anti_patterns=[
+                '硬编码密钥',
+                '明文存储敏感数据',
+                '缺少访问控制',
+            ],
+            risk_patterns=[
+                '数据泄露',
+                '权限提升攻击',
+                '供应链攻击',
+            ],
+            reference_docs=[
+                'knowledge/security/security-best-practices.md',
+                'knowledge/jwt/jwt-security-guide.md',
+            ]
+        )
+
+        # ML 工程领域知识
+        self.knowledge['ml_ops'] = DomainKnowledge(
+            domain='ml_ops',
+            name='ML 工程专家',
+            best_practices=[
+                '模型训练: 分布式训练 + 超参优化',
+                '模型服务: ONNX + Triton Inference Server',
+                '模型监控: 数据漂移 + 性能衰减',
+                'MLOps: MLflow + Kubeflow',
+            ],
+            anti_patterns=[
+                '模型版本混乱',
+                '无 A/B 测试框架',
+                '缺少模型监控',
+            ],
+            risk_patterns=[
+                '模型退化',
+                '推理延迟超标',
+                '训练数据泄露',
+            ],
+            reference_docs=[
+                'knowledge/ml/ml-production-guide.md',
+                'knowledge/agent-ai/llm-inference-optimization.md',
+            ]
+        )
+
+        # 游戏平台领域知识
+        self.knowledge['gaming'] = DomainKnowledge(
+            domain='gaming',
+            name='游戏平台专家',
+            best_practices:[
+                '实时对战: WebSocket + 状态同步',
+                '匹配系统: ELO/MMR 算法',
+                '反作弊: 客户端校验 + 服务端验证',
+                '全球加速: CDN + 边缘计算',
+            ],
+            anti_patterns:[
+                '纯客户端逻辑',
+                '无心跳检测',
+                '缺少防作弊机制',
+            ],
+            risk_patterns:[
+                '延迟导致游戏体验差',
+                '外挂破坏平衡',
+                '服务器过载',
+            ],
+            reference_docs:[
+                'knowledge/gaming/game-server-architecture.md',
+                'knowledge/network/network-optimization.md',
+            ]
+        )
+
+        # IoT 领域知识
+        self.knowledge['iot'] = DomainKnowledge(
+            domain='iot',
+            name='IoT 专家',
+            best_practices:[
+                '设备管理: 统一设备注册 + 认证',
+                '边缘计算: 本地决策 + 云端同步',
+                '协议适配: MQTT + CoAP + HTTP',
+                '数据上报: 批量上传 + 断点续传',
+            ],
+            anti_patterns:[
+                '直连云端',
+                '无离线处理',
+                '协议混用无适配层',
+            ],
+            risk_patterns:[
+                '设备掉线',
+                '数据丢失',
+                '协议不兼容',
+            ],
+            reference_docs:[
+                'knowledge/iot/iot-platform-design.md',
+                'knowledge/messaging/mqtt-protocol-guide.md',
+            ]
+        )
+
+        # SaaS 领域知识
+        self.knowledge['saas'] = DomainKnowledge(
+            domain='saas',
+            name='SaaS 架构专家',
+            best_practices:[
+                '多租户: 数据库隔离 + 行级权限',
+                '订阅计费: Stripe/Braintree 集成',
+                '租户隔离: 虚拟主机 / 独立数据库',
+                'SLA 保障: 多区域部署 + 自动故障转移',
+            ],
+            anti_patterns:[
+                '租户数据混存无隔离',
+                '硬编码租户配置',
+                '缺少用量计量',
+            ],
+            risk_patterns:[
+                '租户数据泄露',
+                '计费错误',
+                '单租户影响其他租户',
+            ],
+            reference_docs:[
+                'knowledge/saas/multi-tenant-architecture.md',
+                'knowledge/architecture/tenancy-patterns.md',
+            ]
+        )
+
+        # 社交网络领域知识
+        self.knowledge['social'] = DomainKnowledge(
+            domain='social',
+            name='社交网络专家',
+            best_practices:[
+                'Feed 流: 推拉结合 (Fan-out on write/read)',
+                '即时消息: WebSocket + 消息持久化',
+                '关系存储: Neo4j / 图数据库',
+                '内容分发: CDN + 边缘缓存',
+            ],
+            anti_patterns:[
+                '全量拉取 Feed',
+                '无消息去重',
+                '关系查询无索引',
+            ],
+            risk_patterns:[
+                'Feed 延迟高',
+                '消息重复/丢失',
+                '热门内容撑爆数据库',
+            ],
+            reference_docs:[
+                'knowledge/social/feed-system-design.md',
+                'knowledge/database/graph-database-guide.md',
+            ]
+        )
+
+        # 物流供应链领域知识
+        self.knowledge['logistics'] = DomainKnowledge(
+            domain='logistics',
+            name='物流供应链专家',
+            best_practices:[
+                '路径优化: 遗传算法 + 实时路况',
+                '仓储管理: WMS + 自动拣货',
+                '轨迹追踪: GPS + 地理围栏',
+                '供需预测: 时间序列 + 机器学习',
+            ],
+            anti_patterns:[
+                '人工排线',
+                '无实时轨迹更新',
+                '库存数据滞后',
+            ],
+            risk_patterns:[
+                '配送延误',
+                '货物丢失',
+                '库存不准',
+            ],
+            reference_docs:[
+                'knowledge/logistics/supply-chain-optimization.md',
+                'knowledge/algorithm/path-finding-algorithms.md',
+            ]
+        )
+
     def get_domain_knowledge(self, domain: str) -> Optional[DomainKnowledge]:
         """获取领域知识"""
         return self.knowledge.get(domain)

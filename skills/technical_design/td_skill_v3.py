@@ -122,6 +122,216 @@ class TDSkillV3(SkillBase):
                 'knowledge/architecture/microservice-patterns.md',
                 'knowledge/architecture/hexagonal-architecture.md',
             ]
+        },
+        'cloud_native': {
+            'name': '云原生架构',
+            'pattern': 'kubernetes-native',
+            'components': [
+                'K8s Cluster (多可用区)',
+                'Service Mesh (Istio)',
+                'Ingress Controller',
+                'Prometheus + Grafana',
+                'ETCD (配置中心)',
+                'CSI (存储插件)',
+            ],
+            'key_decisions': [
+                '部署策略: 滚动更新 vs 蓝绿',
+                '资源限制: requests/limits 配置',
+                '网络模型: ClusterIP vs NodePort vs LoadBalancer',
+            ],
+            'reference_docs': [
+                'knowledge/kubernetes/kubernetes-best-practices.md',
+                'knowledge/cloud-native/cloud-native-patterns.md',
+            ]
+        },
+        'devops': {
+            'name': 'DevOps 流水线架构',
+            'pattern': 'gitops-ci-cd',
+            'components': [
+                'CI Server (Jenkins/GitLab)',
+                'Artifact Registry',
+                'CD Platform (ArgoCD)',
+                'Infrastructure as Code (Terraform)',
+                'Monitoring Stack',
+                'Alertmanager',
+            ],
+            'key_decisions': [
+                '部署策略: 手动审批 vs 自动',
+                '回滚机制: 版本快照 vs 镜像回退',
+                '环境管理: 开发/测试/生产隔离',
+            ],
+            'reference_docs': [
+                'knowledge/devops/ci-cd-pipeline-guide.md',
+                'knowledge/infra/infrastructure-as-code.md',
+            ]
+        },
+        'data_engineering': {
+            'name': '数据工程架构',
+            'pattern': 'lambda-architecture',
+            'components': [
+                'Batch Engine (Spark)',
+                'Stream Engine (Flink/Kafka)',
+                'Data Lake (Iceberg/Delta)',
+                'OLAP Store (ClickHouse)',
+                'Feature Store',
+                'Data Quality Engine',
+            ],
+            'key_decisions': [
+                '批流一体: Lambda vs Kappa',
+                '存储选型: 行存 vs 列存',
+                '实时性要求: 秒级 vs 分钟级',
+            ],
+            'reference_docs': [
+                'knowledge/bigdata/big-data-architecture.md',
+                'knowledge/clickhouse/clickhouse-optimization.md',
+            ]
+        },
+        'security': {
+            'name': '安全工程架构',
+            'pattern': 'zero-trust',
+            'components': [
+                'Identity Provider (OIDC)',
+                'API Gateway (WAF)',
+                'Secret Manager',
+                'Audit Log Service',
+                'Vulnerability Scanner',
+                'Encryption Service',
+            ],
+            'key_decisions': [
+                '认证方式: JWT vs Session vs OAuth2',
+                '加密策略: 传输加密 vs 存储加密',
+                '访问控制: RBAC vs ABAC',
+            ],
+            'reference_docs': [
+                'knowledge/security/security-best-practices.md',
+                'knowledge/jwt/jwt-security-guide.md',
+            ]
+        },
+        'ml_ops': {
+            'name': 'ML 工程架构',
+            'pattern': 'mlops-pipeline',
+            'components': [
+                'Training Cluster (GPU)',
+                'Feature Store (Feast)',
+                'Model Registry (MLflow)',
+                'Serving Engine (Triton)',
+                'Model Monitor',
+                'A/B Testing Platform',
+            ],
+            'key_decisions': [
+                '推理模式: 实时 vs 批量',
+                '模型版本: 线性 vs 灰度',
+                '监控指标: 准确率 vs 延迟',
+            ],
+            'reference_docs': [
+                'knowledge/ml/ml-production-guide.md',
+                'knowledge/agent-ai/llm-inference-optimization.md',
+            ]
+        },
+        'gaming': {
+            'name': '游戏平台架构',
+            'pattern': 'realtime-game-server',
+            'components': [
+                'Game Server Cluster',
+                'Matchmaking Service',
+                'State Synchronization',
+                'Anti-Cheat Engine',
+                'Leaderboard Service',
+                'Global Acceleration',
+            ],
+            'key_decisions': [
+                '同步模式: 状态同步 vs 帧同步',
+                '匹配算法: ELO vs MMR',
+                '反作弊: 客户端校验 vs 服务端权威',
+            ],
+            'reference_docs': [
+                'knowledge/gaming/game-server-architecture.md',
+                'knowledge/network/network-optimization.md',
+            ]
+        },
+        'iot': {
+            'name': 'IoT 平台架构',
+            'pattern': 'edge-cloud-hybrid',
+            'components': [
+                'Device Gateway (MQTT)',
+                'Protocol Adapter',
+                'Edge Compute Node',
+                'Time-Series DB',
+                'Device Management',
+                'OTA Update Service',
+            ],
+            'key_decisions': [
+                '边缘决策 vs 云端决策',
+                '协议适配: MQTT vs CoAP vs HTTP',
+                '离线处理: 本地缓存 + 断点续传',
+            ],
+            'reference_docs': [
+                'knowledge/iot/iot-platform-design.md',
+                'knowledge/messaging/mqtt-protocol-guide.md',
+            ]
+        },
+        'saas': {
+            'name': 'SaaS 多租户架构',
+            'pattern': 'multi-tenant-isolation',
+            'components': [
+                'Tenant Router',
+                'Billing Service',
+                'Tenant Isolation Layer',
+                'Usage Metering',
+                'Self-Service Portal',
+                'SLA Monitor',
+            ],
+            'key_decisions': [
+                '隔离级别: 数据库级 vs 表级 vs 行级',
+                '计费模式: 订阅 vs 用量',
+                '自定义: 白标 vs 模板化',
+            ],
+            'reference_docs': [
+                'knowledge/saas/multi-tenant-architecture.md',
+                'knowledge/architecture/tenancy-patterns.md',
+            ]
+        },
+        'social': {
+            'name': '社交网络架构',
+            'pattern': 'fan-out-on-write',
+            'components': [
+                'Feed Service (写扩散)',
+                'Graph Service (关系存储)',
+                'Messaging Service (即时通讯)',
+                'Notification Service',
+                'Content CDN',
+                'Search Service',
+            ],
+            'key_decisions': [
+                'Feed 策略: 写扩散 vs 读扩散 vs 混合',
+                '消息持久化: 异步 vs 同步',
+                '关系存储: 关系型 vs 图数据库',
+            ],
+            'reference_docs': [
+                'knowledge/social/feed-system-design.md',
+                'knowledge/database/graph-database-guide.md',
+            ]
+        },
+        'logistics': {
+            'name': '物流供应链架构',
+            'pattern': 'supply-chain-optimization',
+            'components': [
+                'Route Optimization Engine',
+                'Warehouse Management (WMS)',
+                'Tracking Service (GPS)',
+                'Demand Forecasting',
+                'Shipment Management',
+                'Settlement Service',
+            ],
+            'key_decisions': [
+                '路径优化: 遗传算法 vs 动态规划',
+                '仓储策略: 预分仓 vs 中心仓',
+                '预测模型: 时间序列 vs 机器学习',
+            ],
+            'reference_docs': [
+                'knowledge/logistics/supply-chain-optimization.md',
+                'knowledge/algorithm/path-finding-algorithms.md',
+            ]
         }
     }
 
