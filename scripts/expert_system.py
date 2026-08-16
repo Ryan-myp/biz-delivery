@@ -961,12 +961,59 @@ class SeniorExpertSystem:
             if kw in prd:
                 scores['logistics'] += 1
 
+        # 检测跨领域项目
+        cross_domains = self._detect_cross_domain(scores)
+
         # 默认全栈
         max_score = max(scores.values())
         if max_score == 0:
             return 'fullstack'
 
-        return max(scores, key=scores.get)
+        primary_domain = max(scores, key=scores.get)
+
+        # 如果有跨领域标签，返回主领域+跨领域
+        if cross_domains:
+            return f"{primary_domain}+{cross_domains[0]}"
+
+        return primary_domain
+
+    def _detect_cross_domain(self, scores: Dict[str, int]) -> List[str]:
+        """检测跨领域关联"""
+        cross_domains = []
+
+        # AdTech = advertising + ml_ops
+        if scores.get('advertising', 0) > 0 and scores.get('ml_ops', 0) > 0:
+            cross_domains.append('ml_ops')
+
+        # AdTech = advertising + security (anti-fraud)
+        if scores.get('advertising', 0) > 0 and scores.get('security', 0) > 0:
+            cross_domains.append('security')
+
+        # FinTech = finance + security
+        if scores.get('finance', 0) > 0 and scores.get('security', 0) > 0:
+            cross_domains.append('security')
+
+        # FinTech = finance + data_engineering
+        if scores.get('finance', 0) > 0 and scores.get('data_engineering', 0) > 0:
+            cross_domains.append('data_engineering')
+
+        # Social + ml_ops (recommendation)
+        if scores.get('social', 0) > 0 and scores.get('ml_ops', 0) > 0:
+            cross_domains.append('ml_ops')
+
+        # Cloud + devops
+        if scores.get('cloud_native', 0) > 0 and scores.get('devops', 0) > 0:
+            cross_domains.append('devops')
+
+        # IoT + cloud_native
+        if scores.get('iot', 0) > 0 and scores.get('cloud_native', 0) > 0:
+            cross_domains.append('cloud_native')
+
+        # Gaming + ml_ops (anti-cheat)
+        if scores.get('gaming', 0) > 0 and scores.get('ml_ops', 0) > 0:
+            cross_domains.append('ml_ops')
+
+        return cross_domains[:2]  # 最多返回2个跨领域
 
 
 if __name__ == '__main__':
