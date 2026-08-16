@@ -1,0 +1,54 @@
+{
+  "case_id": "ad-programmatic-buying-005",
+  "domain": "advertising",
+  "sub_domain": "advertising+finance",
+  "prd_summary": "程序化购买平台，支持多DSP接入",
+  "issues_found": [
+    {
+      "name": "竞价延迟",
+      "severity": "P0",
+      "message": "RTB竞价延迟超过100ms，丢失广告位"
+    },
+    {
+      "name": "预算分配不均",
+      "severity": "P1",
+      "message": "预算集中在少数媒体，ROI不佳"
+    },
+    {
+      "name": "反作弊能力弱",
+      "severity": "P1",
+      "message": "虚假流量导致预算浪费"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "竞价引擎优化+本地缓存+异步上报",
+      "effective": true,
+      "impact": "P99延迟从150ms降到50ms"
+    },
+    {
+      "solution": "智能预算分配+多目标优化",
+      "effective": true,
+      "impact": "整体ROI提升25%"
+    },
+    {
+      "solution": "设备指纹+行为分析+ML反作弊",
+      "effective": true,
+      "impact": "虚假流量识别率99%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "程序化购买延迟是关键，必须低于100ms",
+    "预算分配要智能，不能人工调控",
+    "反作弊是必须的，否则预算浪费严重",
+    "多DSP接入要考虑标准化协议"
+  ],
+  "metrics": {
+    "bid_latency_ms": 50,
+    "roi_improvement": "25%",
+    "fraud_detection_rate": "99%"
+  },
+  "quality_score": 92,
+  "timestamp": "2024-02-10T10:00:00Z"
+}

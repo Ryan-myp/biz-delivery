@@ -1,0 +1,54 @@
+{
+  "case_id": "ecommerce-recommendation-005",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+ml_ops",
+  "prd_summary": "个性化推荐系统，提升转化率",
+  "issues_found": [
+    {
+      "name": "冷启动问题",
+      "severity": "P1",
+      "message": "新用户无行为数据，推荐效果差"
+    },
+    {
+      "name": "实时性不足",
+      "severity": "P1",
+      "message": "推荐结果更新延迟，无法反映最新兴趣"
+    },
+    {
+      "name": "多样性缺失",
+      "severity": "P2",
+      "message": "推荐结果过于同质化"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "基于内容的推荐+热门兜底",
+      "effective": true,
+      "impact": "冷启动转化率提升30%"
+    },
+    {
+      "solution": "Flink实时特征计算+Redis缓存",
+      "effective": true,
+      "impact": "推荐延迟从分钟级降到秒级"
+    },
+    {
+      "solution": "多目标优化+多样性重排序",
+      "effective": true,
+      "impact": "点击率提升15%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "冷启动是推荐系统的经典问题，需要多策略组合",
+    "实时推荐需要流式计算支撑",
+    "多样性很重要，否则用户体验差",
+    "AB测试是优化推荐效果的必经之路"
+  ],
+  "metrics": {
+    "ctr_lift": "15%",
+    "latency_ms": 200,
+    "cold_start_improvement": "30%"
+  },
+  "quality_score": 89,
+  "timestamp": "2024-02-08T10:00:00Z"
+}

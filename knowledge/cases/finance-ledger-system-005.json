@@ -1,0 +1,54 @@
+{
+  "case_id": "finance-ledger-system-005",
+  "domain": "finance",
+  "sub_domain": "finance+security",
+  "prd_summary": "核心账务系统设计，保证资金安全",
+  "issues_found": [
+    {
+      "name": "账务一致性",
+      "severity": "P0",
+      "message": "分布式环境下账务数据可能不一致"
+    },
+    {
+      "name": "资金安全",
+      "severity": "P0",
+      "message": "缺乏有效的资金异动监控"
+    },
+    {
+      "name": "审计追溯",
+      "severity": "P1",
+      "message": "关键操作缺少完整审计日志"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "复式记账+每日对账+差异自动预警",
+      "effective": true,
+      "impact": "账务准确率100%"
+    },
+    {
+      "solution": "实时资金监控+阈值告警",
+      "effective": true,
+      "impact": "异常发现时间从小时级降到分钟级"
+    },
+    {
+      "solution": "操作日志不可篡改+区块链存证",
+      "effective": true,
+      "impact": "审计追溯能力完整"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "账务系统是金融的核心，必须保证一致性",
+    "复式记账是账务准确的基础",
+    "资金监控要实时，不能等T+1",
+    "审计日志要防篡改，区块链是可选方案"
+  ],
+  "metrics": {
+    "accounting_accuracy": "100%",
+    " anomaly_detection_time_min": 5,
+    "audit_completeness": "100%"
+  },
+  "quality_score": 95,
+  "timestamp": "2024-02-09T10:00:00Z"
+}

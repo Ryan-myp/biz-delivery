@@ -1,0 +1,54 @@
+{
+  "case_id": "agent-function-calling-005",
+  "domain": "agent",
+  "sub_domain": "agent+ml_ops",
+  "prd_summary": "Agent函数调用框架，支持复杂任务编排",
+  "issues_found": [
+    {
+      "name": "函数调用失败",
+      "severity": "P1",
+      "message": "外部API调用失败无处理机制"
+    },
+    {
+      "name": "上下文管理",
+      "severity": "P1",
+      "message": "长对话上下文超出Token限制"
+    },
+    {
+      "name": "工具冲突",
+      "severity": "P2",
+      "message": "多个工具参数冲突导致调用错误"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "统一错误处理+自动重试+降级策略",
+      "effective": true,
+      "impact": "工具调用成功率从85%提升到99%"
+    },
+    {
+      "solution": "上下文压缩+摘要提取+滑动窗口",
+      "effective": true,
+      "impact": "支持更长对话，Token节省40%"
+    },
+    {
+      "solution": "工具参数校验+冲突检测+优先级配置",
+      "effective": true,
+      "impact": "参数错误率降到1%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "函数调用失败必须有处理机制，不能静默失败",
+    "上下文管理是长对话的关键",
+    "工具冲突需要提前设计避免机制",
+    "错误处理和重试是生产环境的必备能力"
+  ],
+  "metrics": {
+    "call_success_rate": "99%",
+    "token_savings": "40%",
+    "param_error_rate": "1%"
+  },
+  "quality_score": 90,
+  "timestamp": "2024-02-11T10:00:00Z"
+}
