@@ -187,27 +187,68 @@ class TaskPlanningSkillV3(SkillBase):
     def _detect_domain(self, td_content: str, prd_content: str) -> str:
         """识别领域"""
         content = td_content + " " + prd_content
-        scores = {'advertising': 0, 'agent': 0, 'ecommerce': 0, 'finance': 0, 'fullstack': 0}
+        scores = {
+            'advertising': 0, 'agent': 0, 'ecommerce': 0, 'finance': 0, 'fullstack': 0,
+            'cloud_native': 0, 'devops': 0, 'data_engineering': 0, 'security': 0,
+            'ml_ops': 0, 'gaming': 0, 'iot': 0, 'saas': 0, 'social': 0, 'logistics': 0,
+        }
 
         # 广告关键词
         for kw in ['竞价', 'RTB', 'DSP', 'SSP', '广告', '出价', '曝光', '归因', 'ROI', 'eCPM']:
             if kw in content:
                 scores['advertising'] += 1
-
         # Agent 关键词
         for kw in ['Agent', 'LLM', 'RAG', 'ReAct', '记忆', 'Tool', 'Planner', 'Multi-Agent']:
             if kw in content:
                 scores['agent'] += 1
-
         # 电商关键词
         for kw in ['订单', '商品', '库存', '支付', '购物车', '促销', '优惠券']:
             if kw in content:
                 scores['ecommerce'] += 1
-
         # 金融关键词
         for kw in ['交易', '账户', '风控', '合规', '清算', '对账']:
             if kw in content:
                 scores['finance'] += 1
+        # 云原生关键词
+        for kw in ['Kubernetes', 'K8s', '容器', 'Docker', 'Istio', '服务网格']:
+            if kw in content:
+                scores['cloud_native'] += 1
+        # DevOps 关键词
+        for kw in ['CI/CD', 'Jenkins', 'ArgoCD', 'GitOps', 'Terraform', '流水线']:
+            if kw in content:
+                scores['devops'] += 1
+        # 数据工程关键词
+        for kw in ['Spark', 'Flink', 'Kafka', 'ClickHouse', '数据湖', 'ETL']:
+            if kw in content:
+                scores['data_engineering'] += 1
+        # 安全关键词
+        for kw in ['加密', 'JWT', 'OAuth', '零信任', '安全', '权限', '审计']:
+            if kw in content:
+                scores['security'] += 1
+        # ML 关键词
+        for kw in ['模型', '训练', '推理', 'MLflow', '特征', 'A/B测试']:
+            if kw in content:
+                scores['ml_ops'] += 1
+        # 游戏关键词
+        for kw in ['游戏', '对战', '匹配', 'ELO', '反作弊', '帧同步']:
+            if kw in content:
+                scores['gaming'] += 1
+        # IoT 关键词
+        for kw in ['IoT', '设备', 'MQTT', '边缘计算', '传感器', 'OTA']:
+            if kw in content:
+                scores['iot'] += 1
+        # SaaS 关键词
+        for kw in ['多租户', 'SaaS', '订阅', '计费', '隔离', 'SLA']:
+            if kw in content:
+                scores['saas'] += 1
+        # 社交关键词
+        for kw in ['Feed', '信息流', '关注', '社交', '关系', '即时消息']:
+            if kw in content:
+                scores['social'] += 1
+        # 物流关键词
+        for kw in ['物流', '配送', '仓储', '路径优化', '轨迹', 'WMS']:
+            if kw in content:
+                scores['logistics'] += 1
 
         max_score = max(scores.values())
         if max_score == 0:

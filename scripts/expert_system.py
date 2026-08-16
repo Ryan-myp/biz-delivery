@@ -827,6 +827,16 @@ class SeniorExpertSystem:
             'ecommerce': 0,
             'finance': 0,
             'fullstack': 0,
+            'cloud_native': 0,
+            'devops': 0,
+            'data_engineering': 0,
+            'security': 0,
+            'ml_ops': 0,
+            'gaming': 0,
+            'iot': 0,
+            'saas': 0,
+            'social': 0,
+            'logistics': 0,
         }
 
         # 广告关键词
@@ -848,6 +858,56 @@ class SeniorExpertSystem:
         for kw in ['交易', '账户', '风控', '合规', '清算']:
             if kw in prd:
                 scores['finance'] += 1
+
+        # 云原生关键词
+        for kw in ['Kubernetes', 'K8s', '容器', 'Docker', 'Istio', '服务网格', 'Helm']:
+            if kw in prd:
+                scores['cloud_native'] += 1
+
+        # DevOps 关键词
+        for kw in ['CI/CD', 'Jenkins', 'ArgoCD', 'GitOps', 'Terraform', '流水线', '部署']:
+            if kw in prd:
+                scores['devops'] += 1
+
+        # 数据工程关键词
+        for kw in ['Spark', 'Flink', 'Kafka', 'ClickHouse', '数据湖', 'ETL', '实时计算']:
+            if kw in prd:
+                scores['data_engineering'] += 1
+
+        # 安全关键词
+        for kw in ['加密', 'JWT', 'OAuth', '零信任', '安全', '权限', '审计', '漏洞']:
+            if kw in prd:
+                scores['security'] += 1
+
+        # ML 关键词
+        for kw in ['模型', '训练', '推理', 'MLflow', '特征', 'A/B测试', '漂移']:
+            if kw in prd:
+                scores['ml_ops'] += 1
+
+        # 游戏关键词
+        for kw in ['游戏', '对战', '匹配', 'ELO', '反作弊', '帧同步', '状态同步']:
+            if kw in prd:
+                scores['gaming'] += 1
+
+        # IoT 关键词
+        for kw in ['IoT', '设备', 'MQTT', '边缘计算', '传感器', '固件', 'OTA']:
+            if kw in prd:
+                scores['iot'] += 1
+
+        # SaaS 关键词
+        for kw in ['多租户', 'SaaS', '订阅', '计费', '隔离', 'SLA']:
+            if kw in prd:
+                scores['saas'] += 1
+
+        # 社交关键词
+        for kw in ['Feed', '信息流', '关注', '社交', '关系', '即时消息', 'WebSocket']:
+            if kw in prd:
+                scores['social'] += 1
+
+        # 物流关键词
+        for kw in ['物流', '配送', '仓储', '路径优化', '轨迹', 'WMS', 'GPS']:
+            if kw in prd:
+                scores['logistics'] += 1
 
         # 默认全栈
         max_score = max(scores.values())

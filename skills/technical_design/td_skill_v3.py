@@ -409,23 +409,19 @@ class TDSkillV3(SkillBase):
     def _detect_domain(self, prd: str) -> str:
         """识别 PRD 所属领域"""
         domain_scores = {
-            'advertising': 0,
-            'agent': 0,
-            'ecommerce': 0,
-            'finance': 0,
-            'fullstack': 0,
+            'advertising': 0, 'agent': 0, 'ecommerce': 0, 'finance': 0, 'fullstack': 0,
+            'cloud_native': 0, 'devops': 0, 'data_engineering': 0, 'security': 0,
+            'ml_ops': 0, 'gaming': 0, 'iot': 0, 'saas': 0, 'social': 0, 'logistics': 0,
         }
 
         # 广告领域关键词
-        ad_keywords = ['竞价', 'RTB', 'DSP', 'SSP', '广告', '出价', '曝光', '点击',
-                       '归因', 'ROI', 'eCPM', 'pCTR', '反作弊', '创意', '素材']
+        ad_keywords = ['竞价', 'RTB', 'DSP', 'SSP', '广告', '出价', '曝光', '点击', '归因', 'ROI', 'eCPM', 'pCTR', '反作弊', '创意', '素材']
         for kw in ad_keywords:
             if kw in prd:
                 domain_scores['advertising'] += 1
 
         # Agent 领域关键词
-        agent_keywords = ['Agent', 'LLM', 'RAG', 'ReAct', '工具调用', '记忆系统',
-                         'Multi-Agent', 'Planner', 'Function Calling', 'MCP']
+        agent_keywords = ['Agent', 'LLM', 'RAG', 'ReAct', '工具调用', '记忆系统', 'Multi-Agent', 'Planner', 'Function Calling', 'MCP']
         for kw in agent_keywords:
             if kw in prd:
                 domain_scores['agent'] += 1
@@ -441,6 +437,66 @@ class TDSkillV3(SkillBase):
         for kw in finance_keywords:
             if kw in prd:
                 domain_scores['finance'] += 1
+
+        # 云原生领域关键词
+        cloud_native_keywords = ['Kubernetes', 'K8s', '容器', 'Docker', 'Istio', '服务网格', 'Helm']
+        for kw in cloud_native_keywords:
+            if kw in prd:
+                domain_scores['cloud_native'] += 1
+
+        # DevOps 领域关键词
+        devops_keywords = ['CI/CD', 'Jenkins', 'ArgoCD', 'GitOps', 'Terraform', '流水线', '部署']
+        for kw in devops_keywords:
+            if kw in prd:
+                domain_scores['devops'] += 1
+
+        # 数据工程领域关键词
+        data_keywords = ['Spark', 'Flink', 'Kafka', 'ClickHouse', '数据湖', 'ETL', '实时计算']
+        for kw in data_keywords:
+            if kw in prd:
+                domain_scores['data_engineering'] += 1
+
+        # 安全领域关键词
+        security_keywords = ['加密', 'JWT', 'OAuth', '零信任', '安全', '权限', '审计', '漏洞']
+        for kw in security_keywords:
+            if kw in prd:
+                domain_scores['security'] += 1
+
+        # ML 领域关键词
+        ml_keywords = ['模型', '训练', '推理', 'MLflow', '特征', 'A/B测试', '漂移']
+        for kw in ml_keywords:
+            if kw in prd:
+                domain_scores['ml_ops'] += 1
+
+        # 游戏领域关键词
+        gaming_keywords = ['游戏', '对战', '匹配', 'ELO', '反作弊', '帧同步', '状态同步']
+        for kw in gaming_keywords:
+            if kw in prd:
+                domain_scores['gaming'] += 1
+
+        # IoT 领域关键词
+        iot_keywords = ['IoT', '设备', 'MQTT', '边缘计算', '传感器', '固件', 'OTA']
+        for kw in iot_keywords:
+            if kw in prd:
+                domain_scores['iot'] += 1
+
+        # SaaS 领域关键词
+        saas_keywords = ['多租户', 'SaaS', '订阅', '计费', '隔离', 'SLA']
+        for kw in saas_keywords:
+            if kw in prd:
+                domain_scores['saas'] += 1
+
+        # 社交领域关键词
+        social_keywords = ['Feed', '信息流', '关注', '社交', '关系', '即时消息', 'WebSocket']
+        for kw in social_keywords:
+            if kw in prd:
+                domain_scores['social'] += 1
+
+        # 物流领域关键词
+        logistics_keywords = ['物流', '配送', '仓储', '路径优化', '轨迹', 'WMS', 'GPS']
+        for kw in logistics_keywords:
+            if kw in prd:
+                domain_scores['logistics'] += 1
 
         # 根据得分确定领域
         max_score = max(domain_scores.values())
