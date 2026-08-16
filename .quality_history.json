@@ -46,5 +46,29 @@
     "percentage": 100,
     "rating": "A+",
     "passed": true
+  },
+  {
+    "timestamp": "2026-08-16T22:06:17.311558",
+    "score": 100,
+    "max_score": 100,
+    "percentage": 100,
+    "rating": "A+",
+    "passed": true
+  },
+  {
+    "timestamp": "2026-08-16T22:18:33.964249",
+    "score": 95,
+    "max_score": 100,
+    "percentage": 95,
+    "rating": "A+",
+    "passed": true
+  },
+  {
+    "timestamp": "2026-08-16T22:18:35.244102",
+    "score": 60,
+    "max_score": 100,
+    "percentage": 60,
+    "rating": "B",
+    "passed": true
   }
 ]
