@@ -540,16 +540,18 @@ class ExpertDecisionEngine:
 
     def analyze_prd(self, prd_content: str, domain: str) -> Dict:
         """PRD 专家分析"""
-        domain_kb = self.kb.get_domain_knowledge(domain)
+        # 提取主领域 (处理跨领域如 finance+security)
+        primary_domain = domain.split('+')[0] if '+' in domain else domain
+        domain_kb = self.kb.get_domain_knowledge(primary_domain)
         if not domain_kb:
             return {'analysis': '未知领域', 'recommendations': []}
 
         analysis = {
             'domain': domain,
-            'business_value': self._analyze_business_value(prd_content, domain),
-            'technical_feasibility': self._analyze_technical_feasibility(prd_content, domain),
-            'risk_assessment': self._assess_risks(prd_content, domain),
-            'optimization_suggestions': self._generate_suggestions(prd_content, domain),
+            'business_value': self._analyze_business_value(prd_content, primary_domain),
+            'technical_feasibility': self._analyze_technical_feasibility(prd_content, primary_domain),
+            'risk_assessment': self._assess_risks(prd_content, primary_domain),
+            'optimization_suggestions': self._generate_suggestions(prd_content, primary_domain),
         }
 
         return analysis
