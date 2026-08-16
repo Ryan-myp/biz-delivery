@@ -917,7 +917,7 @@ class SeniorExpertSystem:
                 scores['cloud_native'] += 1
 
         # DevOps 关键词
-        for kw in ['CI/CD', 'Jenkins', 'ArgoCD', 'GitOps', 'Terraform', '流水线', '部署']:
+        for kw in ['CI/CD', 'Jenkins', 'ArgoCD', 'GitOps', 'Terraform', '流水线', '部署', '蓝绿', '灰度']:
             if kw in prd:
                 scores['devops'] += 1
 
