@@ -1,0 +1,54 @@
+{
+  "case_id": "ecommerce-order-state-006",
+  "domain": "ecommerce",
+  "sub_domain": "ecommerce+finance",
+  "prd_summary": "订单状态机设计，支持复杂业务流程",
+  "issues_found": [
+    {
+      "name": "状态跳转非法",
+      "severity": "P0",
+      "message": "订单状态随意跳转，导致业务逻辑混乱"
+    },
+    {
+      "name": "并发状态修改",
+      "severity": "P0",
+      "message": "多个请求同时修改订单状态，产生竞态"
+    },
+    {
+      "name": "状态流转无审计",
+      "severity": "P1",
+      "message": "缺少状态变更日志，问题难追溯"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "有限状态机(FSM)设计，只允许合法转换",
+      "effective": true,
+      "impact": "非法状态跳转率降到0"
+    },
+    {
+      "solution": "数据库乐观锁+状态版本号",
+      "effective": true,
+      "impact": "并发修改冲突自动解决"
+    },
+    {
+      "solution": "状态变更事件日志+消息队列",
+      "effective": true,
+      "impact": "问题追溯时间从小时级降到分钟级"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "订单状态机必须严格定义合法转换",
+    "并发控制是必须的，乐观锁是简单有效的方案",
+    "状态变更要有完整审计日志",
+    "复杂业务考虑用状态机引擎"
+  ],
+  "metrics": {
+    "invalid_transition_rate": "0%",
+    "concurrent_conflict_rate": "0%",
+    "audit_completeness": "100%"
+  },
+  "quality_score": 91,
+  "timestamp": "2024-02-12T10:00:00Z"
+}

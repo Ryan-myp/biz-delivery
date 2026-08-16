@@ -1,0 +1,54 @@
+{
+  "case_id": "agent-memory-longterm-006",
+  "domain": "agent",
+  "sub_domain": "agent+ml_ops",
+  "prd_summary": "Agent长期记忆系统，支持跨会话学习",
+  "issues_found": [
+    {
+      "name": "记忆检索慢",
+      "severity": "P1",
+      "message": "向量检索延迟高，影响响应速度"
+    },
+    {
+      "name": "记忆过期策略",
+      "severity": "P1",
+      "message": "旧记忆未及时清理，占用空间"
+    },
+    {
+      "name": "记忆冲突",
+      "severity": "P2",
+      "message": "多次更新导致记忆不一致"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "Redis缓存+向量数据库分层架构",
+      "effective": true,
+      "impact": "检索延迟从500ms降到50ms"
+    },
+    {
+      "solution": "基于时间的记忆衰减+定期清理",
+      "effective": true,
+      "impact": "存储空间减少60%"
+    },
+    {
+      "solution": "版本控制+冲突检测+自动合并",
+      "effective": true,
+      "impact": "记忆一致性问题消除"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "长期记忆系统是Agent的核心能力",
+    "检索性能必须优化，否则体验差",
+    "记忆需要生命周期管理",
+    "冲突处理要考虑一致性"
+  ],
+  "metrics": {
+    "recall_latency_ms": 50,
+    "storage_savings": "60%",
+    "consistency_rate": "100%"
+  },
+  "quality_score": 90,
+  "timestamp": "2024-02-15T10:00:00Z"
+}

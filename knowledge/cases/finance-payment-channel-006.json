@@ -1,0 +1,54 @@
+{
+  "case_id": "finance-payment-channel-006",
+  "domain": "finance",
+  "sub_domain": "finance+security",
+  "prd_summary": "多渠道支付接入，统一支付网关",
+  "issues_found": [
+    {
+      "name": "渠道切换逻辑复杂",
+      "severity": "P1",
+      "message": "多渠道切换逻辑硬编码，维护困难"
+    },
+    {
+      "name": "支付结果不一致",
+      "severity": "P1",
+      "message": "不同渠道回调格式不一，处理容易出错"
+    },
+    {
+      "name": "对账困难",
+      "severity": "P2",
+      "message": "多渠道对账逻辑分散，容易遗漏"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "策略模式+配置化路由，支持热插拔",
+      "effective": true,
+      "impact": "新渠道接入时间从2周降到2天"
+    },
+    {
+      "solution": "统一支付结果模型，渠道适配层转换",
+      "effective": true,
+      "impact": "回调处理错误率降到0.1%"
+    },
+    {
+      "solution": "统一对账平台，自动差异分析",
+      "effective": true,
+      "impact": "对账效率提升5倍"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "多渠道支付要用策略模式，避免硬编码",
+    "统一数据模型是必要的基础设施",
+    "对账要 centralized，不能分散在各渠道",
+    "支付系统稳定性是第一优先级"
+  ],
+  "metrics": {
+    "new_channel_onboarding_days": 2,
+    "callback_error_rate": "0.1%",
+    "reconciliation_efficiency": "5x"
+  },
+  "quality_score": 88,
+  "timestamp": "2024-02-13T10:00:00Z"
+}

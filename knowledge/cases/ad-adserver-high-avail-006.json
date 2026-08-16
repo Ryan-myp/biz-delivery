@@ -1,0 +1,54 @@
+{
+  "case_id": "ad-adserver-high-avail-006",
+  "domain": "advertising",
+  "sub_domain": "advertising+cloud_native",
+  "prd_summary": "广告服务器高可用架构，保证99.99%可用性",
+  "issues_found": [
+    {
+      "name": "单点故障",
+      "severity": "P0",
+      "message": "关键服务无冗余，单点故障导致整体不可用"
+    },
+    {
+      "name": "异地容灾缺失",
+      "severity": "P1",
+      "message": "只有同城备份，机房级故障无法恢复"
+    },
+    {
+      "name": "故障切换慢",
+      "severity": "P1",
+      "message": "人工切换耗时长，影响用户体验"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "关键服务多副本+负载均衡+健康检查",
+      "effective": true,
+      "impact": "单点故障消除"
+    },
+    {
+      "solution": "异地多活架构，数据双向同步",
+      "effective": true,
+      "impact": "RTO从小时级降到分钟级"
+    },
+    {
+      "solution": "自动化故障切换+灰度发布",
+      "effective": true,
+      "impact": "故障恢复时间<30秒"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "高可用是广告系统的基本底线",
+    "单点故障必须消除，关键服务都要多副本",
+    "异地容灾是高级要求，但要提前规划",
+    "自动化切换是关键，人工操作太慢"
+  ],
+  "metrics": {
+    "availability": "99.99%",
+    "rto_min": 1,
+    "rpo_min": 0
+  },
+  "quality_score": 93,
+  "timestamp": "2024-02-14T10:00:00Z"
+}
