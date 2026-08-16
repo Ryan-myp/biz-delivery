@@ -981,17 +981,39 @@ class ExpertDecisionEngine:
         return suggestions.get(domain, '根据具体场景加强安全措施')
 
     def _get_kb_references(self, prd: str, domain: str) -> List[Dict]:
-        """获取知识库引用"""
+        """获取知识库引用 - 增强版"""
         real_kb = get_kb()
 
         # 提取PRD关键词
         keywords = []
         # 中文关键词
         cn_keywords = re.findall(r'[\u4e00-\u9fa5]{2,4}', prd)
-        keywords.extend(cn_keywords[:10])
+        keywords.extend(cn_keywords[:15])
         # 英文关键词
         en_keywords = re.findall(r'\b[a-zA-Z]{3,}\b', prd)
-        keywords.extend(en_keywords[:5])
+        keywords.extend(en_keywords[:8])
+
+        # 添加领域关键词
+        domain_keywords = {
+            'advertising': ['竞价', 'RTB', 'DSP', 'SSP', '曝光', '点击', '归因'],
+            'agent': ['Agent', 'ReAct', '记忆', 'Tool', 'Prompt'],
+            'ecommerce': ['订单', '库存', '支付', '秒杀', '购物车'],
+            'finance': ['支付', '交易', '事务', '对账', '风控'],
+            'cloud_native': ['Kubernetes', 'Docker', '服务网格', 'Helm'],
+            'security': ['加密', 'JWT', 'OAuth', '零信任', '审计'],
+            'data_engineering': ['Kafka', 'Flink', 'Spark', '数据湖'],
+            'devops': ['CI/CD', 'Jenkins', 'GitOps', 'Terraform'],
+            'ml_ops': ['模型', '训练', '推理', '特征', 'A/B测试'],
+            'gaming': ['游戏', '对战', '匹配', '反作弊', '帧同步'],
+            'iot': ['IoT', 'MQTT', '边缘', '设备', '传感器'],
+            'saas': ['多租户', 'SaaS', '订阅', '计费', 'SLA'],
+            'social': ['Feed', '社交', '关系', '即时消息', 'WebSocket'],
+            'logistics': ['物流', '配送', '仓储', '路径优化', 'GPS'],
+        }
+        keywords.extend(domain_keywords.get(domain, [])[:5])
+
+        # 去重
+        keywords = list(dict.fromkeys(keywords))
 
         # 多关键词搜索，合并结果
         all_results = {}
@@ -1004,8 +1026,19 @@ class ExpertDecisionEngine:
                 else:
                     all_results[path]['score'] += r['score']
 
+        # 也搜索通用技术关键词
+        tech_keywords = ['Redis', 'Kafka', 'MySQL', '分布式', '并发', '缓存', '事务', '一致性', '微服务']
+        for kw in tech_keywords:
+            results = real_kb.search(kw, limit=2)
+            for r in results:
+                path = r['path']
+                if path not in all_results:
+                    all_results[path] = r
+                else:
+                    all_results[path]['score'] += r['score'] * 0.5
+
         # 按分数排序
-        sorted_results = sorted(all_results.values(), key=lambda x: -x['score'])[:5]
+        sorted_results = sorted(all_results.values(), key=lambda x: -x['score'])[:8]
 
         references = []
         for doc in sorted_results:
@@ -1013,7 +1046,7 @@ class ExpertDecisionEngine:
                 'title': doc['title'],
                 'path': doc['path'],
                 'relevance_score': doc['score'],
-                'summary': doc['summary'][:100] + '...' if len(doc['summary']) > 100 else doc['summary'],
+                'summary': doc['summary'][:150] + '...' if len(doc['summary']) > 150 else doc['summary'],
             })
 
         return references
