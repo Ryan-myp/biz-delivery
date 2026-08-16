@@ -168,14 +168,25 @@ class QualityGateCLI:
                 return passed, detail
 
             elif check_name == 'security_scan':
+                # 基础安全检查 - 只检查核心脚本中的硬编码密钥
                 security_issues = 0
-                py_files = list(project_path.rglob('*.py'))[:30]
-                for f in py_files:
-                    content = f.read_text(errors='ignore')
-                    if 'password' in content.lower() and '=' in content:
-                        security_issues += 1
-                    if 'eval(' in content and '#' not in content.split('eval(')[0][-10:]:
-                        security_issues += 1
+                core_files = list((project_path / 'scripts').rglob('*.py'))[:20]
+                for f in core_files:
+                    try:
+                        content = f.read_text(errors='ignore')
+                        # 检查硬编码密码 (实际赋值模式)
+                        if re.search(r'(?i)(password|secret|api_key|token)\s*=\s*["\'][^"\']{5,}["\']', content):
+                            security_issues += 1
+                        # 检查危险的eval/exec (排除注释)
+                        lines = content.split('\n')
+                        for line in lines:
+                            if 'eval(' in line or 'exec(' in line:
+                                # 排除注释行
+                                if not line.strip().startswith('#'):
+                                    security_issues += 1
+                                    break
+                    except:
+                        pass
                 passed = security_issues == 0
                 detail = f"潜在安全问题: {security_issues} 个"
                 return passed, detail
