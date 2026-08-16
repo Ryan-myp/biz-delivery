@@ -940,9 +940,9 @@ class SeniorExpertSystem:
     def review(self, prd_content: str, domain: str = None) -> Dict:
         """执行专家审查"""
         # 性能优化: 检查缓存
-        cache_key = f"review_{hash(prd_content)}_{domain or 'auto'}"
+        cache_key = f"review_{abs(hash(prd_content))}_{domain or 'auto'}"
         cached = get_optimizer().cache.get(cache_key)
-        if cached:
+        if cached and isinstance(cached, dict) and 'success' in cached:
             return cached
 
         # 如果没有指定领域，自动检测
