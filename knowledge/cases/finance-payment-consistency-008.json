@@ -1,0 +1,54 @@
+{
+  "case_id": "finance-payment-consistency-008",
+  "domain": "finance",
+  "sub_domain": "finance+security",
+  "prd_summary": "支付系统一致性保障，资金安全零差错",
+  "issues_found": [
+    {
+      "name": "分布式事务不一致",
+      "severity": "P0",
+      "message": "跨服务事务提交失败导致数据不一致"
+    },
+    {
+      "name": "对账差异",
+      "severity": "P0",
+      "message": "日终对账发现资金差异"
+    },
+    {
+      "name": "重复扣款",
+      "severity": "P1",
+      "message": "网络抖动导致回调重复，订单状态混乱"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "Saga模式+本地消息表+补偿事务",
+      "effective": true,
+      "impact": "数据一致性100%"
+    },
+    {
+      "solution": "实时对账+差异自动预警",
+      "effective": true,
+      "impact": "差异发现时间从T+1降到实时"
+    },
+    {
+      "solution": "分布式锁+幂等设计+唯一索引",
+      "effective": true,
+      "impact": "重复扣款率0%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "支付系统一致性是底线，不能用最终一致性糊弄",
+    "对账系统是资金安全的最后防线",
+    "幂等设计是必须的，每个接口都要考虑",
+    "补偿机制要完善，失败要有兜底方案"
+  ],
+  "metrics": {
+    "consistency_rate": "100%",
+    "reconciliation_latency_sec": 5,
+    "duplicate_charge_rate": "0%"
+  },
+  "quality_score": 96,
+  "timestamp": "2024-03-11T10:00:00Z"
+}

@@ -1,0 +1,57 @@
+{
+  "case_id": "ad-bidding-realtime-optimization-008",
+  "domain": "advertising",
+  "sub_domain": "advertising+ml_ops",
+  "prd_summary": "实时竞价系统性能优化，P99从150ms降到50ms",
+  "issues_found": [
+    {
+      "name": "画像查询同步阻塞",
+      "severity": "P0",
+      "message": "主线程等待画像服务响应，导致P99延迟超标"
+    },
+    {
+      "name": "预算追踪竞态",
+      "severity": "P0",
+      "message": "并发请求同时扣减预算，导致超投"
+    },
+    {
+      "name": "降级策略缺失",
+      "severity": "P1",
+      "message": "画像服务不可用时无降级方案"
+    }
+  ],
+  "solutions": [
+    {
+      "solution": "画像本地缓存+异步预取，TTL 5秒",
+      "effective": true,
+      "impact": "P99从150ms降到45ms"
+    },
+    {
+      "solution": "Redis分布式锁+本地计数器预扣",
+      "effective": true,
+      "impact": "超投率从0.5%降到0.01%"
+    },
+    {
+      "solution": "三级降级：画像→规则→默认出价",
+      "effective": true,
+      "impact": "可用性从99.9%提升到99.99%"
+    }
+  ],
+  "outcome": "success",
+  "lessons": [
+    "实时竞价系统P99延迟是关键指标，必须监控",
+    "预算追踪必须使用预扣机制，不能事后核对",
+    "画像服务必须有降级策略，不能阻塞主流程",
+    "本地缓存TTL要短，保证数据新鲜度"
+  ],
+  "metrics": {
+    "qps_before": 50000,
+    "qps_after": 100000,
+    "p99_before_ms": 150,
+    "p99_after_ms": 45,
+    "overbudget_rate_before": "0.5%",
+    "overbudget_rate_after": "0.01%"
+  },
+  "quality_score": 95,
+  "timestamp": "2024-03-12T10:00:00Z"
+}
