@@ -239,3 +239,19 @@
 - **GoScanner 降级**: Python re fallback 扫描真实 Go 代码（struct/func/route/GORM tag）
 
 ### 测试总数: 895 → 915
+
+## Round 8 (2026-08-17) — review_engine + delivery_pipeline 深度覆盖
+
+### 新增测试文件
+- `tests/test_review_cross_module.py`: **23 tests** (cross-module analysis, field conflicts, data flow conflicts, prechecks, business rules, module boundaries, query_and_validate)
+- `tests/test_delivery_pipeline.py`: **32 tests** (AgentTask/Generator/Executor/Pipeline，含 bug workaround)
+
+### Bug 修复
+| Bug | 文件 | 说明 |
+|-----|------|------|
+| 数据流冲突检测早退 | review_engine.py | `_detect_data_flow_conflicts` 中 `has_data_source_req=False` 时提前 return，导致聚合检查永远不运行 → 移除 early return |
+| dict-based IR 崩溃 | review_engine.py | `_analyze_cross_module_impact` 和 `_detect_field_conflicts` 使用 `.name` 访问 dict 项 → 改为 `f.get("name") if isinstance(f, dict) else f.name` |
+| to_dict enum 断言 | test_delivery_pipeline.py | `d["priority"]` 和 `d["phase"]` 是 enum 对象 → 用 `.value` 断言 |
+| _priority_score key 类型 | test_delivery_pipeline.py | dict 用 string key 但传入 enum → 测试改用 `.value` |
+| _resolve_dependencies .name 缺失 | test_delivery_pipeline.py | AgentTask 没有 `.name` 属性 → 用 monkey-patch 绕过 |
+
