@@ -466,10 +466,13 @@ class ReviewEngine(EngineBase):
             return checks
         try:
             ir_dict = {
-                "functions": [{"name": f.name, "file": getattr(f, 'file', ''), "calls": getattr(f, 'calls', [])}
+                "functions": [{"name": f.get('name') if isinstance(f, dict) else f.name,
+                               "file": getattr(f, 'file', f.get('file', '')),
+                               "calls": getattr(f, 'calls', f.get('calls', []))}
                              for f in ir.functions] if hasattr(ir, 'functions') else [],
                 "core_flows": getattr(ir, 'core_flows', []),
-                "structs": [{"name": s.name, "fields": getattr(s, 'fields', [])}
+                "structs": [{"name": s.get('name') if isinstance(s, dict) else s.name,
+                             "fields": getattr(s, 'fields', s.get('fields', []))}
                            for s in ir.structs] if hasattr(ir, 'structs') else [],
                 "entity_tables": getattr(ir, 'entity_tables', []),
             }
@@ -499,10 +502,12 @@ class ReviewEngine(EngineBase):
             return checks
         try:
             ir_dict = {
-                "structs": [{"name": s.name, "fields": getattr(s, 'fields', [])}
+                "structs": [{"name": s.get('name') if isinstance(s, dict) else s.name,
+                             "fields": getattr(s, 'fields', s.get('fields', []))}
                            for s in ir.structs] if hasattr(ir, 'structs') else [],
-                "functions": [{"name": f.name, "struct": getattr(f, 'struct', ''), 
-                              "fields_used": getattr(f, 'fields_used', [])}
+                "functions": [{"name": f.get('name') if isinstance(f, dict) else f.name,
+                               "struct": getattr(f, 'struct', f.get('struct', '')),
+                               "fields_used": getattr(f, 'fields_used', f.get('fields_used', []))}
                              for f in ir.functions] if hasattr(ir, 'functions') else [],
                 "entity_tables": getattr(ir, 'entity_tables', []),
             }
@@ -1216,22 +1221,19 @@ class ReviewEngine(EngineBase):
         3. PRD 要求的数据聚合/计算逻辑是否有对应实现
         """
         checks = []
-        
+
         # 从 PRD 提取数据源关键词
         data_source_keywords = ['数据来源', '数据源', 'data source', '上游', '下游', 
                                'ETL', '同步', 'sync', '订阅', 'subscribe', '推送', 'pull']
         has_data_source_req = any(kw in prd_text for kw in data_source_keywords)
-        
-        if not has_data_source_req:
-            return checks
-        
+
         # 检查现有数据源
         existing_sources = set()
         for imp in getattr(ir, 'imports', []):
             module = imp.get('module', '') if isinstance(imp, dict) else getattr(imp, 'module', '')
             if module:
                 existing_sources.add(module.lower())
-        
+
         # 检查 PRD 提到的数据源是否存在
         prd_data_sources = []
         known_sources = ['kafka', 'rabbitmq', 'mysql', 'postgres', 'redis', 'es', 'elasticsearch',
@@ -1239,7 +1241,7 @@ class ReviewEngine(EngineBase):
         for src in known_sources:
             if src in prd_text.lower():
                 prd_data_sources.append(src)
-        
+
         missing_sources = [s for s in prd_data_sources if not any(s in es for es in existing_sources)]
         if missing_sources:
             checks.append({
@@ -1248,8 +1250,8 @@ class ReviewEngine(EngineBase):
                 'description': f"PRD 依赖的数据源在代码中未发现: {', '.join(missing_sources[:3])}",
                 'suggestion': '确认这些外部数据源是否已集成，或需要新增接入层',
             })
-        
-        # 检查数据聚合需求
+
+        # 检查数据聚合需求 (independent of data source check)
         aggregation_keywords = ['聚合', 'aggregate', '汇总', '统计', 'report', 'dashboard']
         has_aggregation = any(kw in prd_text for kw in aggregation_keywords)
         
