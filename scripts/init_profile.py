@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import copy
 import json
 import sys
 from pathlib import Path
@@ -98,7 +99,7 @@ class ProfileGenerator:
         self.name = name
         self.repo_path = Path(repo_path)
         self.language = language.lower()
-        self.profile = DEFAULT_PROFILE_TEMPLATE.copy()
+        self.profile = copy.deepcopy(DEFAULT_PROFILE_TEMPLATE)
         
     def generate(self) -> dict:
         """生成 Profile 配置"""
