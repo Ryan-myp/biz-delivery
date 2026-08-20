@@ -1,29 +1,15 @@
-# Profile Registry
-
-## 已注册的业务 Profile
-
-| Profile | Business Domain | Repositories | Status | Last Updated |
-|---------|-----------------|--------------|--------|--------------|
-| `default.json` | creative-platform | creative-platform | ✅ | 2025-08-11 |
-| `ad-platform.json` | ad-platform | ad-platform | ✅ | 2025-07-07 |
-| `sponge.json` | sponge | sponge | ✅ | 2025-07-07 |
-| `conc.json` | conc | conc | ✅ | 2025-07-06 |
-| `eino.json` | eino | eino | ✅ | 2025-07-06 |
-| `test-multi-repo.json` | test-multi-repo | multi | ✅ | 2025-07-07 |
-
-## Profile Schema
-
-参考 `references/profile_schema.json`
-
-## 使用示例
-
-```bash
-# 列出所有已注册的 Profile
-python3 scripts/profile_registry.py --list
-
-# 注册新的 Profile
-python3 scripts/profile_registry.py --register profiles/my-service.json
-
-# 验证 Profile
-python3 scripts/profile_registry.py --validate profiles/my-service.json
-```
+{
+  "profiles": [
+    {
+      "path": "/private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1027/test_main_register_and_list0/svc.json",
+      "domain": "cli-test",
+      "last_updated": "2026-08-17 18:31:30"
+    },
+    {
+      "path": "/private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1027/test_main_info_found0/info_svc.json",
+      "domain": "info-svc",
+      "last_updated": "2026-08-17 18:31:30"
+    }
+  ],
+  "last_updated": "2026-08-17 18:31:30"
+}
