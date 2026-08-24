@@ -214,26 +214,28 @@
 
 <!-- ═══ New Task Modal ═══ -->
 <div class="modal-overlay hidden" id="modal-task">
-  <div class="modal" style="width:600px;">
+  <div class="modal" style="width:640px;">
     <div class="modal-header"><h3>✨ 新建任务</h3><button class="modal-close" onclick="closeModal('modal-task')">&times;</button></div>
-    <div class="modal-body">
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
       <div class="field"><label>任务名称 *</label><input type="text" id="task-name" placeholder="例如：新增广告组审核功能"></div>
       <div class="field"><label>PRD 内容（可选）</label><textarea id="task-prd" placeholder="粘贴 PRD 文档内容..." rows="3"></textarea></div>
       
       <!-- Profile 选择 -->
       <div class="field">
-        <label>Profile</label>
+        <label>Profile（可选）</label>
         <select id="task-profile-select" onchange="onProfileChange()">
-          <option value="">— 手动输入路径 —</option>
+          <option value="">— 不使用 Profile，手动配置仓库 —</option>
         </select>
-        <input type="text" id="task-profile" placeholder="profiles/default.json" style="margin-top:6px;">
       </div>
       
       <!-- 仓库配置 -->
-      <div class="field" id="repo-config-section" style="display:none;">
+      <div class="field">
         <label>📦 仓库列表</label>
         <div id="repo-list" style="margin-top:6px;"></div>
-        <button class="btn btn-secondary btn-sm" onclick="addRepoRow()" style="margin-top:6px;">+ 添加仓库</button>
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          <button class="btn btn-secondary btn-sm" onclick="addRepoRow()">+ 手动添加</button>
+          <button class="btn btn-secondary btn-sm" onclick="pickFolder()">📁 选择本地文件夹</button>
+        </div>
       </div>
       
       <div class="field-row">
@@ -254,6 +256,9 @@
     </div>
   </div>
 </div>
+
+<!-- Hidden file input for folder picker -->
+<input type="file" id="folder-picker" webkitdirectory directory multiple style="display:none">
 
 <script>
 const API = '';
@@ -670,66 +675,131 @@ async function loadProfiles() {
   try {
     _profiles = (await api('/api/profiles')).profiles || [];
     const sel = document.getElementById('task-profile-select');
-    sel.innerHTML = '<option value="">— 手动输入路径 —</option>' + 
-      _profiles.map(p => `<option value="${p.path}" data-repos='${JSON.stringify(p.repos).replace(/'/g, "&apos;")}'>${p.name}${p.domain ? ` (${p.domain})` : ''} — ${p.repo_count} 仓库</option>`).join('');
+    sel.innerHTML = '<option value="">— 不使用 Profile，手动配置仓库 —</option>' + 
+      _profiles.map(p => `<option value="${p.path}" data-repos='${JSON.stringify(p.repos)}'>${p.name}${p.domain ? ` (${p.domain})` : ''} — ${p.repo_count} 仓库</option>`).join('');
   } catch(e) { console.error('loadProfiles', e); }
 }
 
 function onProfileChange() {
   const sel = document.getElementById('task-profile-select');
-  const pathInput = document.getElementById('task-profile');
-  const repoSection = document.getElementById('repo-config-section');
-  
   if (sel.value) {
-    pathInput.value = sel.value;
-    // Parse repos from data attribute
     try {
       const repos = JSON.parse(sel.options[sel.selectedIndex].getAttribute('data-repos') || '[]');
       renderRepoList(repos);
-      repoSection.style.display = 'block';
-    } catch(e) {
-      repoSection.style.display = 'none';
-    }
+    } catch(e) { renderRepoList([]); }
   } else {
-    pathInput.value = '';
-    repoSection.style.display = 'none';
+    // Clear repo list when no profile selected
+    if (document.querySelectorAll('.repo-row').length === 0) {
+      addRepoRow(); // Add one empty row by default
+    }
   }
 }
 
 function renderRepoList(repos) {
   const container = document.getElementById('repo-list');
+  if (!repos || repos.length === 0) {
+    container.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px;">未配置仓库，请手动添加或选择本地文件夹</div>';
+    return;
+  }
   container.innerHTML = repos.map((r, i) => `
-    <div class="repo-row" style="display:flex;gap:6px;margin-bottom:4px;align-items:center;">
-      <input type="text" class="repo-name" value="${esc(r.name)}" placeholder="名称" style="flex:1;">
+    <div class="repo-row" style="display:flex;gap:6px;margin-bottom:4px;align-items:center;background:var(--bg);padding:6px 8px;border-radius:6px;">
+      <input type="text" class="repo-name" value="${esc(r.name)}" placeholder="名称" style="flex:1;" onchange="updateRepoNames()">
       <input type="text" class="repo-path" value="${esc(r.path)}" placeholder="路径/URL" style="flex:2;">
       <select class="repo-lang" style="flex:0.6;">
         <option ${r.language==='go'?'selected':''}>Go</option>
         <option ${r.language==='python'?'selected':''}>Python</option>
         <option ${r.language==='java'?'selected':''}>Java</option>
       </select>
-      <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()">✕</button>
+      <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()" title="删除">✕</button>
     </div>
-  `).join('') || '<div style="color:var(--text3);font-size:12px;">未配置仓库</div>';
+  `).join('');
 }
 
-function addRepoRow() {
+function updateRepoNames() {
+  // Auto-fill name from path
+  document.querySelectorAll('.repo-row').forEach(row => {
+    const pathInput = row.querySelector('.repo-path');
+    const nameInput = row.querySelector('.repo-name');
+    if (pathInput && nameInput && !nameInput.dataset.manual) {
+      const path = pathInput.value.trim();
+      if (path) nameInput.value = path.split('/').pop() || path;
+    }
+  });
+}
+
+function addRepoRow(repo = null) {
   const container = document.getElementById('repo-list');
   const div = document.createElement('div');
   div.className = 'repo-row';
+  div.style.cssText = 'display:flex;gap:6px;margin-bottom:4px;align-items:center;background:var(--bg);padding:6px 8px;border-radius:6px;';
+  const r = repo || { name: '', path: '', language: 'go' };
   div.innerHTML = `
-    <input type="text" class="repo-name" placeholder="名称" style="flex:1;">
-    <input type="text" class="repo-path" placeholder="路径或 URL" style="flex:2;">
+    <input type="text" class="repo-name" value="${esc(r.name)}" placeholder="名称" style="flex:1;" data-manual="1" onchange="updateRepoNames()">
+    <input type="text" class="repo-path" value="${esc(r.path)}" placeholder="路径或 URL" style="flex:2;" onchange="updateRepoNames()">
     <select class="repo-lang" style="flex:0.6;">
-      <option>Go</option><option>Python</option><option>Java</option>
+      <option ${r.language==='go'?'selected':''}>Go</option>
+      <option ${r.language==='python'?'selected':''}>Python</option>
+      <option ${r.language==='java'?'selected':''}>Java</option>
     </select>
-    <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()">✕</button>
+    <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()" title="删除">✕</button>
   `;
   container.appendChild(div);
+}
+
+async function pickFolder() {
+  // Use Web File System Access API or input[type=file]
+  const input = document.getElementById('folder-picker');
+  input.click();
+  input.onchange = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    // Extract unique top-level directories as repos
+    const dirs = new Set();
+    for (const file of files) {
+      const parts = file.webkitRelativePath.split('/');
+      if (parts.length > 1) dirs.add(parts[0]);
+    }
+    
+    // Auto-detect language and name
+    const repos = [];
+    for (const dir of dirs) {
+      const lang = detectLanguage(dir, files);
+      repos.push({ name: dir, path: dir, language: lang });
+    }
+    
+    if (repos.length > 0) {
+      renderRepoList(repos);
+    }
+    // Reset input so same folder can be picked again
+    input.value = '';
+  };
+}
+
+function detectLanguage(dirName, files) {
+  // Check first few files in this dir for language detection
+  const dirFiles = Array.from(files).filter(f => f.webkitRelativePath.startsWith(dirName + '/')).slice(0, 20);
+  const extCounts = {};
+  for (const f of dirFiles) {
+    const ext = f.name.split('.').pop().toLowerCase();
+    extCounts[ext] = (extCounts[ext] || 0) + 1;
+  }
+  // Most common extension → language
+  const topExt = Object.entries(extCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+  if (['go'].includes(topExt)) return 'go';
+  if (['py'].includes(topExt)) return 'python';
+  if (['java'].includes(topExt)) return 'java';
+  if (['js','ts'].includes(topExt)) return 'javascript';
+  return 'go'; // default
 }
 
 async function showNewTaskModal() { 
   document.getElementById('modal-task').classList.remove('hidden');
   await loadProfiles();
+  // Start with one empty repo row if none exist
+  if (document.querySelectorAll('.repo-row').length === 0) {
+    addRepoRow();
+  }
 }
 
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
