@@ -65,6 +65,30 @@ def create_app():
     async def health():
         return {"status": "ok", "version": "3.0.0", "projects": len(store.list_projects())}
     
+    @app.get("/api/profiles")
+    async def list_profiles():
+        """列出可用 profiles"""
+        import glob
+        profile_dir = Path(__file__).parent.parent / "profiles"
+        if not profile_dir.exists():
+            return {"profiles": []}
+        files = sorted([f.name for f in profile_dir.glob("*.json")])
+        profiles = []
+        for f in files:
+            try:
+                data = json.loads((profile_dir / f).read_text())
+                repos = data.get("repositories", [])
+                profiles.append({
+                    "name": f.replace(".json", ""),
+                    "path": str(profile_dir / f),
+                    "domain": data.get("business_domain", ""),
+                    "repo_count": len(repos),
+                    "repos": repos,
+                })
+            except:
+                pass
+        return {"profiles": profiles}
+    
     # ── Projects ──
     
     @app.get("/api/projects")
@@ -303,8 +327,8 @@ def create_app():
     async def index():
         index_file = static_dir / "index.html" if static_dir.exists() else None
         if index_file and index_file.exists():
-            return index_file.read_text(encoding="utf-8")
-        return """
+            return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+        return HTMLResponse(content="""
         <html><body>
         <h1>biz-delivery v3.0</h1>
         <p>多项目、多对话的智能交付平台</p>
@@ -321,7 +345,7 @@ def create_app():
             <li>GET /api/projects/{id}/tasks/{tid}/artifacts/{stage}</li>
         </ul>
         </body></html>
-        """
+        """)
     
     return app
 

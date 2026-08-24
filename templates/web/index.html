@@ -214,14 +214,31 @@
 
 <!-- ═══ New Task Modal ═══ -->
 <div class="modal-overlay hidden" id="modal-task">
-  <div class="modal">
+  <div class="modal" style="width:600px;">
     <div class="modal-header"><h3>✨ 新建任务</h3><button class="modal-close" onclick="closeModal('modal-task')">&times;</button></div>
     <div class="modal-body">
       <div class="field"><label>任务名称 *</label><input type="text" id="task-name" placeholder="例如：新增广告组审核功能"></div>
-      <div class="field"><label>PRD 内容（可选）</label><textarea id="task-prd" placeholder="粘贴 PRD 文档内容..."></textarea></div>
+      <div class="field"><label>PRD 内容（可选）</label><textarea id="task-prd" placeholder="粘贴 PRD 文档内容..." rows="3"></textarea></div>
+      
+      <!-- Profile 选择 -->
+      <div class="field">
+        <label>Profile</label>
+        <select id="task-profile-select" onchange="onProfileChange()">
+          <option value="">— 手动输入路径 —</option>
+        </select>
+        <input type="text" id="task-profile" placeholder="profiles/default.json" style="margin-top:6px;">
+      </div>
+      
+      <!-- 仓库配置 -->
+      <div class="field" id="repo-config-section" style="display:none;">
+        <label>📦 仓库列表</label>
+        <div id="repo-list" style="margin-top:6px;"></div>
+        <button class="btn btn-secondary btn-sm" onclick="addRepoRow()" style="margin-top:6px;">+ 添加仓库</button>
+      </div>
+      
       <div class="field-row">
-        <div class="field"><label>Profile</label><input type="text" id="task-profile" value="profiles/default.json"></div>
         <div class="field"><label>LLM 模型</label><input type="text" id="task-model" value="agnes-2.0-flash"></div>
+        <div class="field"><label>功能分支前缀</label><input type="text" id="task-branch" value="biz-delivery"></div>
       </div>
       <div class="field">
         <label>运行模式</label>
@@ -647,16 +664,97 @@ function setLoading(on) {
 }
 
 // ═══ Modals ═══
-function showNewTaskModal() { document.getElementById('modal-task').classList.remove('hidden'); }
+let _profiles = [];
+
+async function loadProfiles() {
+  try {
+    _profiles = (await api('/api/profiles')).profiles || [];
+    const sel = document.getElementById('task-profile-select');
+    sel.innerHTML = '<option value="">— 手动输入路径 —</option>' + 
+      _profiles.map(p => `<option value="${p.path}" data-repos='${JSON.stringify(p.repos).replace(/'/g, "&apos;")}'>${p.name}${p.domain ? ` (${p.domain})` : ''} — ${p.repo_count} 仓库</option>`).join('');
+  } catch(e) { console.error('loadProfiles', e); }
+}
+
+function onProfileChange() {
+  const sel = document.getElementById('task-profile-select');
+  const pathInput = document.getElementById('task-profile');
+  const repoSection = document.getElementById('repo-config-section');
+  
+  if (sel.value) {
+    pathInput.value = sel.value;
+    // Parse repos from data attribute
+    try {
+      const repos = JSON.parse(sel.options[sel.selectedIndex].getAttribute('data-repos') || '[]');
+      renderRepoList(repos);
+      repoSection.style.display = 'block';
+    } catch(e) {
+      repoSection.style.display = 'none';
+    }
+  } else {
+    pathInput.value = '';
+    repoSection.style.display = 'none';
+  }
+}
+
+function renderRepoList(repos) {
+  const container = document.getElementById('repo-list');
+  container.innerHTML = repos.map((r, i) => `
+    <div class="repo-row" style="display:flex;gap:6px;margin-bottom:4px;align-items:center;">
+      <input type="text" class="repo-name" value="${esc(r.name)}" placeholder="名称" style="flex:1;">
+      <input type="text" class="repo-path" value="${esc(r.path)}" placeholder="路径/URL" style="flex:2;">
+      <select class="repo-lang" style="flex:0.6;">
+        <option ${r.language==='go'?'selected':''}>Go</option>
+        <option ${r.language==='python'?'selected':''}>Python</option>
+        <option ${r.language==='java'?'selected':''}>Java</option>
+      </select>
+      <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()">✕</button>
+    </div>
+  `).join('') || '<div style="color:var(--text3);font-size:12px;">未配置仓库</div>';
+}
+
+function addRepoRow() {
+  const container = document.getElementById('repo-list');
+  const div = document.createElement('div');
+  div.className = 'repo-row';
+  div.innerHTML = `
+    <input type="text" class="repo-name" placeholder="名称" style="flex:1;">
+    <input type="text" class="repo-path" placeholder="路径或 URL" style="flex:2;">
+    <select class="repo-lang" style="flex:0.6;">
+      <option>Go</option><option>Python</option><option>Java</option>
+    </select>
+    <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()">✕</button>
+  `;
+  container.appendChild(div);
+}
+
+async function showNewTaskModal() { 
+  document.getElementById('modal-task').classList.remove('hidden');
+  await loadProfiles();
+}
+
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
 async function createTask() {
   const name = document.getElementById('task-name').value.trim();
   const prd = document.getElementById('task-prd').value.trim();
-  const profile = document.getElementById('task-profile').value.trim();
+  const profilePath = document.getElementById('task-profile').value.trim();
   const model = document.getElementById('task-model').value.trim();
+  const branchPrefix = document.getElementById('task-branch').value.trim() || 'biz-delivery';
   const usePipeline = document.getElementById('task-mode').value === 'true';
+  
   if (!name) { alert('请填写任务名称'); return; }
+  if (!profilePath) { alert('请选择或输入 Profile'); return; }
+  
+  // 收集仓库配置
+  const repos = [];
+  document.querySelectorAll('.repo-row').forEach(row => {
+    const rname = row.querySelector('.repo-name')?.value.trim();
+    const rpath = row.querySelector('.repo-path')?.value.trim();
+    const rlang = row.querySelector('.repo-lang')?.value.toLowerCase();
+    if (rname && rpath) {
+      repos.push({ name: rname, path: rpath, language: rlang || 'go' });
+    }
+  });
   
   // Find or create project
   let projects = await api('/api/projects');
@@ -669,12 +767,15 @@ async function createTask() {
   }
   window._currentProjectId = pid;
   
-  const t = await api(`/api/projects/${pid}/tasks`, {
-    method:'POST', body: JSON.stringify({name, prd_text: prd, profile_path: profile, use_pipeline: usePipeline, model_name: model})
-  });
+  const body = {name, prd_text: prd, profile_path: profilePath, use_pipeline: usePipeline, model_name: model};
+  if (repos.length > 0) body.repositories = repos;
+  if (branchPrefix) body.branch_prefix = branchPrefix;
+  
+  const t = await api(`/api/projects/${pid}/tasks`, {method:'POST', body: JSON.stringify(body)});
   closeModal('modal-task');
   document.getElementById('task-name').value = '';
   document.getElementById('task-prd').value = '';
+  document.getElementById('task-profile').value = '';
   await loadTaskList();
   selectTask(t.id);
 }
