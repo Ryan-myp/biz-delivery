@@ -285,8 +285,8 @@ def create_app():
             "status": gm.status(),
         }
     
-    @app.get("/api/projects/{project_id}/tasks/{task_id}/repo-file/{repo_name}/{path:path}")
-    async def get_repo_file(project_id: str, task_id: str, repo_name: str, path: str):
+    @app.get("/repo-file/{repo_name:path}/{file_path:path}")
+    async def get_repo_file(project_id: str, repo_name: str, file_path: str):
         project = store.get_project(project_id)
         if not project:
             raise HTTPException(404, "Project not found")
@@ -296,8 +296,10 @@ def create_app():
         gm = task.get_repo_manager(repo_name)
         if not gm:
             raise HTTPException(404, f"Repo {repo_name} not found")
-        content = gm.get_file_content(path)
-        return {"path": path, "content": content}
+        content = gm.get_file_content(file_path)
+        return {"path": file_path, "content": content}
+    
+    @app.get("/")
     async def index():
         index_file = static_dir / "index.html" if static_dir.exists() else None
         if index_file and index_file.exists():
