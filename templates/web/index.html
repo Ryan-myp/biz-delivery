@@ -227,7 +227,7 @@ async function api(path, opts={}) {
   return res.json();
 }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-functionago() { return new Date().toLocaleTimeString(); }
+function now() { return new Date().toLocaleTimeString(); }
 
 // ── Project List ──
 async function loadProjects() {
@@ -255,6 +255,16 @@ async function selectProject(pid) {
   renderTopbar();
   renderContent();
   if (pollTimer) clearInterval(pollTimer);
+}
+
+async function selectTask(tid) {
+  if (!activeProject) return;
+  activeTask = await api(`/api/projects/${activeProject.id}/tasks/${tid}`);
+  const stages = await api(`/api/projects/${activeProject.id}/tasks/${tid}/stages`);
+  activeTask.stages = stages.stages;
+  activeTask.current_stage = stages.current_stage;
+  renderTaskView();
+  startPolling();
 }
 
 function renderTopbar() {
