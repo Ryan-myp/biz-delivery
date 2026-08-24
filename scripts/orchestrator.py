@@ -27,6 +27,7 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 
 from scripts.llm_client import LLMClient
+from scripts.git_manager import GitManager, RepoConfig
 
 
 # ──────────────────────────────────────────────
@@ -79,6 +80,11 @@ class TaskSession:
     output_dir: str = ""
     wiki_path: Optional[str] = None
     
+    # 多仓库支持
+    repositories: List[Dict] = field(default_factory=list)  # [{name, url, branch, path}]
+    git_managers: Dict[str, GitManager] = field(default_factory=dict)  # name -> GitManager
+    target_branch: str = ""  # 为当前任务创建的功能分支
+    
     # LLM
     llm_client: Optional[LLMClient] = None
     model_name: str = "agnes-2.0-flash"
@@ -98,6 +104,44 @@ class TaskSession:
         if not self.stages:
             for s in STAGE_ORDER:
                 self.stages[s] = StageRecord()
+    
+    def get_repo_manager(self, repo_name: str) -> Optional[GitManager]:
+        """获取指定仓库的 GitManager"""
+        return self.git_managers.get(repo_name)
+    
+    def ensure_repos(self):
+        """确保所有仓库已就绪"""
+        for repo_cfg in self.repositories:
+            name = repo_cfg.get("name", "")
+            if name in self.git_managers:
+                continue
+            repo = RepoConfig(
+                name=name,
+                url=repo_cfg.get("path") or repo_cfg.get("url", ""),
+                branch=repo_cfg.get("branch", "main"),
+                local_path=repo_cfg.get("path"),
+                language=repo_cfg.get("language", "go"),
+            )
+            gm = GitManager(repo, username="biz-delivery", email="biz@delivery.ai")
+            if gm.ensure_repo():
+                self.git_managers[name] = gm
+    
+    def create_feature_branch(self, repo_name: str, feature_name: str) -> str:
+        """为指定仓库创建功能分支"""
+        gm = self.git_managers.get(repo_name)
+        if not gm:
+            return ""
+        branch = f"biz-delivery/{feature_name}"
+        gm.create_branch(branch)
+        return branch
+    
+    def commit_to_repo(self, repo_name: str, rel_path: str, content: str, commit_msg: str) -> str:
+        """提交文件到指定仓库"""
+        gm = self.git_managers.get(repo_name)
+        if not gm:
+            return ""
+        gm.add_file(rel_path, content)
+        return gm.commit(commit_msg)
     
     def add_message(self, role: str, content: str, stage: str = ""):
         self.messages.append(ChatMessage(
@@ -402,23 +446,43 @@ PRD（如有）:
     # ── Stage Executors ──
     
     def _exec_learn(self, task: TaskSession) -> dict:
+        """Stage 1: 知识提取 — 从实际仓库构建 IR"""
         from scripts.learn_repo import learn_from_repos
+        
+        # 确保仓库已就绪
+        task.ensure_repos()
+        
         knowledge_dir = Path(task.output_dir) / "knowledge"
         knowledge_dir.mkdir(parents=True, exist_ok=True)
+        
         try:
             result = learn_from_repos(
                 profile_path=task.profile_path or "profiles/default.json",
                 output_dir=str(knowledge_dir),
                 wiki_path=task.wiki_path,
             )
-            summary_file = knowledge_dir / "summary.json"
-            summary = {"language": getattr(result, 'language', '?'),
-                       "functions": len(getattr(result, 'functions', [])),
-                       "structs": len(getattr(result, 'structs', [])),
-                       "routes": len(getattr(result, 'routes', [])),
-                      }
+            
+            # 保存 IR 摘要
+            summary = {
+                "repo_name": getattr(result, 'repo_name', 'unknown'),
+                "language": getattr(result, 'language', 'unknown'),
+                "structs": len(getattr(result, 'structs', [])),
+                "functions": len(getattr(result, 'functions', [])),
+                "routes": len(getattr(result, 'routes', [])),
+            }
+            summary_file = knowledge_dir / "ir_summary.json"
             summary_file.write_text(json.dumps(summary, ensure_ascii=False, indent=2))
-            return {"summary": f"知识提取完成: {summary['functions']} 函数", "artifacts": {"summary": str(summary_file)}}
+            
+            # 保存 IR 到目标仓库
+            for name, gm in task.git_managers.items():
+                ir_dir = gm.repo.work_dir / ".biz-delivery"
+                ir_dir.mkdir(exist_ok=True)
+                (ir_dir / "ir_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+            
+            return {
+                "summary": f"知识提取完成: {summary['functions']} 函数, {summary['structs']} 结构体",
+                "artifacts": {"ir_summary": str(summary_file)},
+            }
         except Exception as e:
             return {"summary": f"学习失败: {e}", "artifacts": {}}
     
@@ -436,45 +500,66 @@ PRD（如有）:
             return {"summary": f"审查失败: {e}", "artifacts": {}}
     
     def _exec_td(self, task: TaskSession) -> dict:
+        """Stage 3: 技术方案 + 代码生成 — 写入目标仓库"""
         from scripts.td_engine import TDEngine
+        
         td_dir = Path(task.output_dir) / "td"
         td_dir.mkdir(parents=True, exist_ok=True)
+        
         try:
             profile = json.load(open(task.profile_path or "profiles/default.json"))
             engine = TDEngine(profile, str(td_dir), wiki_path=task.wiki_path)
             result = engine.generate_td(task.prd_text, "")
-            return {"summary": "技术方案已生成", "artifacts": {"report": result.get("report_file", "")}}
+            
+            # 写入技术方案到仓库
+            td_file = td_dir / "technical_design.md"
+            if td_file.exists():
+                for name, gm in task.git_managers.items():
+                    tech_dir = gm.repo.work_dir / ".biz-delivery" / "tech-design"
+                    tech_dir.mkdir(parents=True, exist_ok=True)
+                    (tech_dir / f"{task.id}.md").write_text(td_file.read_text())
+            
+            return {
+                "summary": "技术方案已生成并写入仓库",
+                "artifacts": {"report": result.get("report_file", "")},
+            }
         except Exception as e:
             return {"summary": f"TD 失败: {e}", "artifacts": {}}
     
-    def _exec_tasks(self, task: TaskSession) -> dict:
-        from scripts.delivery_pipeline import AgentTaskGenerator
-        tasks_dir = Path(task.output_dir) / "tasks"
-        tasks_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            profile = json.load(open(task.profile_path or "profiles/default.json"))
-            generator = AgentTaskGenerator(profile, ir_data={})
-            td_content = (Path(task.output_dir) / "td" / "technical_design.md").read_text() if (Path(task.output_dir) / "td" / "technical_design.md").exists() else ""
-            tasks = generator.generate_tasks(td_content, "")
-            tasks_file = tasks_dir / "agent_tasks.json"
-            tasks_file.write_text(json.dumps([t.to_dict() for t in tasks], ensure_ascii=False, indent=2))
-            return {"summary": f"生成 {len(tasks)} 个任务", "artifacts": {"tasks": str(tasks_file)}}
-        except Exception as e:
-            return {"summary": f"Tasks 失败: {e}", "artifacts": {}}
-    
     def _exec_agent(self, task: TaskSession) -> dict:
-        from scripts.delivery_pipeline import AgentExecutor
+        """Stage 5: Agent 执行 — 生成实际代码并写入仓库"""
+        from scripts.delivery_pipeline import AgentExecutor, AgentTask
+        
         tasks_dir = Path(task.output_dir) / "tasks"
         tasks_file = tasks_dir / "agent_tasks.json"
         if not tasks_file.exists():
-            return {"summary": "跳过: 未找到任务文件", "artifacts": {}}
+            return {"summary": "跳过: 未找到任务文件，请先执行 Tasks 阶段", "artifacts": {}}
+        
         try:
             tasks_data = json.loads(tasks_file.read_text())
-            from scripts.delivery_pipeline import AgentTask
             tasks = [AgentTask(**t) for t in tasks_data]
-            executor = AgentExecutor(profile=json.load(open(task.profile_path or "profiles/default.json")), output_dir=task.output_dir)
+            
+            executor = AgentExecutor(
+                profile=json.load(open(task.profile_path or "profiles/default.json")),
+                output_dir=task.output_dir,
+            )
+            
+            # 为每个仓库创建功能分支
+            for name, gm in task.git_managers.items():
+                branch = f"biz-delivery/{task.name[:20]}"
+                gm.create_branch(branch)
+                task.create_feature_branch(name, task.name[:20])
+            
             result = executor.execute(tasks, task.llm_client)
-            return {"summary": f"Agent 执行: {result.get('completed', 0)}/{result.get('total', 0)}", "artifacts": {}}
+            
+            # 提交变更
+            for name, gm in task.git_managers.items():
+                gm.commit(f"feat: {task.name} - {result.get('completed', 0)} tasks done")
+            
+            return {
+                "summary": f"Agent 执行完成: {result.get('completed', 0)}/{result.get('total', 0)} 任务",
+                "artifacts": {"execution_log": result.get("log_file", "")},
+            }
         except Exception as e:
             return {"summary": f"Agent 失败: {e}", "artifacts": {}}
     

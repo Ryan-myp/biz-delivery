@@ -267,7 +267,37 @@ def create_app():
     
     # ── Index ──
     
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/api/projects/{project_id}/tasks/{task_id}/repo-files/{repo_name}")
+    async def get_repo_files(project_id: str, task_id: str, repo_name: str):
+        project = store.get_project(project_id)
+        if not project:
+            raise HTTPException(404, "Project not found")
+        task = project.get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        gm = task.get_repo_manager(repo_name)
+        if not gm:
+            raise HTTPException(404, f"Repo {repo_name} not found")
+        return {
+            "name": repo_name,
+            "branch": gm.get_branch(),
+            "files": gm.list_files(),
+            "status": gm.status(),
+        }
+    
+    @app.get("/api/projects/{project_id}/tasks/{task_id}/repo-file/{repo_name}/{path:path}")
+    async def get_repo_file(project_id: str, task_id: str, repo_name: str, path: str):
+        project = store.get_project(project_id)
+        if not project:
+            raise HTTPException(404, "Project not found")
+        task = project.get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        gm = task.get_repo_manager(repo_name)
+        if not gm:
+            raise HTTPException(404, f"Repo {repo_name} not found")
+        content = gm.get_file_content(path)
+        return {"path": path, "content": content}
     async def index():
         index_file = static_dir / "index.html" if static_dir.exists() else None
         if index_file and index_file.exists():

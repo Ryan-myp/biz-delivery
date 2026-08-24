@@ -304,6 +304,7 @@ async function selectTask(tid) {
   renderTopbar();
   renderChat();
   renderWorkflow();
+  loadRepoFiles();
   startPolling();
   
   // Highlight in sidebar
@@ -468,8 +469,12 @@ function renderWorkflow() {
       }).join('')}
     </div>
     <div class="artifact-section" id="artifact-section">
-      <h4>当前阶段产物</h4>
-      <div id="artifact-content"><span style="font-size:11px;color:var(--text3);">等待执行...</span></div>
+      <div style="display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border);">
+        <button class="tab-btn ${!activeTask?.git_managers?'hidden':''}" id="tab-artifacts" onclick="switchPanel('artifacts')">📄 产物</button>
+        <button class="tab-btn ${!activeTask?.git_managers?'':'active'}" id="tab-repo" onclick="switchPanel('repo')">🗂️ 仓库</button>
+      </div>
+      <div id="artifact-content"></div>
+      <div id="repo-content" class="hidden"></div>
     </div>`;
   
   loadArtifacts();
@@ -484,19 +489,114 @@ async function loadArtifacts() {
     const el = document.getElementById('artifact-content');
     if (!el) return;
     const arts = data.artifacts || {};
+    // Remove _repos from artifacts display
+    delete arts['_repos'];
     if (Object.keys(arts).length === 0) {
-      el.innerHTML = '<span style="font-size:11px;color:var(--text3);">暂无产物</span>';
+      el.innerHTML = '<span style="font-size:11px;color:var(--text3);">暂无产物，执行阶段后生成</span>';
     } else {
       el.innerHTML = Object.entries(arts).map(([name, content]) => `
         <div class="artifact-item">
           <div class="title">${esc(name)}</div>
-          <pre>${esc(content.substring(0, 500))}${content.length>500?'...':''}</pre>
+          <pre>${esc(content.substring(0, 800))}${content.length>800?'...':''}</pre>
         </div>`).join('');
     }
   } catch(e) {
     const el = document.getElementById('artifact-content');
     if (el) el.innerHTML = '<span style="font-size:11px;color:var(--err);">加载失败</span>';
   }
+}
+
+async function loadRepoFiles() {
+  if (!activeTask || !activeTask.git_managers) return;
+  const el = document.getElementById('repo-content');
+  if (!el) return;
+  
+  let html = '';
+  for (const [name, gm] of Object.entries(activeTask.git_managers)) {
+    html += `<div class="repo-block">
+      <div class="repo-header">
+        <span class="repo-name">📦 ${esc(name)}</span>
+        <span class="repo-branch">分支: ${gm.branch || 'unknown'}</span>
+      </div>`;
+    
+    // Show status
+    const status = gm.status || {};
+    if (status.dirty) {
+      html += `<div class="repo-status dirty">⚠️ 有未提交变更</div>`;
+    }
+    
+    // File tree
+    html += `<div class="file-tree">`;
+    const files = gm.files || [];
+    if (files.length === 0) {
+      html += '<div class="empty-tree">暂无文件</div>';
+    } else {
+      // Group by directory
+      const dirs = {};
+      files.forEach(f => {
+        const parts = f.split('/');
+        const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
+        if (!dirs[dir]) dirs[dir] = [];
+        dirs[dir].push(f);
+      });
+      
+      for (const [dir, filelist] of Object.entries(dirs).slice(0, 5)) {
+        html += `<div class="file-dir">
+          <div class="dir-name">${esc(dir === '.' ? '根目录' : dir)}</div>
+          <div class="file-list">`;
+        filelist.slice(0, 10).forEach(f => {
+          const fname = f.split('/').pop();
+          const ext = fname.split('.').pop();
+          const icon = getExtIcon(ext);
+          html += `<div class="file-item" onclick="showFile('${name}', '${f.replace(/'/g, "\\'")}')">
+            <span class="file-icon">${icon}</span>
+            <span class="file-name">${esc(fname)}</span>
+          </div>`;
+        });
+        if (filelist.length > 10) {
+          html += `<div class="more-files">+${filelist.length - 10} more</div>`;
+        }
+        html += `</div></div>`;
+      }
+    }
+    html += `</div></div>`;
+  }
+  el.innerHTML = html || '<span style="font-size:11px;color:var(--text3);">未配置仓库</span>';
+}
+
+function getExtIcon(ext) {
+  const icons = {
+    'go': '🔷', 'py': '🐍', 'java': '☕', 'js': '📜', 'ts': '🔷',
+    'md': '📝', 'json': '📋', 'yaml': '⚙', 'yml': '⚙', 'txt': '📄',
+    'html': '🌐', 'css': '🎨', 'xml': '📰', 'sh': '⚡',
+  };
+  return icons[ext] || '📄';
+}
+
+async function showFile(repoName, filePath) {
+  try {
+    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/repo-file/${repoName}/${encodeURIComponent(filePath)}`);
+    const el = document.getElementById('repo-content');
+    if (!el) return;
+    el.innerHTML = `
+      <div class="file-viewer">
+        <div class="file-viewer-header">
+          <span class="file-path">${esc(filePath)}</span>
+          <button class="btn btn-sm" onclick="loadRepoFiles()">← 返回</button>
+        </div>
+        <pre class="file-code">${esc(data.content)}</pre>
+      </div>`;
+  } catch(e) {
+    const el = document.getElementById('repo-content');
+    if (el) el.innerHTML = `<div style="color:var(--err);padding:10px;">无法读取: ${esc(e.message)}</div>`;
+  }
+}
+
+function switchPanel(panel) {
+  document.getElementById('artifact-content').classList.toggle('hidden', panel !== 'artifacts');
+  document.getElementById('repo-content').classList.toggle('hidden', panel !== 'repo');
+  document.getElementById('tab-artifacts').classList.toggle('active', panel === 'artifacts');
+  document.getElementById('tab-repo').classList.toggle('active', panel === 'repo');
 }
 
 async function runStage(stageId) {
