@@ -6,203 +6,228 @@
   <title>biz-delivery v3.0</title>
   <style>
     :root {
-      --bg: #0f172a; --surface: #1e293b; --surface2: #334155; --surface3: #1e293b;
-      --border: #334155; --text: #f1f5f9; --text2: #94a3b8; --text3: #64748b;
-      --primary: #3b82f6; --primary-dim: rgba(59,130,246,0.15);
-      --success: #22c55e; --warn: #f59e0b; --err: #ef4444;
-      --r: 8px;
+      --bg: #f5f6f8; --surface: #ffffff; --surface2: #f0f2f5;
+      --border: #e2e6eb; --border2: #d0d5dd;
+      --text: #1a1d23; --text2: #5f6b7a; --text3: #8b95a5;
+      --primary: #4f5ff0; --primary-light: #EEF0FF; --primary-dark: #3a48c4;
+      --success: #16a34a; --success-bg: #ecfdf5;
+      --warn: #d97706; --warn-bg: #fffbeb;
+      --err: #dc2626; --err-bg: #fef2f2;
+      --r: 10px; --r-sm: 6px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
-    
+    body { font-family: -apple-system, 'PingFang SC', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; font-size: 13px; }
+
     /* ── Layout ── */
-    .app { display: grid; grid-template-columns: 200px 1fr; height: 100vh; }
-    
-    /* ── Sidebar ── */
-    .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-    .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
-    .sidebar-header h1 { font-size: 15px; font-weight: 700; }
-    .sidebar-header .ver { font-size: 11px; color: var(--text3); margin-top: 2px; }
-    .sidebar-section { padding: 8px 12px; font-size: 10px; text-transform: uppercase; color: var(--text3); font-weight: 600; letter-spacing: 0.05em; }
-    .sidebar-list { flex: 1; overflow-y: auto; padding: 0 8px; }
-    .proj-item { padding: 8px 10px; border-radius: var(--r); cursor: pointer; font-size: 13px; color: var(--text2); display: flex; align-items: center; gap: 8px; transition: all 0.1s; }
-    .proj-item:hover { background: var(--surface2); color: var(--text); }
-    .proj-item.active { background: var(--primary-dim); color: var(--primary); }
-    .proj-item .icon { font-size: 14px; }
-    .proj-item .count { margin-left: auto; font-size: 11px; background: var(--surface2); padding: 1px 6px; border-radius: 8px; }
-    .proj-item.active .count { background: rgba(59,130,246,0.3); }
-    .sidebar-footer { padding: 12px; border-top: 1px solid var(--border); }
-    
-    /* ── Main ── */
-    .main { display: flex; flex-direction: column; overflow: hidden; }
-    .topbar { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .topbar-title { font-size: 16px; font-weight: 600; }
-    .topbar-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
-    .topbar-actions { display: flex; gap: 8px; }
-    
-    /* ── Content ── */
-    .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-    
-    /* ── Buttons ── */
-    .btn { padding: 8px 16px; border-radius: var(--r); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-primary:hover { background: #2563eb; }
-    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-    .btn-secondary:hover { background: #3d4f6e; }
-    .btn-sm { padding: 5px 10px; font-size: 12px; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-danger { background: rgba(239,68,68,0.15); color: var(--err); }
-    .btn-danger:hover { background: rgba(239,68,68,0.25); }
-    
-    /* ── Task List View ── */
-    .task-list { flex: 1; overflow-y: auto; padding: 20px; }
-    .task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-    .task-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; cursor: pointer; transition: all 0.15s; }
-    .task-card:hover { border-color: var(--primary); transform: translateY(-1px); }
-    .task-card .tag { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-bottom: 8px; }
-    .task-card .tag.pipeline { background: var(--primary-dim); color: var(--primary); }
-    .task-card .tag.free { background: rgba(139,92,246,0.15); color: #8b5cf6; }
-    .task-card h3 { font-size: 14px; margin-bottom: 6px; }
-    .task-card .meta { font-size: 12px; color: var(--text3); }
-    .task-card .progress { height: 3px; background: var(--surface2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
-    .task-card .progress-fill { height: 100%; background: var(--success); border-radius: 2px; }
-    
-    /* ── Chat View ── */
-    .chat-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    .chat-messages { flex: 1; overflow-y: auto; padding: 16px; }
-    .msg { display: flex; gap: 10px; margin-bottom: 14px; }
-    .msg.user { flex-direction: row-reverse; }
-    .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
-    .msg.assistant .avatar { background: var(--primary); }
-    .msg.user .avatar { background: var(--surface2); }
-    .bubble { max-width: 80%; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
-    .msg.assistant .bubble { background: var(--surface); border-bottom-left-radius: 3px; }
-    .msg.user .bubble { background: var(--primary); color: white; border-bottom-right-radius: 3px; }
-    .msg.system .bubble { background: transparent; color: var(--text3); font-size: 12px; text-align: center; border: none; padding: 4px; }
-    .chat-input-area { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface); }
-    .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
-    .chat-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; color: var(--text); font-size: 13px; resize: none; min-height: 44px; max-height: 120px; font-family: inherit; }
-    .chat-input:focus { outline: none; border-color: var(--primary); }
-    .stage-select { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 8px 12px; color: var(--text2); font-size: 12px; cursor: pointer; }
-    .stage-select:focus { outline: none; border-color: var(--primary); }
-    
-    /* ── Pipeline Progress ── */
-    .pipeline-bar { display: flex; gap: 2px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
-    .pipeline-step { flex: 1; height: 3px; border-radius: 2px; background: var(--surface2); transition: all 0.3s; position: relative; }
-    .pipeline-step.done { background: var(--success); }
-    .pipeline-step.running { background: var(--warn); animation: blink 1s infinite; }
-    .pipeline-step.failed { background: var(--err); }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
-    .pipeline-labels { display: flex; gap: 2px; padding: 4px 16px 8px; border-bottom: 1px solid var(--border); }
-    .pipeline-label { flex: 1; text-align: center; font-size: 10px; color: var(--text3); }
-    .pipeline-label.active { color: var(--primary); font-weight: 600; }
-    
+    .app { display: grid; grid-template-columns: 220px 1fr 300px; height: 100vh; }
+
+    /* ── Left Sidebar ── */
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-header { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-header .logo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--primary); }
+    .sidebar-header .logo span { font-size: 18px; }
+    .sidebar-header .ver { font-size: 11px; color: var(--text3); margin-top: 2px; padding-left: 26px; }
+    .sidebar-body { flex: 1; overflow-y: auto; }
+    .sidebar-section { padding: 10px 16px 4px; font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+    .new-btn { margin: 8px 12px; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border2); background: none; cursor: pointer; color: var(--text2); font-size: 12px; width: calc(100% - 24px); text-align: center; transition: all 0.15s; }
+    .new-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+    /* Task items */
+    .task-item { padding: 10px 16px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.1s; }
+    .task-item:hover { background: var(--surface2); }
+    .task-item.active { background: var(--primary-light); border-left-color: var(--primary); }
+    .task-item .name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-item .meta { font-size: 11px; color: var(--text3); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+    .task-item .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .task-item .status-dot.running { background: var(--warn); animation: pulse 1.5s infinite; }
+    .task-item .status-dot.done { background: var(--success); }
+    .task-item .status-dot.idle { background: var(--border2); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── Center Main ── */
+    .main { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+    .topbar { padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .topbar-left h2 { font-size: 15px; font-weight: 600; }
+    .topbar-left .sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
+    .topbar-right { display: flex; gap: 8px; align-items: center; }
+    .model-badge { font-size: 11px; color: var(--text2); background: var(--surface2); padding: 3px 8px; border-radius: 10px; border: 1px solid var(--border); }
+
+    /* ── Chat Area ── */
+    .chat-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 20px; }
+    .msg { margin-bottom: 16px; display: flex; gap: 10px; max-width: 85%; }
+    .msg.user { flex-direction: row-reverse; margin-left: auto; }
+    .msg.system { max-width: 100%; justify-content: center; }
+    .avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .msg.assistant .avatar { background: var(--primary); color: white; }
+    .msg.user .avatar { background: var(--surface2); border: 1px solid var(--border); }
+    .msg.system .avatar { background: none; font-size: 12px; }
+    .bubble { padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+    .msg.assistant .bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
+    .msg.user .bubble { background: var(--primary); color: white; border-bottom-right-radius: 4px; }
+    .msg.system .bubble { background: none; border: none; color: var(--text3); font-size: 11px; text-align: center; padding: 4px; }
+    .bubble .stage-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-bottom: 6px; background: var(--primary-light); color: var(--primary); }
+    .bubble .action-row { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .bubble .action-btn { font-size: 11px; padding: 4px 10px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; transition: all 0.1s; }
+    .bubble .action-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .bubble .action-btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+    .empty-state .big-icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-state h3 { font-size: 16px; color: var(--text2); margin-bottom: 6px; }
+    .empty-state p { font-size: 12px; }
+
+    /* ── Input Area ── */
+    .chat-input-area { padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); }
+    .stage-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+    .stage-tab { padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: none; color: var(--text2); transition: all 0.1s; }
+    .stage-tab:hover { border-color: var(--primary); color: var(--primary); }
+    .stage-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .stage-tab.done { background: var(--success-bg); color: var(--success); border-color: #bbf7d0; }
+    .input-row { display: flex; gap: 8px; align-items: flex-end; }
+    .chat-input { flex: 1; border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; font-size: 13px; resize: none; min-height: 42px; max-height: 120px; font-family: inherit; background: var(--bg); color: var(--text); line-height: 1.5; }
+    .chat-input:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+    .send-btn { width: 42px; height: 42px; border-radius: var(--r); border: none; background: var(--primary); color: white; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
+    .send-btn:hover { background: var(--primary-dark); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
     /* ── Right Panel ── */
-    .right-panel { width: 280px; border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
-    .panel-tabs { display: flex; border-bottom: 1px solid var(--border); }
-    .panel-tab { flex: 1; padding: 10px; text-align: center; font-size: 12px; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; }
-    .panel-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .right-panel { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .panel-header { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
     .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
-    
-    /* ── Artifacts ── */
-    .artifact { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 10px; margin-bottom: 8px; }
-    .artifact h4 { font-size: 11px; color: var(--text3); margin-bottom: 6px; text-transform: uppercase; }
-    .artifact pre { font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow-y: auto; font-family: 'Monaco', monospace; }
-    
-    /* ── Logs ── */
-    .log { font-family: 'Monaco', monospace; font-size: 11px; line-height: 1.8; color: var(--text2); }
-    .log-ok { color: var(--success); }
-    .log-err { color: var(--err); }
-    .log-warn { color: var(--warn); }
-    
-    /* ── Empty State ── */
-    .empty { text-align: center; padding: 60px 20px; color: var(--text3); }
-    .empty .icon { font-size: 40px; margin-bottom: 12px; }
-    .empty h3 { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
-    .empty p { font-size: 12px; }
-    
+
+    /* Workflow diagram */
+    .workflow { display: flex; flex-direction: column; gap: 0; }
+    .wf-node { display: flex; align-items: flex-start; gap: 10px; position: relative; }
+    .wf-node::before { content: ''; position: absolute; left: 13px; top: 28px; bottom: -4px; width: 2px; background: var(--border); }
+    .wf-node:last-child::before { display: none; }
+    .wf-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; border: 2px solid var(--border); background: var(--surface); z-index: 1; transition: all 0.2s; }
+    .wf-node.done .wf-dot { background: var(--success); border-color: var(--success); }
+    .wf-node.running .wf-dot { background: var(--warn); border-color: var(--warn); animation: pulse 1.5s infinite; }
+    .wf-node.current .wf-dot { border-color: var(--primary); background: var(--primary-light); }
+    .wf-node.failed .wf-dot { background: var(--err); border-color: var(--err); }
+    .wf-info { flex: 1; padding-top: 3px; }
+    .wf-name { font-size: 12px; font-weight: 500; color: var(--text); }
+    .wf-desc { font-size: 11px; color: var(--text3); margin-top: 1px; }
+    .wf-status { font-size: 10px; font-weight: 600; margin-top: 3px; }
+    .wf-status.done { color: var(--success); }
+    .wf-status.running { color: var(--warn); }
+    .wf-status.failed { color: var(--err); }
+    .wf-status.pending { color: var(--text3); }
+
+    /* Artifacts */
+    .artifact-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .artifact-section h4 { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .artifact-item { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px; margin-bottom: 6px; }
+    .artifact-item .title { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+    .artifact-item pre { font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; font-family: 'Monaco', monospace; line-height: 1.5; }
+
+    /* ── Buttons ── */
+    .btn { padding: 7px 14px; border-radius: var(--r-sm); font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+    .btn-danger { background: var(--err-bg); color: var(--err); border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fee2e2; }
+
     /* ── Modal ── */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
-    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 520px; max-width: 90vw; max-height: 90vh; overflow: hidden; }
-    .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-    .modal-header h3 { font-size: 15px; }
-    .modal-close { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; }
-    .modal-body { padding: 20px; overflow-y: auto; max-height: calc(90vh - 120px); }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+    .modal { background: var(--surface); border-radius: 14px; width: 500px; max-width: 92vw; box-shadow: var(--shadow-md); }
+    .modal-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h3 { font-size: 15px; font-weight: 600; }
+    .modal-close { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; padding: 4px; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 20px; }
     .field { margin-bottom: 14px; }
-    .field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
-    .field input, .field textarea, .field select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 9px 12px; color: var(--text); font-size: 13px; }
-    .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--primary); }
-    .field textarea { min-height: 100px; resize: vertical; }
+    .field label { display: block; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 5px; }
+    .field input, .field textarea, .field select { width: 100%; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 9px 12px; font-size: 13px; background: var(--bg); color: var(--text); font-family: inherit; }
+    .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+    .field textarea { min-height: 90px; resize: vertical; }
     .field-row { display: flex; gap: 10px; }
     .field-row .field { flex: 1; }
-    .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-    
+    .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
     .hidden { display: none !important; }
-    
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
   </style>
 </head>
 <body>
 <div class="app">
-  <!-- Sidebar -->
+  <!-- ═══ Left Sidebar ═══ -->
   <aside class="sidebar">
     <div class="sidebar-header">
-      <h1>🚀 biz-delivery</h1>
+      <div class="logo"><span>🚀</span> biz-delivery</div>
       <div class="ver">v3.0 · 智能交付平台</div>
     </div>
-    <div class="sidebar-section">项目</div>
-    <div class="sidebar-list" id="project-list"></div>
-    <div class="sidebar-footer">
-      <button class="btn btn-secondary btn-sm" style="width:100%" onclick="showNewProjectModal()">+ 新建项目</button>
+    <div class="sidebar-body" id="sidebar-body">
+      <div class="sidebar-section">任务</div>
+      <div id="task-list"></div>
     </div>
+    <button class="new-btn" onclick="showNewTaskModal()">+ 新建任务</button>
   </aside>
 
-  <!-- Main -->
+  <!-- ═══ Center ═══ -->
   <main class="main">
-    <div class="topbar" id="topbar">
-      <div>
-        <div class="topbar-title" id="top-title">选择项目</div>
-        <div class="topbar-sub" id="top-sub">在左侧创建或选择一个项目开始</div>
+    <div class="topbar">
+      <div class="topbar-left">
+        <h2 id="top-title">新建任务</h2>
+        <div class="sub" id="top-sub">在左侧创建或选择任务开始</div>
       </div>
-      <div class="topbar-actions" id="top-actions"></div>
+      <div class="topbar-right" id="top-actions"></div>
     </div>
-    <div class="content" id="content"></div>
+    <div class="chat-wrap" id="chat-wrap">
+      <div class="empty-state" id="empty-state">
+        <div class="big-icon">💬</div>
+        <h3>欢迎使用 biz-delivery</h3>
+        <p>新建任务，开启你的智能研发流程</p>
+      </div>
+      <div class="chat-messages hidden" id="chat-messages"></div>
+      <div class="chat-input-area hidden" id="chat-input-area">
+        <div class="stage-tabs" id="stage-tabs"></div>
+        <div class="input-row">
+          <textarea class="chat-input" id="chat-in" placeholder="输入消息...（Enter 发送，Shift+Enter 换行）" rows="2"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+          <button class="send-btn" id="send-btn" onclick="sendMsg()">↑</button>
+        </div>
+      </div>
+    </div>
   </main>
+
+  <!-- ═══ Right Panel ═══ -->
+  <aside class="right-panel" id="right-panel">
+    <div class="panel-header">工作流程</div>
+    <div class="panel-body" id="panel-body">
+      <div class="empty-state" style="padding:40px 10px;">
+        <div class="big-icon" style="font-size:32px;">📋</div>
+        <p style="font-size:12px;">选择一个任务查看详情</p>
+      </div>
+    </div>
+  </aside>
 </div>
 
-<!-- New Project Modal -->
-<div class="modal-overlay hidden" id="modal-project">
-  <div class="modal">
-    <div class="modal-header"><h3>新建项目</h3><button class="modal-close" onclick="closeModal('modal-project')">&times;</button></div>
-    <div class="modal-body">
-      <div class="field"><label>项目名称 *</label><input type="text" id="proj-name" placeholder="例如：广告平台 v2"></div>
-      <div class="field"><label>输出根目录</label><input type="text" id="proj-root" value="/tmp/biz-delivery/projects"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-project')">取消</button>
-      <button class="btn btn-primary" onclick="createProject()">创建</button>
-    </div>
-  </div>
-</div>
-
-<!-- New Task Modal -->
+<!-- ═══ New Task Modal ═══ -->
 <div class="modal-overlay hidden" id="modal-task">
   <div class="modal">
-    <div class="modal-header"><h3>新建任务</h3><button class="modal-close" onclick="closeModal('modal-task')">&times;</button></div>
+    <div class="modal-header"><h3>✨ 新建任务</h3><button class="modal-close" onclick="closeModal('modal-task')">&times;</button></div>
     <div class="modal-body">
       <div class="field"><label>任务名称 *</label><input type="text" id="task-name" placeholder="例如：新增广告组审核功能"></div>
-      <div class="field"><label>PRD 内容（可选）</label><textarea id="task-prd" placeholder="粘贴 PRD 文档..."></textarea></div>
+      <div class="field"><label>PRD 内容（可选）</label><textarea id="task-prd" placeholder="粘贴 PRD 文档内容..."></textarea></div>
       <div class="field-row">
         <div class="field"><label>Profile</label><input type="text" id="task-profile" value="profiles/default.json"></div>
         <div class="field"><label>LLM 模型</label><input type="text" id="task-model" value="agnes-2.0-flash"></div>
       </div>
       <div class="field">
-        <label>模式</label>
+        <label>运行模式</label>
         <select id="task-mode">
-          <option value="true">🔧 流程模式（guided pipeline）</option>
-          <option value="false">💬 自由对话（free chat）</option>
+          <option value="true">🔧 流程模式 — 按 Learn→Review→TD→Tasks→Agent→Test→Auto 顺序执行</option>
+          <option value="false">💬 自由对话 — 不绑流程，纯聊天助手</option>
         </select>
       </div>
     </div>
@@ -215,167 +240,167 @@
 
 <script>
 const API = '';
-let projects = [];
-let activeProject = null;
 let activeTask = null;
 let pollTimer = null;
 
-// ── API ──
+// ═══ API ═══
 async function api(path, opts={}) {
   const res = await fetch(API + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if(!res.ok) { const e = await res.json().catch(()=>({detail:res.statusText})); throw new Error(e.detail||res.statusText); }
   return res.json();
 }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function now() { return new Date().toLocaleTimeString(); }
 
-// ── Project List ──
-async function loadProjects() {
-  projects = await api('/api/projects');
-  renderSidebar();
+// ═══ Stage Config ═══
+const STAGES = [
+  { id: 'learn',    name: '知识提取',  desc: '扫描代码仓库，构建 IR' },
+  { id: 'review',   name: 'PRD 审查',  desc: '基于 IR 审查 PRD 完整性' },
+  { id: 'td',       name: '技术方案',  desc: '生成技术设计方案' },
+  { id: 'tasks',    name: 'Agent 任务', desc: '分解为可执行任务' },
+  { id: 'agent',    name: '代码执行',  desc: 'AI Agent 执行开发任务' },
+  { id: 'test',     name: '测试用例',  desc: '生成正向/异常/边界测试' },
+  { id: 'automation',name:'自动化执行', desc: '编译、运行、验证覆盖率' },
+];
+
+// ═══ Task List ═══
+async function loadTaskList() {
+  const projects = await api('/api/projects');
+  const list = document.getElementById('task-list');
+  
+  if (projects.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px;">暂无任务<br><br>点击「新建任务」开始</div>';
+    return;
+  }
+  
+  let html = '';
+  for (const proj of projects) {
+    const taskArr = Object.values(proj.tasks || {});
+    if (taskArr.length === 0) continue;
+    html += `<div style="padding:6px 16px 2px;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;">${esc(proj.name)}</div>`;
+    for (const t of taskArr) {
+      const prog = t.progress || {};
+      const st = prog.percent >= 100 ? 'done' : (prog.percent > 0 ? 'running' : 'idle');
+      const isActive = activeTask && activeTask.id === t.id;
+      html += `<div class="task-item ${isActive?'active':''}" onclick="selectTask('${t.id}')">
+        <div class="name">${esc(t.name)}</div>
+        <div class="meta">
+          <span class="status-dot ${st}"></span>
+          <span>${t.use_pipeline ? `${prog.completed}/${prog.total}阶段` : '自由对话'}</span>
+          <span style="margin-left:auto;">${t.model_name.split('-').pop()}</span>
+        </div>
+      </div>`;
+    }
+  }
+  list.innerHTML = html;
 }
 
-function renderSidebar() {
-  const list = document.getElementById('project-list');
-  list.innerHTML = projects.length === 0
-    ? '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px;">暂无项目<br>点击「新建项目」开始</div>'
-    : projects.map(p => `
-      <div class="proj-item ${activeProject?.id===p.id?'active':''}" onclick="selectProject('${p.id}')">
-        <span class="icon">📁</span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
-        <span class="count">${p.task_count}</span>
-      </div>`
-    ).join('');
-}
-
-async function selectProject(pid) {
-  activeProject = projects.find(p => p.id === pid);
-  activeTask = null;
-  renderSidebar();
-  renderTopbar();
-  renderContent();
-  if (pollTimer) clearInterval(pollTimer);
-}
-
+// ═══ Select Task ═══
 async function selectTask(tid) {
-  if (!activeProject) return;
-  activeTask = await api(`/api/projects/${activeProject.id}/tasks/${tid}`);
-  const stages = await api(`/api/projects/${activeProject.id}/tasks/${tid}/stages`);
+  activeTask = await api(`/api/projects/${getProjectIdForTask(tid)}/tasks/${tid}`);
+  const stages = await api(`/api/projects/${getProjectIdForTask(tid)}/tasks/${tid}/stages`);
   activeTask.stages = stages.stages;
   activeTask.current_stage = stages.current_stage;
-  renderTaskView();
-  startPolling();
-}
-
-function renderTopbar() {
-  document.getElementById('top-title').textContent = activeProject ? activeProject.name : '选择项目';
-  document.getElementById('top-sub').textContent = activeProject 
-    ? `${activeProject.task_count} 个任务 · 输出: ${activeProject.output_root}` 
-    : '在左侧创建或选择一个项目开始';
-  document.getElementById('top-actions').innerHTML = activeProject 
-    ? `<button class="btn btn-primary btn-sm" onclick="showNewTaskModal()">+ 新建任务</button>
-       <button class="btn btn-danger btn-sm" onclick="deleteProject()">🗑</button>`
-    : '';
-}
-
-async function deleteProject() {
-  if (!confirm('确定删除这个项目？所有任务将被删除。')) return;
-  await api(`/api/projects/${activeProject.id}`, {method:'DELETE'});
-  activeProject = null;
-  activeTask = null;
-  loadProjects();
-  renderTopbar();
-  renderContent();
-}
-
-// ── Content ──
-function renderContent() {
-  const ct = document.getElementById('content');
-  if (!activeProject) {
-    ct.innerHTML = `<div class="empty"><div class="icon">📁</div><h3>创建你的第一个项目</h3><p>项目是任务的容器，你可以在一个项目中管理多个研发需求</p></div>`;
-    return;
-  }
-  if (!activeTask) {
-    ct.innerHTML = `<div class="task-list"><div class="task-grid" id="task-grid"></div></div>`;
-    loadTasks();
-    return;
-  }
-  renderTaskView();
-}
-
-// ── Task List ──
-async function loadTasks() {
-  const tasks = await api(`/api/projects/${activeProject.id}/tasks`);
-  const grid = document.getElementById('task-grid');
-  if (!grid) return;
   
-  grid.innerHTML = tasks.length === 0
-    ? `<div class="empty" style="grid-column:1/-1"><div class="icon">📝</div><h3>还没有任务</h3><p>点击「新建任务」开始一个新需求</p></div>`
-    : tasks.map(t => {
-        const prog = t.progress || {};
-        return `<div class="task-card" onclick="selectTask('${t.id}')">
-          <span class="tag ${t.use_pipeline?'pipeline':'free'}">${t.use_pipeline?'🔧 Pipeline':'💬 自由对话'}</span>
-          <h3>${esc(t.name)}</h3>
-          <div class="meta">${t.model_name} · ${t.created_at.slice(0,16)}</div>
-          ${t.use_pipeline ? `<div class="progress"><div class="progress-fill" style="width:${prog.percent}%"></div></div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px;">${prog.completed}/${prog.total} 阶段</div>` : ''}
-        </div>`;
-      }).join('');
-}
-
-// ── Task View ──
-function renderTaskView() {
-  const ct = document.getElementById('content');
-  ct.innerHTML = `
-    <div class="chat-view">
-      ${activeTask.use_pipeline ? renderPipelineBar() : ''}
-      <div class="chat-messages" id="chat-msgs"></div>
-      <div class="chat-input-area">
-        <div class="chat-input-row">
-          ${activeTask.use_pipeline ? `<select class="stage-select" id="stage-select" onchange="selectStage(this.value)">
-            ${STAGES.map(s => `<option value="${s}" ${s===activeTask.current_stage?'selected':''}>${s}</option>`).join('')}
-            <option value="">— 自由对话 —</option>
-          </select>` : ''}
-          <textarea class="chat-input" id="chat-in" placeholder="输入消息..." rows="2"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
-          <button class="btn btn-primary" onclick="sendMsg()">发送</button>
-        </div>
-      </div>
-    </div>`;
-  loadMessages();
+  renderTopbar();
+  renderChat();
+  renderWorkflow();
   startPolling();
+  
+  // Highlight in sidebar
+  document.querySelectorAll('.task-item').forEach(el => el.classList.remove('active'));
+  event?.target?.closest?.('.task-item')?.classList.add('active');
 }
 
-const STAGES = ['learn','review','td','tasks','agent','test','automation'];
+function getProjectIdForTask(tid) {
+  // Find project containing this task
+  return window._currentProjectId || '';
+}
 
-function renderPipelineBar() {
-  const stages = activeTask.stages || {};
-  return `
-    <div class="pipeline-bar">
-      ${STAGES.map((s,i) => {
-        const st = stages[s]?.status || 'pending';
-        const cls = st==='completed'?'done':st==='running'?'running':st==='failed'?'failed':'';
-        return `<div class="pipeline-step ${cls}" title="${s}: ${st}" onclick="runStage('${s}')" style="cursor:${st==='pending'?'pointer':''}"></div>`;
-      }).join('')}
-    </div>
-    <div class="pipeline-labels">
-      ${STAGES.map(s => `<div class="pipeline-label ${s===activeTask.current_stage?'active':''}">${s}</div>`).join('')}
-    </div>`;
+// Override selectTask to also track project
+const _origSelectTask = selectTask;
+selectTask = async function(tid) {
+  // Find project
+  const projects = await api('/api/projects');
+  let pid = '';
+  for (const p of projects) {
+    if (p.tasks && p.tasks[tid]) { pid = p.id; break; }
+    for (const [ttid] of Object.entries(p.tasks || {})) {
+      if (ttid === tid) { pid = p.id; break; }
+    }
+    if (pid) break;
+  }
+  window._currentProjectId = pid;
+  await _origSelectTask(tid);
+};
+
+// ═══ Topbar ═══
+function renderTopbar() {
+  if (!activeTask) {
+    document.getElementById('top-title').textContent = '新建任务';
+    document.getElementById('top-sub').textContent = '在左侧创建或选择任务开始';
+    document.getElementById('top-actions').innerHTML = '';
+    return;
+  }
+  const prog = activeTask.progress || {};
+  document.getElementById('top-title').textContent = activeTask.name;
+  document.getElementById('top-sub').textContent = 
+    `${activeTask.model_name} · ${activeTask.use_pipeline ? `${prog.completed}/${prog.total} 阶段 · ${prog.current_stage || '就绪'}` : '自由对话模式'}`;
+  document.getElementById('top-actions').innerHTML = `
+    <button class="btn btn-secondary btn-sm" onclick="runCurrentStage()">▶ 执行当前阶段</button>
+    <button class="btn btn-danger btn-sm" onclick="deleteTask()">🗑</button>`;
+}
+
+// ═══ Chat ═══
+function renderChat() {
+  const wrap = document.getElementById('chat-wrap');
+  const empty = document.getElementById('empty-state');
+  const msgs = document.getElementById('chat-messages');
+  const input = document.getElementById('chat-input-area');
+  
+  empty.classList.add('hidden');
+  msgs.classList.remove('hidden');
+  input.classList.remove('hidden');
+  
+  renderStageTabs();
+  loadMessages();
+}
+
+function renderStageTabs() {
+  const container = document.getElementById('stage-tabs');
+  if (!activeTask || !activeTask.use_pipeline) {
+    container.innerHTML = '';
+    return;
+  }
+  const stageStatuses = activeTask.stages || {};
+  container.innerHTML = STAGES.map(s => {
+    const st = stageStatuses[s.id]?.status || 'pending';
+    const cls = st === 'completed' ? 'done' : (st === 'running' ? 'active' : '');
+    const isCurrent = s.id === activeTask.current_stage;
+    return `<button class="stage-tab ${cls} ${isCurrent?'active':''}" onclick="selectStage('${s.id}')">${s.name}</button>`;
+  }).join('');
 }
 
 async function loadMessages() {
+  if (!activeTask) return;
   try {
-    const data = await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/chat?limit=50`);
-    const c = document.getElementById('chat-msgs');
+    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/chat?limit=50`);
+    const c = document.getElementById('chat-messages');
     if (!c) return;
-    c.innerHTML = data.messages.length === 0
-      ? `<div class="empty" style="padding:40px"><div class="icon">💬</div><h3>开始对话</h3><p>${activeTask.use_pipeline ? '选择左侧阶段执行流程，或直接输入消息自由对话' : '输入你的需求，AI 会帮你完成'}
-        </p></div>`
-      : data.messages.map(m => `
+    
+    if (data.messages.length === 0) {
+      const hint = activeTask.prd_text 
+        ? `PRD 已加载：${activeTask.prd_text.slice(0, 80)}${activeTask.prd_text.length>80?'...':''}\n\n可以开始对话，或点击右侧流程节点执行各阶段。`
+        : activeTask.use_pipeline 
+          ? '这是一个 Pipeline 模式的任务。\n\n可以：\n• 输入消息与 AI 对话\n• 点击右侧流程图节点执行各阶段\n• 点击「执行当前阶段」自动推进'
+          : '这是一个自由对话任务。\n\n直接输入你的需求开始对话即可。';
+      c.innerHTML = `<div class="msg system"><div class="avatar">💡</div><div class="bubble">${esc(hint)}</div></div>`;
+    } else {
+      c.innerHTML = data.messages.map(m => `
         <div class="msg ${m.role}">
-          <div class="avatar">${m.role==='user'?'👤':m.role==='system'?'⚙️':'🤖'}</div>
-          <div class="bubble">${esc(m.content)}</div>
+          <div class="avatar">${m.role==='user'?'👤':'🤖'}</div>
+          <div class="bubble">${m.stage ? `<div class="stage-tag">${esc(m.stage)}</div>` : ''}${esc(m.content)}</div>
         </div>`).join('');
+    }
     c.scrollTop = c.scrollHeight;
   } catch(e) { console.error(e); }
 }
@@ -385,15 +410,16 @@ async function sendMsg() {
   const msg = input.value.trim();
   if (!msg || !activeTask) return;
   input.value = '';
+  setLoading(true);
   
-  const stage = document.getElementById('stage-select')?.value || '';
-  const c = document.getElementById('chat-msgs');
+  const stage = document.querySelector('.stage-tab.active')?.textContent?.toLowerCase() || '';
+  const c = document.getElementById('chat-messages');
   c.innerHTML += `<div class="msg user"><div class="avatar">👤</div><div class="bubble">${esc(msg)}</div></div>`;
   c.scrollTop = c.scrollHeight;
   
   try {
-    const r = await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/chat`, {
-      method:'POST', body: JSON.stringify({message: msg, stage: stage||null})
+    const r = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/chat`, {
+      method:'POST', body: JSON.stringify({message: msg, stage: stage || null})
     });
     c.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble">${esc(r.reply)}</div></div>`;
     c.scrollTop = c.scrollHeight;
@@ -401,70 +427,128 @@ async function sendMsg() {
   } catch(e) {
     c.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble" style="color:var(--err)">❌ ${esc(e.message)}</div></div>`;
   }
+  setLoading(false);
 }
 
-async function selectStage(s) {
-  if (!activeTask) return;
-  const t = {...activeTask, current_stage: s || activeTask.current_stage};
-  activeTask = t;
-  if (s && STAGES.includes(s)) {
-    const stages = await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/stages`);
-    activeTask.stages = stages.stages;
-    activeTask.current_stage = stages.current_stage;
+// ═══ Workflow Panel ═══
+function renderWorkflow() {
+  const panel = document.getElementById('panel-body');
+  if (!activeTask) {
+    panel.innerHTML = '<div class="empty-state" style="padding:40px 10px;"><div class="big-icon" style="font-size:32px;">📋</div><p style="font-size:12px;">选择一个任务查看详情</p></div>';
+    return;
   }
-  renderTaskView();
+  
+  const stageStatuses = activeTask.stages || {};
+  const currentIdx = STAGES.findIndex(s => s.id === activeTask.current_stage);
+  
+  panel.innerHTML = `
+    <div class="workflow">
+      ${STAGES.map((s, i) => {
+        const rec = stageStatuses[s.id];
+        let status = 'pending';
+        if (rec) {
+          if (rec.status === 'completed') status = 'done';
+          else if (rec.status === 'running') status = 'running';
+          else if (rec.status === 'failed') status = 'failed';
+        }
+        const isCurrent = i === currentIdx && status === 'pending';
+        if (isCurrent) status = 'current';
+        
+        const statusText = {done:'✅ 已完成', running:'⟳ 执行中', current:'👈 当前', failed:'❌ 失败', pending:'○ 待开始'}[status];
+        
+        return `<div class="wf-node ${status}" onclick="${status==='pending'||status==='current'?"runStage('"+s.id+"')":"\""}">
+          <div class="wf-dot">${status==='done'?'✓':(status==='failed'?'✗':(i+1))}</div>
+          <div class="wf-info">
+            <div class="wf-name">${s.name}</div>
+            <div class="wf-desc">${s.desc}</div>
+            ${rec?.summary ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(rec.summary)}</div>` : ''}
+            <div class="wf-status ${status}">${statusText}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="artifact-section" id="artifact-section">
+      <h4>当前阶段产物</h4>
+      <div id="artifact-content"><span style="font-size:11px;color:var(--text3);">等待执行...</span></div>
+    </div>`;
+  
+  loadArtifacts();
 }
 
-async function runStage(stage) {
-  if (!activeTask || !activeTask.use_pipeline) return;
+async function loadArtifacts() {
+  if (!activeTask) return;
+  const stage = activeTask.current_stage;
+  if (!stage) return;
   try {
-    await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/run-stage`, {
-      method:'POST', body: JSON.stringify({stage})
+    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/artifacts/${stage}`);
+    const el = document.getElementById('artifact-content');
+    if (!el) return;
+    const arts = data.artifacts || {};
+    if (Object.keys(arts).length === 0) {
+      el.innerHTML = '<span style="font-size:11px;color:var(--text3);">暂无产物</span>';
+    } else {
+      el.innerHTML = Object.entries(arts).map(([name, content]) => `
+        <div class="artifact-item">
+          <div class="title">${esc(name)}</div>
+          <pre>${esc(content.substring(0, 500))}${content.length>500?'...':''}</pre>
+        </div>`).join('');
+    }
+  } catch(e) {
+    const el = document.getElementById('artifact-content');
+    if (el) el.innerHTML = '<span style="font-size:11px;color:var(--err);">加载失败</span>';
+  }
+}
+
+async function runStage(stageId) {
+  if (!activeTask) return;
+  setLoading(true);
+  try {
+    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/run-stage`, {
+      method:'POST', body: JSON.stringify({stage: stageId})
     });
     await refreshTask();
   } catch(e) {
     alert('执行失败: ' + e.message);
   }
+  setLoading(false);
+}
+
+async function selectStage(stageId) {
+  if (!activeTask) return;
+  activeTask.current_stage = stageId;
+  renderStageTabs();
+  renderWorkflow();
 }
 
 async function refreshTask() {
-  if (!activeProject || !activeTask) return;
+  if (!activeTask || !window._currentProjectId) return;
   try {
     const [t, stages] = await Promise.all([
-      api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}`),
-      api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/stages`),
+      api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}`),
+      api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/stages`),
     ]);
     activeTask = {...t, stages: stages.stages, current_stage: stages.current_stage};
-    // Re-render without losing scroll
-    const chatEl = document.getElementById('chat-msgs');
-    const scrollPos = chatEl ? chatEl.scrollHeight - chatEl.scrollTop : 0;
-    renderTaskView();
-    if (chatEl) chatEl.scrollTop = scrollPos;
+    renderTopbar();
+    renderStageTabs();
+    renderWorkflow();
+    loadTaskList();
   } catch(e) { console.error(e); }
 }
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
-    if (activeProject && activeTask) refreshTask().then(() => loadMessages());
-  }, 3000);
+    if (activeTask && window._currentProjectId) refreshTask();
+  }, 4000);
 }
 
-// ── Modals ──
-function showNewProjectModal() { document.getElementById('modal-project').classList.remove('hidden'); }
+function setLoading(on) {
+  document.getElementById('send-btn').disabled = on;
+}
+
+// ═══ Modals ═══
 function showNewTaskModal() { document.getElementById('modal-task').classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-async function createProject() {
-  const name = document.getElementById('proj-name').value.trim();
-  const root = document.getElementById('proj-root').value.trim() || '/tmp/biz-delivery/projects';
-  if (!name) { alert('请填写项目名称'); return; }
-  const p = await api('/api/projects', {method:'POST', body: JSON.stringify({name, output_root: root})});
-  closeModal('modal-project');
-  document.getElementById('proj-name').value = '';
-  await loadProjects();
-  selectProject(p.id);
-}
 
 async function createTask() {
   const name = document.getElementById('task-name').value.trim();
@@ -474,19 +558,49 @@ async function createTask() {
   const usePipeline = document.getElementById('task-mode').value === 'true';
   if (!name) { alert('请填写任务名称'); return; }
   
-  const t = await api(`/api/projects/${activeProject.id}/tasks`, {
+  // Find or create project
+  let projects = await api('/api/projects');
+  let pid = '';
+  if (projects.length > 0) {
+    pid = projects[0].id;
+  } else {
+    const p = await api('/api/projects', {method:'POST', body: JSON.stringify({name:'默认项目', output_root:'/tmp/biz-delivery'})});
+    pid = p.id;
+  }
+  window._currentProjectId = pid;
+  
+  const t = await api(`/api/projects/${pid}/tasks`, {
     method:'POST', body: JSON.stringify({name, prd_text: prd, profile_path: profile, use_pipeline: usePipeline, model_name: model})
   });
   closeModal('modal-task');
   document.getElementById('task-name').value = '';
   document.getElementById('task-prd').value = '';
-  await loadProjects();
-  selectProject(activeProject.id);
+  await loadTaskList();
   selectTask(t.id);
 }
 
-// ── Init ──
-loadProjects();
+async function deleteTask() {
+  if (!activeTask || !confirm('确定删除这个任务？')) return;
+  await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}`, {method:'DELETE'});
+  activeTask = null;
+  if (pollTimer) clearInterval(pollTimer);
+  document.getElementById('empty-state').classList.remove('hidden');
+  document.getElementById('chat-messages').classList.add('hidden');
+  document.getElementById('chat-input-area').classList.add('hidden');
+  document.getElementById('panel-body').innerHTML = '<div class="empty-state" style="padding:40px 10px;"><div class="big-icon" style="font-size:32px;">📋</div><p style="font-size:12px;">选择一个任务查看详情</p></div>';
+  document.getElementById('top-title').textContent = '新建任务';
+  document.getElementById('top-sub').textContent = '在左侧创建或选择任务开始';
+  document.getElementById('top-actions').innerHTML = '';
+  loadTaskList();
+}
+
+function runCurrentStage() {
+  if (!activeTask || !activeTask.use_pipeline) return;
+  runStage(activeTask.current_stage || 'learn');
+}
+
+// ═══ Init ═══
+loadTaskList();
 </script>
 </body>
 </html>
