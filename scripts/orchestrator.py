@@ -140,7 +140,7 @@ class TaskSession:
             "current_stage": self.current_stage,
             "progress": self.progress,
             "messages": [asdict(m) for m in self.messages[-20:]],  # last 20
-            "stages": {k: asdict(v) for k, v in self.stages.items()},
+            "stages": {k: {"status": v.status.value if hasattr(v.status, "value") else v.status, **{"started_at": v.started_at, "completed_at": v.completed_at, "output_dir": v.output_dir, "artifacts": v.artifacts, "error": v.error, "summary": v.summary}} for k, v in self.stages.items()},
             "metadata": self.metadata,
         }
 
@@ -234,6 +234,13 @@ class ProjectStore:
                             metadata=tdata.get("metadata", {}),
                         )
                         for sname, srec in tdata.get("stages", {}).items():
+                            # Convert string status back to StageStatus enum
+                            raw_status = srec.get("status", "pending")
+                            if isinstance(raw_status, str):
+                                try:
+                                    srec["status"] = StageStatus(raw_status)
+                                except ValueError:
+                                    srec["status"] = StageStatus.PENDING
                             task.stages[sname] = StageRecord(**srec)
                         for msg in tdata.get("messages", []):
                             task.messages.append(ChatMessage(**msg))

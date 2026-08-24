@@ -184,7 +184,7 @@ def create_app():
             "progress": task.progress,
             "stages": {
                 name: {
-                    "status": rec.status.value,
+                    "status": rec.status.value if hasattr(rec.status, "value") else rec.status,
                     "summary": rec.summary,
                     "error": rec.error,
                     "artifacts": rec.artifacts,
