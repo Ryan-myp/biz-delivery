@@ -6,108 +6,140 @@
   <title>biz-delivery v3.0</title>
   <style>
     :root {
-      --bg: #0f172a; --surface: #1e293b; --surface2: #334155;
-      --border: #334155; --text: #f1f5f9; --text2: #94a3b8;
-      --primary: #3b82f6; --success: #22c55e; --warn: #f59e0b; --err: #ef4444;
+      --bg: #0f172a; --surface: #1e293b; --surface2: #334155; --surface3: #1e293b;
+      --border: #334155; --text: #f1f5f9; --text2: #94a3b8; --text3: #64748b;
+      --primary: #3b82f6; --primary-dim: rgba(59,130,246,0.15);
+      --success: #22c55e; --warn: #f59e0b; --err: #ef4444;
       --r: 8px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
     
-    .app { display: grid; grid-template-columns: 220px 1fr 320px; height: 100vh; }
+    /* ── Layout ── */
+    .app { display: grid; grid-template-columns: 200px 1fr; height: 100vh; }
     
-    /* Sidebar */
-    .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-    .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); }
-    .sidebar-header h1 { font-size: 16px; font-weight: 700; }
-    .sidebar-header .ver { font-size: 11px; color: var(--text2); margin-top: 2px; }
-    .sidebar-stages { flex: 1; padding: 12px; }
-    .stage-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r); cursor: pointer; color: var(--text2); transition: all 0.15s; font-size: 13px; }
-    .stage-item:hover { background: var(--surface2); color: var(--text); }
-    .stage-item.active { background: var(--primary); color: white; }
-    .stage-item.done { color: var(--success); }
-    .stage-item.err { color: var(--err); }
-    .stage-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface2); flex-shrink: 0; }
-    .stage-item.active .stage-dot { background: white; animation: pulse 2s infinite; }
-    .stage-item.done .stage-dot { background: var(--success); }
-    .stage-item.err .stage-dot { background: var(--err); }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-    .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
-    .model-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); background: var(--surface2); padding: 6px 10px; border-radius: var(--r); }
+    /* ── Sidebar ── */
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-header h1 { font-size: 15px; font-weight: 700; }
+    .sidebar-header .ver { font-size: 11px; color: var(--text3); margin-top: 2px; }
+    .sidebar-section { padding: 8px 12px; font-size: 10px; text-transform: uppercase; color: var(--text3); font-weight: 600; letter-spacing: 0.05em; }
+    .sidebar-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+    .proj-item { padding: 8px 10px; border-radius: var(--r); cursor: pointer; font-size: 13px; color: var(--text2); display: flex; align-items: center; gap: 8px; transition: all 0.1s; }
+    .proj-item:hover { background: var(--surface2); color: var(--text); }
+    .proj-item.active { background: var(--primary-dim); color: var(--primary); }
+    .proj-item .icon { font-size: 14px; }
+    .proj-item .count { margin-left: auto; font-size: 11px; background: var(--surface2); padding: 1px 6px; border-radius: 8px; }
+    .proj-item.active .count { background: rgba(59,130,246,0.3); }
+    .sidebar-footer { padding: 12px; border-top: 1px solid var(--border); }
     
-    /* Main */
+    /* ── Main ── */
     .main { display: flex; flex-direction: column; overflow: hidden; }
-    .topbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface); }
-    .topbar-left h2 { font-size: 18px; font-weight: 600; }
-    .topbar-left .meta { font-size: 12px; color: var(--text2); margin-top: 4px; }
-    .topbar-right { display: flex; gap: 8px; }
+    .topbar { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .topbar-title { font-size: 16px; font-weight: 600; }
+    .topbar-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+    .topbar-actions { display: flex; gap: 8px; }
     
-    .content { flex: 1; overflow-y: auto; padding: 24px; }
+    /* ── Content ── */
+    .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
     
-    /* New PRD panel */
-    .new-prd { max-width: 600px; }
-    .new-prd textarea { width: 100%; min-height: 160px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; color: var(--text); font-size: 14px; resize: vertical; font-family: inherit; }
-    .new-prd textarea:focus { outline: none; border-color: var(--primary); }
-    .new-prd .fields { margin-top: 16px; display: flex; gap: 12px; }
-    .new-prd input { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; color: var(--text); font-size: 14px; }
-    .new-prd input:focus { outline: none; border-color: var(--primary); }
-    
-    /* Chat */
-    .chat-area { display: flex; flex-direction: column; height: 100%; }
-    .chat-messages { flex: 1; overflow-y: auto; padding: 8px 0; }
-    .msg { display: flex; gap: 10px; margin-bottom: 16px; }
-    .msg.user { flex-direction: row-reverse; }
-    .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-    .msg.assistant .avatar { background: var(--primary); }
-    .msg.user .avatar { background: var(--surface2); }
-    .bubble { max-width: 75%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
-    .msg.assistant .bubble { background: var(--surface); border-bottom-left-radius: 4px; }
-    .msg.user .bubble { background: var(--primary); color: white; border-bottom-right-radius: 4px; }
-    .chat-input { padding: 16px 0; border-top: 1px solid var(--border); display: flex; gap: 10px; }
-    .chat-input textarea { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 12px; color: var(--text); font-size: 14px; resize: none; min-height: 48px; max-height: 120px; font-family: inherit; }
-    .chat-input textarea:focus { outline: none; border-color: var(--primary); }
-    .btn { padding: 10px 20px; border-radius: var(--r); font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+    /* ── Buttons ── */
+    .btn { padding: 8px 16px; border-radius: var(--r); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
     .btn-primary { background: var(--primary); color: white; }
     .btn-primary:hover { background: #2563eb; }
-    .btn-secondary { background: var(--surface2); color: var(--text); }
-    .btn-sm { padding: 6px 14px; font-size: 12px; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: #3d4f6e; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-danger { background: rgba(239,68,68,0.15); color: var(--err); }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
     
-    /* Right panel */
-    .right-panel { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    /* ── Task List View ── */
+    .task-list { flex: 1; overflow-y: auto; padding: 20px; }
+    .task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .task-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; cursor: pointer; transition: all 0.15s; }
+    .task-card:hover { border-color: var(--primary); transform: translateY(-1px); }
+    .task-card .tag { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-bottom: 8px; }
+    .task-card .tag.pipeline { background: var(--primary-dim); color: var(--primary); }
+    .task-card .tag.free { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+    .task-card h3 { font-size: 14px; margin-bottom: 6px; }
+    .task-card .meta { font-size: 12px; color: var(--text3); }
+    .task-card .progress { height: 3px; background: var(--surface2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+    .task-card .progress-fill { height: 100%; background: var(--success); border-radius: 2px; }
+    
+    /* ── Chat View ── */
+    .chat-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 16px; }
+    .msg { display: flex; gap: 10px; margin-bottom: 14px; }
+    .msg.user { flex-direction: row-reverse; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+    .msg.assistant .avatar { background: var(--primary); }
+    .msg.user .avatar { background: var(--surface2); }
+    .bubble { max-width: 80%; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+    .msg.assistant .bubble { background: var(--surface); border-bottom-left-radius: 3px; }
+    .msg.user .bubble { background: var(--primary); color: white; border-bottom-right-radius: 3px; }
+    .msg.system .bubble { background: transparent; color: var(--text3); font-size: 12px; text-align: center; border: none; padding: 4px; }
+    .chat-input-area { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface); }
+    .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+    .chat-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; color: var(--text); font-size: 13px; resize: none; min-height: 44px; max-height: 120px; font-family: inherit; }
+    .chat-input:focus { outline: none; border-color: var(--primary); }
+    .stage-select { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 8px 12px; color: var(--text2); font-size: 12px; cursor: pointer; }
+    .stage-select:focus { outline: none; border-color: var(--primary); }
+    
+    /* ── Pipeline Progress ── */
+    .pipeline-bar { display: flex; gap: 2px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .pipeline-step { flex: 1; height: 3px; border-radius: 2px; background: var(--surface2); transition: all 0.3s; position: relative; }
+    .pipeline-step.done { background: var(--success); }
+    .pipeline-step.running { background: var(--warn); animation: blink 1s infinite; }
+    .pipeline-step.failed { background: var(--err); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .pipeline-labels { display: flex; gap: 2px; padding: 4px 16px 8px; border-bottom: 1px solid var(--border); }
+    .pipeline-label { flex: 1; text-align: center; font-size: 10px; color: var(--text3); }
+    .pipeline-label.active { color: var(--primary); font-weight: 600; }
+    
+    /* ── Right Panel ── */
+    .right-panel { width: 280px; border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
     .panel-tabs { display: flex; border-bottom: 1px solid var(--border); }
-    .panel-tab { flex: 1; padding: 12px; text-align: center; font-size: 13px; color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; }
+    .panel-tab { flex: 1; padding: 10px; text-align: center; font-size: 12px; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; }
     .panel-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-    .panel-content { flex: 1; overflow-y: auto; padding: 16px; }
+    .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
     
-    /* Artifacts */
-    .artifact-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; margin-bottom: 12px; }
-    .artifact-card h4 { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
-    .artifact-card pre { font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; font-family: 'Monaco', monospace; }
+    /* ── Artifacts ── */
+    .artifact { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 10px; margin-bottom: 8px; }
+    .artifact h4 { font-size: 11px; color: var(--text3); margin-bottom: 6px; text-transform: uppercase; }
+    .artifact pre { font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow-y: auto; font-family: 'Monaco', monospace; }
     
-    /* Logs */
-    .log-lines { font-family: 'Monaco', monospace; font-size: 12px; line-height: 1.8; }
-    .log-line { display: block; }
+    /* ── Logs ── */
+    .log { font-family: 'Monaco', monospace; font-size: 11px; line-height: 1.8; color: var(--text2); }
     .log-ok { color: var(--success); }
     .log-err { color: var(--err); }
     .log-warn { color: var(--warn); }
     
-    /* Empty state */
-    .empty { text-align: center; padding: 60px 20px; color: var(--text2); }
-    .empty .icon { font-size: 48px; margin-bottom: 16px; }
-    .empty h3 { font-size: 16px; color: var(--text); margin-bottom: 8px; }
-    .empty p { font-size: 13px; }
+    /* ── Empty State ── */
+    .empty { text-align: center; padding: 60px 20px; color: var(--text3); }
+    .empty .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty h3 { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
+    .empty p { font-size: 12px; }
     
-    /* Progress bar */
-    .progress-bar { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 8px; }
-    .progress-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.5s; }
-    
-    /* Stage action buttons */
-    .stage-actions { display: flex; gap: 8px; margin-top: 16px; }
+    /* ── Modal ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 520px; max-width: 90vw; max-height: 90vh; overflow: hidden; }
+    .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h3 { font-size: 15px; }
+    .modal-close { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; }
+    .modal-body { padding: 20px; overflow-y: auto; max-height: calc(90vh - 120px); }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
+    .field input, .field textarea, .field select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 9px 12px; color: var(--text); font-size: 13px; }
+    .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--primary); }
+    .field textarea { min-height: 100px; resize: vertical; }
+    .field-row { display: flex; gap: 10px; }
+    .field-row .field { flex: 1; }
+    .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
     
     .hidden { display: none !important; }
     
-    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
   </style>
@@ -118,313 +150,333 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <h1>🚀 biz-delivery</h1>
-      <div class="ver">v3.0 · 智能交付框架</div>
+      <div class="ver">v3.0 · 智能交付平台</div>
     </div>
-    <nav class="sidebar-stages" id="stage-nav">
-      <div class="stage-item" data-stage="learn" onclick="selectStage('learn')">
-        <div class="stage-dot"></div><span>📚 Learn</span>
-      </div>
-      <div class="stage-item" data-stage="review" onclick="selectStage('review')">
-        <div class="stage-dot"></div><span>🔍 Review</span>
-      </div>
-      <div class="stage-item" data-stage="td" onclick="selectStage('td')">
-        <div class="stage-dot"></div><span>📋 TD</span>
-      </div>
-      <div class="stage-item" data-stage="tasks" onclick="selectStage('tasks')">
-        <div class="stage-dot"></div><span>📝 Tasks</span>
-      </div>
-      <div class="stage-item" data-stage="agent" onclick="selectStage('agent')">
-        <div class="stage-dot"></div><span>🤖 Agent</span>
-      </div>
-      <div class="stage-item" data-stage="test" onclick="selectStage('test')">
-        <div class="stage-dot"></div><span>🧪 Test</span>
-      </div>
-      <div class="stage-item" data-stage="automation" onclick="selectStage('automation')">
-        <div class="stage-dot"></div><span>⚡ Auto</span>
-      </div>
-    </nav>
+    <div class="sidebar-section">项目</div>
+    <div class="sidebar-list" id="project-list"></div>
     <div class="sidebar-footer">
-      <div class="model-badge" id="model-badge">
-        <span>🤖</span><span id="model-name">agnes-2.0-flash</span>
-        <span style="margin-left:auto;cursor:pointer" onclick="switchModelPrompt()" title="切换模型">⚙️</span>
-      </div>
+      <button class="btn btn-secondary btn-sm" style="width:100%" onclick="showNewProjectModal()">+ 新建项目</button>
     </div>
   </aside>
 
   <!-- Main -->
   <main class="main">
-    <div class="topbar">
-      <div class="topbar-left">
-        <h2 id="top-title">新建需求</h2>
-        <div class="meta" id="top-meta">从零开始端到端交付流程</div>
+    <div class="topbar" id="topbar">
+      <div>
+        <div class="topbar-title" id="top-title">选择项目</div>
+        <div class="topbar-sub" id="top-sub">在左侧创建或选择一个项目开始</div>
       </div>
-      <div class="topbar-right" id="top-actions">
-        <button class="btn btn-primary btn-sm" id="btn-start" onclick="startNewSession()">✨ 开始交付</button>
-      </div>
+      <div class="topbar-actions" id="top-actions"></div>
     </div>
-    <div class="content" id="content">
-      <!-- Dynamic content -->
-    </div>
+    <div class="content" id="content"></div>
   </main>
+</div>
 
-  <!-- Right Panel -->
-  <aside class="right-panel" id="right-panel">
-    <div class="panel-tabs">
-      <div class="panel-tab active" onclick="switchPanel('result')">📄 产物</div>
-      <div class="panel-tab" onclick="switchPanel('logs')">📋 日志</div>
+<!-- New Project Modal -->
+<div class="modal-overlay hidden" id="modal-project">
+  <div class="modal">
+    <div class="modal-header"><h3>新建项目</h3><button class="modal-close" onclick="closeModal('modal-project')">&times;</button></div>
+    <div class="modal-body">
+      <div class="field"><label>项目名称 *</label><input type="text" id="proj-name" placeholder="例如：广告平台 v2"></div>
+      <div class="field"><label>输出根目录</label><input type="text" id="proj-root" value="/tmp/biz-delivery/projects"></div>
     </div>
-    <div class="panel-content" id="panel-result">
-      <div class="empty"><div class="icon">📭</div><h3>等待执行</h3><p>选择阶段并运行后，产物将显示在这里</p></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-project')">取消</button>
+      <button class="btn btn-primary" onclick="createProject()">创建</button>
     </div>
-    <div class="panel-content hidden" id="panel-logs">
-      <div class="log-lines" id="log-lines"></div>
+  </div>
+</div>
+
+<!-- New Task Modal -->
+<div class="modal-overlay hidden" id="modal-task">
+  <div class="modal">
+    <div class="modal-header"><h3>新建任务</h3><button class="modal-close" onclick="closeModal('modal-task')">&times;</button></div>
+    <div class="modal-body">
+      <div class="field"><label>任务名称 *</label><input type="text" id="task-name" placeholder="例如：新增广告组审核功能"></div>
+      <div class="field"><label>PRD 内容（可选）</label><textarea id="task-prd" placeholder="粘贴 PRD 文档..."></textarea></div>
+      <div class="field-row">
+        <div class="field"><label>Profile</label><input type="text" id="task-profile" value="profiles/default.json"></div>
+        <div class="field"><label>LLM 模型</label><input type="text" id="task-model" value="agnes-2.0-flash"></div>
+      </div>
+      <div class="field">
+        <label>模式</label>
+        <select id="task-mode">
+          <option value="true">🔧 流程模式（guided pipeline）</option>
+          <option value="false">💬 自由对话（free chat）</option>
+        </select>
+      </div>
     </div>
-  </aside>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-task')">取消</button>
+      <button class="btn btn-primary" onclick="createTask()">创建任务</button>
+    </div>
+  </div>
 </div>
 
 <script>
 const API = '';
-let session = null;
-let currentStage = 'learn';
+let projects = [];
+let activeProject = null;
+let activeTask = null;
 let pollTimer = null;
 
-// ── Helpers ──
+// ── API ──
 async function api(path, opts={}) {
   const res = await fetch(API + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if(!res.ok) { const e = await res.json().catch(()=>({detail:res.statusText})); throw new Error(e.detail||res.statusText); }
   return res.json();
 }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function now() { return new Date().toLocaleTimeString(); }
+functionago() { return new Date().toLocaleTimeString(); }
 
-// ── New Session (PRD Input) ──
-function showNewSession() {
-  document.getElementById('content').innerHTML = `
-    <div class="new-prd">
-      <h3 style="margin-bottom:16px;">📋 输入 PRD 需求</h3>
-      <textarea id="prd-text" placeholder="粘贴你的 PRD 内容...&#10;&#10;例如：为广告组模块新增素材审核功能，支持图片审核和文案审核两种模式..."></textarea>
-      <div class="fields">
-        <input type="text" id="proj-name" placeholder="需求名称（可选）" value="">
-        <input type="text" id="proj-model" placeholder="LLM 模型" value="agnes-2.0-flash">
-      </div>
-      <div class="stage-actions">
-        <button class="btn btn-primary" onclick="createSession()">🚀 创建并启动</button>
+// ── Project List ──
+async function loadProjects() {
+  projects = await api('/api/projects');
+  renderSidebar();
+}
+
+function renderSidebar() {
+  const list = document.getElementById('project-list');
+  list.innerHTML = projects.length === 0
+    ? '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px;">暂无项目<br>点击「新建项目」开始</div>'
+    : projects.map(p => `
+      <div class="proj-item ${activeProject?.id===p.id?'active':''}" onclick="selectProject('${p.id}')">
+        <span class="icon">📁</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
+        <span class="count">${p.task_count}</span>
+      </div>`
+    ).join('');
+}
+
+async function selectProject(pid) {
+  activeProject = projects.find(p => p.id === pid);
+  activeTask = null;
+  renderSidebar();
+  renderTopbar();
+  renderContent();
+  if (pollTimer) clearInterval(pollTimer);
+}
+
+function renderTopbar() {
+  document.getElementById('top-title').textContent = activeProject ? activeProject.name : '选择项目';
+  document.getElementById('top-sub').textContent = activeProject 
+    ? `${activeProject.task_count} 个任务 · 输出: ${activeProject.output_root}` 
+    : '在左侧创建或选择一个项目开始';
+  document.getElementById('top-actions').innerHTML = activeProject 
+    ? `<button class="btn btn-primary btn-sm" onclick="showNewTaskModal()">+ 新建任务</button>
+       <button class="btn btn-danger btn-sm" onclick="deleteProject()">🗑</button>`
+    : '';
+}
+
+async function deleteProject() {
+  if (!confirm('确定删除这个项目？所有任务将被删除。')) return;
+  await api(`/api/projects/${activeProject.id}`, {method:'DELETE'});
+  activeProject = null;
+  activeTask = null;
+  loadProjects();
+  renderTopbar();
+  renderContent();
+}
+
+// ── Content ──
+function renderContent() {
+  const ct = document.getElementById('content');
+  if (!activeProject) {
+    ct.innerHTML = `<div class="empty"><div class="icon">📁</div><h3>创建你的第一个项目</h3><p>项目是任务的容器，你可以在一个项目中管理多个研发需求</p></div>`;
+    return;
+  }
+  if (!activeTask) {
+    ct.innerHTML = `<div class="task-list"><div class="task-grid" id="task-grid"></div></div>`;
+    loadTasks();
+    return;
+  }
+  renderTaskView();
+}
+
+// ── Task List ──
+async function loadTasks() {
+  const tasks = await api(`/api/projects/${activeProject.id}/tasks`);
+  const grid = document.getElementById('task-grid');
+  if (!grid) return;
+  
+  grid.innerHTML = tasks.length === 0
+    ? `<div class="empty" style="grid-column:1/-1"><div class="icon">📝</div><h3>还没有任务</h3><p>点击「新建任务」开始一个新需求</p></div>`
+    : tasks.map(t => {
+        const prog = t.progress || {};
+        return `<div class="task-card" onclick="selectTask('${t.id}')">
+          <span class="tag ${t.use_pipeline?'pipeline':'free'}">${t.use_pipeline?'🔧 Pipeline':'💬 自由对话'}</span>
+          <h3>${esc(t.name)}</h3>
+          <div class="meta">${t.model_name} · ${t.created_at.slice(0,16)}</div>
+          ${t.use_pipeline ? `<div class="progress"><div class="progress-fill" style="width:${prog.percent}%"></div></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px;">${prog.completed}/${prog.total} 阶段</div>` : ''}
+        </div>`;
+      }).join('');
+}
+
+// ── Task View ──
+function renderTaskView() {
+  const ct = document.getElementById('content');
+  ct.innerHTML = `
+    <div class="chat-view">
+      ${activeTask.use_pipeline ? renderPipelineBar() : ''}
+      <div class="chat-messages" id="chat-msgs"></div>
+      <div class="chat-input-area">
+        <div class="chat-input-row">
+          ${activeTask.use_pipeline ? `<select class="stage-select" id="stage-select" onchange="selectStage(this.value)">
+            ${STAGES.map(s => `<option value="${s}" ${s===activeTask.current_stage?'selected':''}>${s}</option>`).join('')}
+            <option value="">— 自由对话 —</option>
+          </select>` : ''}
+          <textarea class="chat-input" id="chat-in" placeholder="输入消息..." rows="2"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+          <button class="btn btn-primary" onclick="sendMsg()">发送</button>
+        </div>
       </div>
     </div>`;
-  document.getElementById('top-title').textContent = '新建需求';
-  document.getElementById('top-meta').textContent = '填写 PRD，系统将自动编排全流程';
-  document.getElementById('top-actions').innerHTML = '';
-  clearRightPanel();
-}
-
-async function createSession() {
-  const prd = document.getElementById('prd-text').value.trim();
-  const name = document.getElementById('proj-name').value.trim() || '未命名需求';
-  const model = document.getElementById('proj-model').value.trim() || 'agnes-2.0-flash';
-  if (!prd) { alert('请填写 PRD 内容'); return; }
-  
-  try {
-    session = await api('/api/session/start', {method:'POST', body: JSON.stringify({prd_text: prd, project_name: name})});
-    window._currentModel = model;
-    document.getElementById('model-name').textContent = model;
-    showWorkspace();
-  } catch(e) { alert('创建失败: ' + e.message); }
-}
-
-// ── Workspace ──
-function showWorkspace() {
-  document.getElementById('top-title').textContent = session.name;
-  document.getElementById('top-meta').textContent = `🆔 ${session.project_id} · 🤖 ${session.model}`;
-  document.getElementById('top-actions').innerHTML = `
-    <button class="btn btn-secondary btn-sm" onclick="runCurrentStage()">▶ 执行当前阶段</button>
-    <button class="btn btn-primary btn-sm" onclick="autoRunAll()">⚡ 全量执行</button>`;
-  renderChat();
+  loadMessages();
   startPolling();
 }
 
-function renderChat() {
-  const ct = document.getElementById('content');
-  ct.innerHTML = `
-    <div class="chat-area">
-      <div class="chat-messages" id="chat-msgs"></div>
-      <div class="chat-input">
-        <textarea id="chat-in" placeholder="输入消息，按 Enter 发送..." rows="2"
-          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
-        <button class="btn btn-primary" onclick="sendMsg()">发送</button>
-      </div>
+const STAGES = ['learn','review','td','tasks','agent','test','automation'];
+
+function renderPipelineBar() {
+  const stages = activeTask.stages || {};
+  return `
+    <div class="pipeline-bar">
+      ${STAGES.map((s,i) => {
+        const st = stages[s]?.status || 'pending';
+        const cls = st==='completed'?'done':st==='running'?'running':st==='failed'?'failed':'';
+        return `<div class="pipeline-step ${cls}" title="${s}: ${st}" onclick="runStage('${s}')" style="cursor:${st==='pending'?'pointer':''}"></div>`;
+      }).join('')}
+    </div>
+    <div class="pipeline-labels">
+      ${STAGES.map(s => `<div class="pipeline-label ${s===activeTask.current_stage?'active':''}">${s}</div>`).join('')}
     </div>`;
-  loadChat();
 }
 
-async function loadChat() {
-  if (!session) return;
+async function loadMessages() {
   try {
-    const data = await api(`/api/session/chat/${currentStage}`);
-    const container = document.getElementById('chat-msgs');
-    if (!container) return;
-    container.innerHTML = data.messages.map(m => `
-      <div class="msg ${m.role}">
-        <div class="avatar">${m.role==='user'?'👤':'🤖'}</div>
-        <div class="bubble">${esc(m.content)}</div>
-      </div>`).join('');
-    container.scrollTop = container.scrollHeight;
-  } catch{}
+    const data = await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/chat?limit=50`);
+    const c = document.getElementById('chat-msgs');
+    if (!c) return;
+    c.innerHTML = data.messages.length === 0
+      ? `<div class="empty" style="padding:40px"><div class="icon">💬</div><h3>开始对话</h3><p>${activeTask.use_pipeline ? '选择左侧阶段执行流程，或直接输入消息自由对话' : '输入你的需求，AI 会帮你完成'}
+        </p></div>`
+      : data.messages.map(m => `
+        <div class="msg ${m.role}">
+          <div class="avatar">${m.role==='user'?'👤':m.role==='system'?'⚙️':'🤖'}</div>
+          <div class="bubble">${esc(m.content)}</div>
+        </div>`).join('');
+    c.scrollTop = c.scrollHeight;
+  } catch(e) { console.error(e); }
 }
 
 async function sendMsg() {
   const input = document.getElementById('chat-in');
   const msg = input.value.trim();
-  if (!msg || !session) return;
+  if (!msg || !activeTask) return;
   input.value = '';
   
-  // Optimistic UI
-  const container = document.getElementById('chat-msgs');
-  container.innerHTML += `<div class="msg user"><div class="avatar">👤</div><div class="bubble">${esc(msg)}</div></div>`;
-  container.scrollTop = container.scrollHeight;
+  const stage = document.getElementById('stage-select')?.value || '';
+  const c = document.getElementById('chat-msgs');
+  c.innerHTML += `<div class="msg user"><div class="avatar">👤</div><div class="bubble">${esc(msg)}</div></div>`;
+  c.scrollTop = c.scrollHeight;
   
   try {
-    const resp = await api('/api/session/chat', {method:'POST', body: JSON.stringify({message: msg, stage: currentStage})});
-    container.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble">${esc(resp.reply)}</div></div>`;
-    container.scrollTop = container.scrollHeight;
-    updateStageUI();
-    loadArtifacts();
-  } catch(e) {
-    container.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble" style="color:var(--err)">❌ ${esc(e.message)}</div></div>`;
-  }
-}
-
-// ── Stage Execution ──
-async function runCurrentStage() {
-  if (!session) return;
-  setLoading(true);
-  try {
-    const result = await api(`/api/session/run-stage/${currentStage}`, {method:'POST'});
-    addLog(`▶ ${currentStage}: ${result.status}`, result.status==='failed'?'err':'ok');
-    updateStageUI();
-    loadArtifacts();
-    if (result.status === 'failed') addLog(`❌ ${currentStage} failed: ${result.error}`, 'err');
-  } catch(e) {
-    addLog(`❌ ${currentStage}: ${e.message}`, 'err');
-  }
-  setLoading(false);
-}
-
-async function autoRunAll() {
-  if (!session) return;
-  for (const stage of ['learn','review','td','tasks','agent','test','automation']) {
-    currentStage = stage;
-    updateSidebar();
-    await runCurrentStage();
-    if (session?.stages?.[stage]?.status === 'failed') break;
-  }
-  currentStage = session?.current_stage || 'learn';
-  updateSidebar();
-}
-
-function setLoading(on) {
-  document.querySelectorAll('.btn').forEach(b => b.disabled = on);
-}
-
-// ── Sidebar ──
-function selectStage(stage) {
-  currentStage = stage;
-  updateSidebar();
-  renderChat();
-  loadArtifacts();
-}
-
-function updateSidebar() {
-  document.querySelectorAll('.stage-item').forEach(el => {
-    const s = el.dataset.stage;
-    el.classList.remove('active','done','err');
-    if (s === currentStage) el.classList.add('active');
-  });
-}
-
-function updateStageUI() {
-  // Update sidebar dots based on stage status
-  fetch('/api/session/stages').then(r=>r.json()).then(data => {
-    document.querySelectorAll('.stage-item').forEach(el => {
-      const s = el.dataset.stage;
-      el.classList.remove('done','err');
-      const st = data.stages[s]?.status;
-      if (st === 'completed') el.classList.add('done');
-      if (st === 'failed') el.classList.add('err');
+    const r = await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/chat`, {
+      method:'POST', body: JSON.stringify({message: msg, stage: stage||null})
     });
-    // Update progress in topbar
-    fetch('/api/session/progress').then(r=>r.json()).then(p => {
-      document.getElementById('top-meta').textContent = 
-        `🆔 ${session?.project_id} · 🤖 ${window._currentModel} · ${p.completed}/${p.total} 阶段 · 当前: ${p.current_stage}`;
-    });
-  }).catch(()=>{});
-}
-
-// ── Right Panel ──
-function switchPanel(tab) {
-  document.querySelectorAll('.panel-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(tab==='result'?'产物':'日志')));
-  document.getElementById('panel-result').classList.toggle('hidden', tab !== 'result');
-  document.getElementById('panel-logs').classList.toggle('hidden', tab !== 'logs');
-}
-
-async function loadArtifacts() {
-  const panel = document.getElementById('panel-result');
-  try {
-    const data = await api(`/api/artifacts/${currentStage}`);
-    const arts = data.artifacts;
-    if (!arts || Object.keys(arts).length === 0) {
-      panel.innerHTML = `<div class="empty"><div class="icon">📭</div><h3>暂无产物</h3><p>${currentStage} 阶段尚未执行</p></div>`;
-      return;
-    }
-    panel.innerHTML = Object.entries(arts).map(([name, content]) => `
-      <div class="artifact-card">
-        <h4>${esc(name)}</h4>
-        <pre>${esc(content.substring(0, 2000))}${content.length>2000?'...':''}</pre>
-      </div>`).join('');
+    c.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble">${esc(r.reply)}</div></div>`;
+    c.scrollTop = c.scrollHeight;
+    refreshTask();
   } catch(e) {
-    panel.innerHTML = `<div class="empty"><div class="icon">⚠️</div><h3>加载失败</h3><p>${esc(e.message)}</p></div>`;
+    c.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble" style="color:var(--err)">❌ ${esc(e.message)}</div></div>`;
   }
 }
 
-function addLog(text, type='') {
-  const el = document.getElementById('log-lines');
-  if (!el) return;
-  const cls = type==='err'?'log-err':type==='warn'?'log-warn':'log-ok';
-  el.innerHTML += `<span class="log-line ${cls}">[${now()}] ${esc(text)}</span>\n`;
-  el.scrollTop = el.scrollHeight;
+async function selectStage(s) {
+  if (!activeTask) return;
+  const t = {...activeTask, current_stage: s || activeTask.current_stage};
+  activeTask = t;
+  if (s && STAGES.includes(s)) {
+    const stages = await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/stages`);
+    activeTask.stages = stages.stages;
+    activeTask.current_stage = stages.current_stage;
+  }
+  renderTaskView();
 }
 
-function clearRightPanel() {
-  document.getElementById('panel-result').innerHTML = '<div class="empty"><div class="icon">📭</div><h3>等待执行</h3><p>选择阶段并运行后，产物将显示在这里</p></div>';
-  document.getElementById('log-lines').innerHTML = '';
+async function runStage(stage) {
+  if (!activeTask || !activeTask.use_pipeline) return;
+  try {
+    await api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/run-stage`, {
+      method:'POST', body: JSON.stringify({stage})
+    });
+    await refreshTask();
+  } catch(e) {
+    alert('执行失败: ' + e.message);
+  }
 }
 
-// ── Model Switch ──
-function switchModelPrompt() {
-  const model = prompt('输入模型名称:', window._currentModel || 'agnes-2.0-flash');
-  if (!model) return;
-  const key = prompt('API Key（留空保持当前）:', '');
-  const url = prompt('API URL（留空保持当前）:', '');
-  api('/api/session/switch-model', {method:'POST', body: JSON.stringify({model, api_key: key||undefined, api_url: url||undefined})})
-    .then(() => { window._currentModel = model; document.getElementById('model-name').textContent = model; })
-    .catch(e => alert('切换失败: ' + e.message));
+async function refreshTask() {
+  if (!activeProject || !activeTask) return;
+  try {
+    const [t, stages] = await Promise.all([
+      api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}`),
+      api(`/api/projects/${activeProject.id}/tasks/${activeTask.id}/stages`),
+    ]);
+    activeTask = {...t, stages: stages.stages, current_stage: stages.current_stage};
+    // Re-render without losing scroll
+    const chatEl = document.getElementById('chat-msgs');
+    const scrollPos = chatEl ? chatEl.scrollHeight - chatEl.scrollTop : 0;
+    renderTaskView();
+    if (chatEl) chatEl.scrollTop = scrollPos;
+  } catch(e) { console.error(e); }
 }
 
-// ── Polling ──
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    if (!session) return;
-    updateStageUI();
-    // Auto-refresh artifacts for running stages
-    const stages = await api('/api/session/stages').catch(()=>null);
-    if (stages?.stages?.[currentStage]?.status === 'completed') {
-      loadArtifacts();
-    }
+  pollTimer = setInterval(() => {
+    if (activeProject && activeTask) refreshTask().then(() => loadMessages());
   }, 3000);
 }
 
+// ── Modals ──
+function showNewProjectModal() { document.getElementById('modal-project').classList.remove('hidden'); }
+function showNewTaskModal() { document.getElementById('modal-task').classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+async function createProject() {
+  const name = document.getElementById('proj-name').value.trim();
+  const root = document.getElementById('proj-root').value.trim() || '/tmp/biz-delivery/projects';
+  if (!name) { alert('请填写项目名称'); return; }
+  const p = await api('/api/projects', {method:'POST', body: JSON.stringify({name, output_root: root})});
+  closeModal('modal-project');
+  document.getElementById('proj-name').value = '';
+  await loadProjects();
+  selectProject(p.id);
+}
+
+async function createTask() {
+  const name = document.getElementById('task-name').value.trim();
+  const prd = document.getElementById('task-prd').value.trim();
+  const profile = document.getElementById('task-profile').value.trim();
+  const model = document.getElementById('task-model').value.trim();
+  const usePipeline = document.getElementById('task-mode').value === 'true';
+  if (!name) { alert('请填写任务名称'); return; }
+  
+  const t = await api(`/api/projects/${activeProject.id}/tasks`, {
+    method:'POST', body: JSON.stringify({name, prd_text: prd, profile_path: profile, use_pipeline: usePipeline, model_name: model})
+  });
+  closeModal('modal-task');
+  document.getElementById('task-name').value = '';
+  document.getElementById('task-prd').value = '';
+  await loadProjects();
+  selectProject(activeProject.id);
+  selectTask(t.id);
+}
+
 // ── Init ──
-showNewSession();
+loadProjects();
 </script>
 </body>
 </html>
