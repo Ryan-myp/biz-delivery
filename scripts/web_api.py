@@ -23,6 +23,7 @@ from scripts.orchestrator import get_store, get_orchestrator, STAGE_ORDER
 from scripts.context_manager import MemorySystem, ContextWindow, TokenEstimator
 from scripts.mcp_adapter import MCPServer, register_builtin_tools, JSONRPC
 from scripts.multi_model_router import MultiModelRouter, RoutingStrategy
+from scripts.llm_wiki import RAGEngine
 
 
 def create_app():
@@ -494,6 +495,47 @@ def create_app():
     async def get_model_stats():
         """获取模型使用统计"""
         return model_router.get_all_stats()
+    
+    # ── LLM Wiki API ──
+    
+    @app.get("/api/wiki/stats")
+    async def get_wiki_stats():
+        """获取知识库统计"""
+        wiki_path = "/tmp/biz-delivery/wiki"
+        rag = RAGEngine(wiki_path)
+        return rag.stats()
+    
+    @app.post("/api/wiki/build")
+    async def build_wiki(req: dict):
+        """构建知识库"""
+        repo_path = req.get("repo_path", ".")
+        language = req.get("language", "python")
+        wiki_path = "/tmp/biz-delivery/wiki"
+        
+        rag = RAGEngine(wiki_path)
+        result = rag.build_from_repo(repo_path, language)
+        return result
+    
+    @app.post("/api/wiki/query")
+    async def query_wiki(req: dict):
+        """查询知识库"""
+        question = req.get("question", "")
+        top_k = req.get("top_k", 5)
+        wiki_path = "/tmp/biz-delivery/wiki"
+        
+        rag = RAGEngine(wiki_path)
+        result = rag.query(question, top_k=top_k)
+        return result
+    
+    @app.get("/api/wiki/entries/{entry_id}")
+    async def get_wiki_entry(entry_id: str):
+        """获取知识条目详情"""
+        wiki_path = "/tmp/biz-delivery/wiki"
+        rag = RAGEngine(wiki_path)
+        entry = rag.get_entity(entry_id)
+        if not entry:
+            raise HTTPException(404, "Entry not found")
+        return entry
     
     @app.get("/")
     async def index():

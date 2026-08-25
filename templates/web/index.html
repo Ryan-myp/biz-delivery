@@ -209,6 +209,7 @@
         <button class="panel-tab" onclick="switchRightTab('context')">📊 上下文</button>
         <button class="panel-tab" onclick="switchRightTab('mcp')">🔌 MCP</button>
         <button class="panel-tab" onclick="switchRightTab('models')">🤖 模型</button>
+        <button class="panel-tab" onclick="switchRightTab('wiki')">📚 Wiki</button>
       </div>
     </div>
     <div class="panel-body" id="panel-body">
@@ -640,7 +641,8 @@ function switchRightTab(tab) {
       (tab === 'memory' && i === 1) || 
       (tab === 'context' && i === 2) ||
       (tab === 'mcp' && i === 3) ||
-      (tab === 'models' && i === 4)
+      (tab === 'models' && i === 4) ||
+      (tab === 'wiki' && i === 5)
     );
   });
   
@@ -655,6 +657,8 @@ function switchRightTab(tab) {
     loadMCPPanel();
   } else if (tab === 'models') {
     loadModelsPanel();
+  } else if (tab === 'wiki') {
+    loadWikiPanel();
   }
 }
 
@@ -790,6 +794,118 @@ async function changeStrategy(strategy) {
   } catch(e) {
     alert('策略切换失败: ' + e.message);
   }
+}
+
+// ═══ Wiki Panel ═══
+async function loadWikiPanel() {
+  const panel = document.getElementById('panel-body');
+  
+  try {
+    const stats = await api('/api/wiki/stats');
+    
+    let html = `
+      <div class="wiki-panel">
+        <div class="wiki-header">
+          <span>📚 LLM Wiki 知识库</span>
+          <span class="wiki-badge">${stats.total_entries || 0} 条目</span>
+        </div>
+        
+        <div class="wiki-stats" style="margin-top:12px;">
+          <div class="info-row">
+            <span class="info-label">知识节点</span>
+            <span class="info-value">${stats.total_nodes || 0}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">索引大小</span>
+            <span class="info-value">${stats.index_size || 0}</span>
+          </div>
+        </div>
+        
+        <div style="margin-top:16px;">
+          <div class="section-title">🔍 查询知识库</div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <input type="text" id="wiki-query" placeholder="输入问题..." 
+              style="flex:1;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;">
+            <button class="btn btn-sm" onclick="searchWiki()">查询</button>
+          </div>
+          <div id="wiki-results" style="margin-top:12px;"></div>
+        </div>
+        
+        <div style="margin-top:20px;">
+          <div class="section-title">⚙️ 重建知识库</div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <select id="wiki-lang" style="padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;">
+              <option value="python">Python</option>
+              <option value="go">Go</option>
+              <option value="java">Java</option>
+            </select>
+            <button class="btn btn-sm" onclick="buildWiki()">🔄 重建</button>
+          </div>
+          <p style="font-size:11px;color:var(--text3);margin-top:8px;">从当前项目代码重新构建知识库</p>
+        </div>
+      </div>
+    `;
+    
+    panel.innerHTML = html;
+  } catch(e) {
+    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
+  }
+}
+
+async function searchWiki() {
+  const query = document.getElementById('wiki-query').value.trim();
+  if (!query) return;
+  
+  const resultsDiv = document.getElementById('wiki-results');
+  resultsDiv.innerHTML = '<div style="color:var(--text3);font-size:11px;">搜索中...</div>';
+  
+  try {
+    const result = await api('/api/wiki/query', {
+      method: 'POST',
+      body: JSON.stringify({question: query, top_k: 5})
+    });
+    
+    if (result.results.length === 0) {
+      resultsDiv.innerHTML = '<div style="color:var(--text3);font-size:11px;margin-top:8px;">未找到相关知识点</div>';
+      return;
+    }
+    
+    let html = '';
+    for (const r of result.results) {
+      // 查找对应的知识条目
+      const entry = result.context.split('[').find(s => s.includes(r.id));
+      html += `
+        <div class="wiki-result-item" style="padding:8px;margin-bottom:6px;background:var(--bg);border-radius:4px;border-left:3px solid var(--primary);">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;color:var(--primary);font-weight:600;">${r.id}</span>
+            <span style="font-size:10px;color:var(--text3);">score: ${r.score.toFixed(3)}</span>
+          </div>
+        </div>
+      `;
+    }
+    
+    resultsDiv.innerHTML = html || '<div style="color:var(--text3);font-size:11px;">未找到相关知识点</div>';
+  } catch(e) {
+    resultsDiv.innerHTML = `<div style="color:var(--err);font-size:11px;margin-top:8px;">搜索失败: ${esc(e.message)}</div>`;
+  }
+}
+
+async function buildWiki() {
+  const lang = document.getElementById('wiki-lang').value;
+  setLoading(true);
+  
+  try {
+    const result = await api('/api/wiki/build', {
+      method: 'POST',
+      body: JSON.stringify({repo_path: '.', language: lang})
+    });
+    
+    alert(`✅ 知识库重建完成！\n- 知识条目: ${result.total_entries}\n- 源文件数: ${result.total_files}`);
+    loadWikiPanel();
+  } catch(e) {
+    alert('重建失败: ' + e.message);
+  }
+  setLoading(false);
 }
 
 async function loadMemoryPanel() {
