@@ -1036,8 +1036,6 @@ async function switchRightTab(tab) {
     );
   });
   const panel = document.getElementById('panel-body');
-  // Clear panel before loading new content
-  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:12px;"><span class="loading"></span></div>';
   if (tab==='workflow') renderWorkflow();
   else if (tab==='memory') await loadMemoryPanel();
   else if (tab==='context') await loadContextPanel();
@@ -1221,6 +1219,7 @@ async function loadWikiPanel() {
       <div class="wiki-header">
         <span>📚 LLM Wiki</span>
         <span class="wiki-badge">${stats.total_entries||0} 条目</span>
+        <button class="btn-sm" onclick="showAddWikiEntryModal()" style="margin-left:auto;">+ 添加</button>
       </div>
       <div style="margin-top:12px;">
         <div class="info-row"><span class="info-label">知识节点</span><span class="info-value">${stats.total_nodes||0}</span></div>
@@ -1305,36 +1304,193 @@ async function deleteTask() {
   loadTaskList();
 }
 
-// ═══ New Task Modal ═══
-function showNewTaskModal() {
-  const name = prompt('任务名称:');
-  if (!name) return;
-  const prd = prompt('PRD 内容（可选）:','')||'';
-  const profile = prompt('Profile（default/test-multi-repo/ad-platform）:','default')||'default';
-  setLoading(true);
-  api('/api/projects', {method:'POST', body: JSON.stringify({name:'默认项目'})})
-    .then(async proj => {
-      await api(`/api/projects/${proj.id}/tasks`, {method:'POST', body: JSON.stringify({name,prd_text:prd,profile_path:`profiles/${profile}.json`})});
-      await loadTaskList();
-    })
-    .catch(e => alert('创建失败: '+e.message))
-    .finally(()=>setLoading(false));
+// ═══ Modal System ═══
+function showModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
-function showAddMemoryModal() {
-  const content = prompt('输入记忆内容:');
-  if (!content) return;
-  const type = prompt('类型 (preference/fact/decision/context):','fact')||'fact';
-  api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory`, {
-    method:'POST', body: JSON.stringify({type,content,tags:[]})
-  }).then(()=>loadMemoryPanel()).catch(e=>alert('添加失败: '+e.message));
+function hideModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+// Close modal on overlay click
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'modal-overlay') hideModal();
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideModal();
+});
+
+async function showNewTaskModal() {
+  showModal(`
+    <div class="modal-title">🚀 新建任务</div>
+    <div class="modal-field">
+      <label class="modal-label">任务名称 *</label>
+      <input type="text" class="modal-input" id="modal-task-name" placeholder="输入任务名称..." autofocus>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">PRD 内容（可选）</label>
+      <textarea class="modal-input modal-textarea" id="modal-prd" placeholder="输入 PRD 需求描述..."></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Profile</label>
+      <select class="modal-select" id="modal-profile">
+        <option value="default">default - 通用模板</option>
+        <option value="test-multi-repo">test-multi-repo - 多仓库测试</option>
+        <option value="ad-platform">ad-platform - 广告平台</option>
+        <option value="conc">conc - Concise</option>
+        <option value="eino">eino - Eino</option>
+        <option value="index">index - 索引</option>
+        <option value="multi-service-ad-platform">multi-service-ad-platform</option>
+        <option value="sponge">sponge - 海绵</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="hideModal()">取消</button>
+      <button class="modal-btn primary" onclick="confirmNewTask()">创建任务</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('modal-task-name')?.focus(), 50);
+}
+
+async function confirmNewTask() {
+  const name = document.getElementById('modal-task-name').value.trim();
+  const prd = document.getElementById('modal-prd').value.trim();
+  const profile = document.getElementById('modal-profile').value;
+  
+  if (!name) {
+    alert('请输入任务名称');
+    return;
+  }
+  
+  setLoading(true);
+  hideModal();
+  
+  try {
+    let projectId = window._currentProjectId;
+    if (!projectId) {
+      const proj = await api('/api/projects', {method:'POST', body: JSON.stringify({name:'默认项目'})});
+      projectId = proj.id;
+    }
+    
+    await api(`/api/projects/${projectId}/tasks`, {
+      method:'POST',
+      body: JSON.stringify({name, prd_text:prd, profile_path:`profiles/${profile}.json`})
+    });
+    
+    await loadTaskList();
+  } catch(e) {
+    alert('创建失败: '+e.message);
+  }
+  setLoading(false);
+}
+
+async function showAddMemoryModal() {
+  showModal(`
+    <div class="modal-title">💾 添加记忆</div>
+    <div class="modal-field">
+      <label class="modal-label">类型</label>
+      <select class="modal-select" id="modal-memory-type">
+        <option value="preference">偏好 (preference)</option>
+        <option value="fact" selected>事实 (fact)</option>
+        <option value="decision">决策 (decision)</option>
+        <option value="context">上下文 (context)</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">内容 *</label>
+      <textarea class="modal-input modal-textarea" id="modal-memory-content" placeholder="输入记忆内容..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="hideModal()">取消</button>
+      <button class="modal-btn primary" onclick="confirmAddMemory()">保存</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('modal-memory-content')?.focus(), 50);
+}
+
+async function confirmAddMemory() {
+  const type = document.getElementById('modal-memory-type').value;
+  const content = document.getElementById('modal-memory-content').value.trim();
+  
+  if (!content) {
+    alert('请输入记忆内容');
+    return;
+  }
+  
+  hideModal();
+  try {
+    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory`, {
+      method:'POST', body: JSON.stringify({type,content,tags:[]})
+    });
+    loadMemoryPanel();
+  } catch(e) {
+    alert('添加失败: '+e.message);
+  }
+}
+
+async function showAddWikiEntryModal() {
+  showModal(`
+    <div class="modal-title">📝 添加知识条目</div>
+    <div class="modal-field">
+      <label class="modal-label">类型</label>
+      <select class="modal-select" id="modal-wiki-type">
+        <option value="function">Function - 函数</option>
+        <option value="class">Class - 类</option>
+        <option value="interface">Interface - 接口</option>
+        <option value="endpoint">Endpoint - API 端点</option>
+        <option value="concept">Concept - 概念</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">名称 *</label>
+      <input type="text" class="modal-input" id="modal-wiki-name" placeholder="输入名称...">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">描述 *</label>
+      <textarea class="modal-input modal-textarea" id="modal-wiki-desc" placeholder="输入详细描述..."></textarea>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">标签（逗号分隔）</label>
+      <input type="text" class="modal-input" id="modal-wiki-tags" placeholder="例如: api, handler, auth">
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="hideModal()">取消</button>
+      <button class="modal-btn primary" onclick="confirmAddWikiEntry()">保存</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('modal-wiki-name')?.focus(), 50);
+}
+
+async function confirmAddWikiEntry() {
+  const type = document.getElementById('modal-wiki-type').value;
+  const name = document.getElementById('modal-wiki-name').value.trim();
+  const desc = document.getElementById('modal-wiki-desc').value.trim();
+  const tags = document.getElementById('modal-wiki-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  
+  if (!name || !desc) {
+    alert('请填写名称和描述');
+    return;
+  }
+  
+  hideModal();
+  try {
+    await api('/api/wiki/entries', {
+      method:'POST',
+      body: JSON.stringify({type, name, content:desc, tags})
+    });
+    loadWikiPanel();
+  } catch(e) {
+    alert('添加失败: '+e.message);
+  }
 }
 </script>
-</body>
-</html>
- body: JSON.stringify({type,content,tags:[]})
-  }).then(()=>loadMemoryPanel()).catch(e=>alert('添加失败: '+e.message));
-}
-</script>
+  <!-- ═══ Modal Container ═══ -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal" id="modal-content"></div>
+  </div>
 </body>
 </html>
