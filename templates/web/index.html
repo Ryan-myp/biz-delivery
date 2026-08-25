@@ -3,295 +3,880 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>biz-delivery v3.0</title>
+  <title>biz-delivery v4.2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f5f6f8; --surface: #ffffff; --surface2: #f0f2f5;
-      --border: #e2e6eb; --border2: #d0d5dd;
-      --text: #1a1d23; --text2: #5f6b7a; --text3: #8b95a5;
-      --primary: #4f5ff0; --primary-light: #EEF0FF; --primary-dark: #3a48c4;
-      --success: #16a34a; --success-bg: #ecfdf5;
-      --warn: #d97706; --warn-bg: #fffbeb;
-      --err: #dc2626; --err-bg: #fef2f2;
-      --r: 10px; --r-sm: 6px;
-      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --bg-hover: #30363d;
+      --border: #30363d;
+      --border-light: #484f58;
+      --text-primary: #f0f6fc;
+      --text-secondary: #c9d1d9;
+      --text-tertiary: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79b8ff;
+      --success: #3fb950;
+      --warn: #d29922;
+      --error: #f85149;
+      --purple: #a371f7;
+      --cyan: #39d353;
+      --shadow: 0 8px 32px rgba(0,0,0,0.4);
+      --radius: 8px;
+      --radius-sm: 4px;
     }
+    
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, 'PingFang SC', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; font-size: 13px; }
-
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      overflow: hidden;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    
     /* ── Layout ── */
-    .app { display: grid; grid-template-columns: 220px 1fr 300px; height: 100vh; }
-
-    /* ── Left Sidebar ── */
-    .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-    .sidebar-header { padding: 14px 16px; border-bottom: 1px solid var(--border); }
-    .sidebar-header .logo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--primary); }
-    .sidebar-header .logo span { font-size: 18px; }
-    .sidebar-header .ver { font-size: 11px; color: var(--text3); margin-top: 2px; padding-left: 26px; }
-    .sidebar-body { flex: 1; overflow-y: auto; }
-    .sidebar-section { padding: 10px 16px 4px; font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
-    .new-btn { margin: 8px 12px; padding: 8px; border-radius: var(--r-sm); border: 1px dashed var(--border2); background: none; cursor: pointer; color: var(--text2); font-size: 12px; width: calc(100% - 24px); text-align: center; transition: all 0.15s; }
-    .new-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
-
-    /* Task items */
-    .task-item { padding: 10px 16px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.1s; }
-    .task-item:hover { background: var(--surface2); }
-    .task-item.active { background: var(--primary-light); border-left-color: var(--primary); }
-    .task-item .name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .task-item .meta { font-size: 11px; color: var(--text3); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
-    .task-item .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .task-item .status-dot.running { background: var(--warn); animation: pulse 1.5s infinite; }
-    .task-item .status-dot.done { background: var(--success); }
-    .task-item .status-dot.idle { background: var(--border2); }
+    .app {
+      display: grid;
+      grid-template-columns: 240px 1fr 320px;
+      height: 100vh;
+      gap: 1px;
+      background: var(--border);
+    }
+    
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--bg-secondary);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .sidebar-header {
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    
+    .logo-version {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      font-weight: 500;
+      margin-left: auto;
+      background: var(--bg-tertiary);
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+    
+    .sidebar-actions {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .btn-new {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    
+    .btn-new:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    
+    .sidebar-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    
+    .sidebar-body::-webkit-scrollbar { width: 4px; }
+    .sidebar-body::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+    
+    .project-group { margin-bottom: 8px; }
+    
+    .project-header {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .task-item {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.1s;
+      margin-bottom: 2px;
+    }
+    
+    .task-item:hover { background: var(--bg-hover); }
+    .task-item.active { background: var(--bg-tertiary); border-left: 2px solid var(--accent); }
+    
+    .task-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .task-meta {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: 3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .task-status {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    
+    .task-status.running { background: var(--warn); animation: pulse 1.5s infinite; }
+    .task-status.done { background: var(--success); }
+    .task-status.idle { background: var(--text-tertiary); }
+    
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-    /* ── Center Main ── */
-    .main { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
-    .topbar { padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-    .topbar-left h2 { font-size: 15px; font-weight: 600; }
-    .topbar-left .sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
-    .topbar-right { display: flex; gap: 8px; align-items: center; }
-    .model-badge { font-size: 11px; color: var(--text2); background: var(--surface2); padding: 3px 8px; border-radius: 10px; border: 1px solid var(--border); }
-
+    
+    /* ── Main Content ── */
+    .main {
+      background: var(--bg-primary);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .topbar {
+      padding: 12px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    
+    .topbar-left { display: flex; flex-direction: column; gap: 2px; }
+    .topbar-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .topbar-sub { font-size: 11px; color: var(--text-tertiary); }
+    
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .model-badge {
+      font-size: 11px;
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
+      padding: 4px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .btn {
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .btn:hover { border-color: var(--border-light); color: var(--text-primary); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { color: var(--error); }
+    .btn-danger:hover { border-color: var(--error); background: rgba(248,81,73,0.1); }
+    
+    /* ── Stage Tabs ── */
+    .stage-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 12px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    
+    .stage-tab {
+      padding: 6px 14px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-tertiary);
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    
+    .stage-tab:hover { border-color: var(--accent); color: var(--accent); }
+    .stage-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .stage-tab.done { background: rgba(63,185,80,0.15); color: var(--success); border-color: var(--success); }
+    
     /* ── Chat Area ── */
-    .chat-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    .chat-messages { flex: 1; overflow-y: auto; padding: 20px; }
-    .msg { margin-bottom: 16px; display: flex; gap: 10px; max-width: 85%; }
+    .chat-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    
+    .chat-messages::-webkit-scrollbar { width: 6px; }
+    .chat-messages::-webkit-scrollbar-track { background: transparent; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    
+    .msg {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 12px;
+      max-width: 85%;
+      animation: fadeIn 0.2s ease;
+    }
+    
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    
     .msg.user { flex-direction: row-reverse; margin-left: auto; }
     .msg.system { max-width: 100%; justify-content: center; }
-    .avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-    .msg.assistant .avatar { background: var(--primary); color: white; }
-    .msg.user .avatar { background: var(--surface2); border: 1px solid var(--border); }
-    .msg.system .avatar { background: none; font-size: 12px; }
-    .bubble { padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
-    .msg.assistant .bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
-    .msg.user .bubble { background: var(--primary); color: white; border-bottom-right-radius: 4px; }
-    .msg.system .bubble { background: none; border: none; color: var(--text3); font-size: 11px; text-align: center; padding: 4px; }
-    .bubble .stage-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-bottom: 6px; background: var(--primary-light); color: var(--primary); }
-    .bubble .action-row { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
-    .bubble .action-btn { font-size: 11px; padding: 4px 10px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; transition: all 0.1s; }
-    .bubble .action-btn:hover { border-color: var(--primary); color: var(--primary); }
-    .bubble .action-btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
-
-    /* Empty state */
-    .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
-    .empty-state .big-icon { font-size: 48px; margin-bottom: 16px; }
-    .empty-state h3 { font-size: 16px; color: var(--text2); margin-bottom: 6px; }
-    .empty-state p { font-size: 12px; }
-
+    
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    
+    .msg.assistant .avatar {
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      box-shadow: 0 2px 8px rgba(88,166,255,0.3);
+    }
+    
+    .msg.user .avatar { background: var(--bg-tertiary); border: 1px solid var(--border); }
+    .msg.system .avatar { background: none; font-size: 11px; color: var(--text-tertiary); }
+    
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    
+    .msg.assistant .bubble {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    
+    .msg.user .bubble {
+      background: var(--accent);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .msg.system .bubble {
+      background: none;
+      border: none;
+      color: var(--text-tertiary);
+      font-size: 11px;
+      text-align: center;
+      padding: 4px;
+    }
+    
+    .bubble .stage-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      background: rgba(88,166,255,0.15);
+      color: var(--accent);
+    }
+    
+    .bubble .action-row {
+      margin-top: 12px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    
+    .bubble .action-btn {
+      font-size: 11px;
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    
+    .bubble .action-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .bubble .action-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-tertiary);
+    }
+    
+    .empty-state .big-icon {
+      font-size: 56px;
+      margin-bottom: 20px;
+      opacity: 0.6;
+    }
+    
+    .empty-state h3 {
+      font-size: 18px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    
+    .empty-state p { font-size: 13px; }
+    
     /* ── Input Area ── */
-    .chat-input-area { padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); }
-    .stage-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
-    .stage-tab { padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: none; color: var(--text2); transition: all 0.1s; }
-    .stage-tab:hover { border-color: var(--primary); color: var(--primary); }
-    .stage-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
-    .stage-tab.done { background: var(--success-bg); color: var(--success); border-color: #bbf7d0; }
-    .input-row { display: flex; gap: 8px; align-items: flex-end; }
-    .chat-input { flex: 1; border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; font-size: 13px; resize: none; min-height: 42px; max-height: 120px; font-family: inherit; background: var(--bg); color: var(--text); line-height: 1.5; }
-    .chat-input:focus { outline: none; border-color: var(--primary); background: var(--surface); }
-    .send-btn { width: 42px; height: 42px; border-radius: var(--r); border: none; background: var(--primary); color: white; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
-    .send-btn:hover { background: var(--primary-dark); }
-    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
+    .chat-input-area {
+      padding: 16px 20px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+    }
+    
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    
+    .chat-input {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 13px;
+      resize: none;
+      min-height: 44px;
+      max-height: 140px;
+      font-family: inherit;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.5;
+      transition: all 0.15s;
+    }
+    
+    .chat-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(88,166,255,0.1);
+    }
+    
+    .send-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius);
+      border: none;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    
+    .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    
     /* ── Right Panel ── */
-    .right-panel { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-    .panel-header { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
-    .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
-
-    /* Workflow diagram */
-    .workflow { display: flex; flex-direction: column; gap: 0; }
-    .wf-node { display: flex; align-items: flex-start; gap: 10px; position: relative; }
-    .wf-node::before { content: ''; position: absolute; left: 13px; top: 28px; bottom: -4px; width: 2px; background: var(--border); }
-    .wf-node:last-child::before { display: none; }
-    .wf-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; border: 2px solid var(--border); background: var(--surface); z-index: 1; transition: all 0.2s; }
-    .wf-node.done .wf-dot { background: var(--success); border-color: var(--success); }
-    .wf-node.running .wf-dot { background: var(--warn); border-color: var(--warn); animation: pulse 1.5s infinite; }
-    .wf-node.current .wf-dot { border-color: var(--primary); background: var(--primary-light); }
-    .wf-node.failed .wf-dot { background: var(--err); border-color: var(--err); }
-    .wf-info { flex: 1; padding-top: 3px; }
-    .wf-name { font-size: 12px; font-weight: 500; color: var(--text); }
-    .wf-desc { font-size: 11px; color: var(--text3); margin-top: 1px; }
-    .wf-status { font-size: 10px; font-weight: 600; margin-top: 3px; }
-    .wf-status.done { color: var(--success); }
-    .wf-status.running { color: var(--warn); }
-    .wf-status.failed { color: var(--err); }
-    .wf-status.pending { color: var(--text3); }
-
-    /* Artifacts */
-    .artifact-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-    .artifact-section h4 { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-    .artifact-item { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px; margin-bottom: 6px; }
-    .artifact-item .title { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
-    .artifact-item pre { font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; font-family: 'Monaco', monospace; line-height: 1.5; }
-
+    .right-panel {
+      background: var(--bg-secondary);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .panel-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .panel-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    
+    .panel-tab {
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: var(--text-tertiary);
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    
+    .panel-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .panel-tab.active { background: var(--accent); color: white; }
+    
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-track { background: transparent; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+    
+    /* ── Workflow Panel ── */
+    .workflow-stage {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    
+    .workflow-stage:hover { background: var(--bg-hover); }
+    .workflow-stage.active { background: rgba(88,166,255,0.1); border-left: 2px solid var(--accent); }
+    .workflow-stage.done { opacity: 0.7; }
+    
+    .stage-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    
+    .workflow-stage.pending .stage-icon { background: var(--bg-tertiary); color: var(--text-tertiary); }
+    .workflow-stage.running .stage-icon { background: rgba(210,153,34,0.2); color: var(--warn); animation: spin 1s linear infinite; }
+    .workflow-stage.done .stage-icon { background: rgba(63,185,80,0.2); color: var(--success); }
+    
+    @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+    
+    .stage-info { flex: 1; min-width: 0; }
+    .stage-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+    .stage-desc { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+    
+    .stage-arrow { color: var(--text-tertiary); font-size: 10px; }
+    
+    /* ── Memory Panel ── */
+    .memory-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .memory-stats { display: flex; gap: 12px; }
+    .stat { font-size: 11px; color: var(--text-tertiary); display: flex; align-items: center; gap: 4px; }
+    
+    .memory-item {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      background: var(--bg-tertiary);
+      border-left: 3px solid var(--accent);
+    }
+    
+    .memory-item.preference { border-left-color: var(--purple); }
+    .memory-item.fact { border-left-color: var(--success); }
+    .memory-item.decision { border-left-color: var(--warn); }
+    .memory-item.context { border-left-color: var(--text-tertiary); }
+    
+    .memory-type {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    
+    .memory-item.preference .memory-type { color: var(--purple); }
+    .memory-item.fact .memory-type { color: var(--success); }
+    .memory-item.decision .memory-type { color: var(--warn); }
+    .memory-item.context .memory-type { color: var(--text-tertiary); }
+    
+    .memory-content { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+    .memory-tags { font-size: 10px; color: var(--text-tertiary); margin-top: 6px; }
+    
+    /* ── Context Panel ── */
+    .token-meter {
+      background: var(--bg-tertiary);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    
+    .meter-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-bottom: 8px;
+    }
+    
+    .meter-bar {
+      height: 6px;
+      background: var(--bg-primary);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .meter-fill {
+      height: 100%;
+      background: var(--success);
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    
+    .meter-fill.warn { background: var(--warn); }
+    .meter-fill.error { background: var(--error); }
+    
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: var(--text-tertiary); }
+    .info-value { color: var(--text-primary); font-weight: 500; }
+    
+    /* ── MCP Panel ── */
+    .mcp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .mcp-server { font-size: 12px; font-weight: 600; color: var(--accent); }
+    .mcp-badge { font-size: 10px; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 10px; color: var(--text-tertiary); }
+    
+    .mcp-tool-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+    }
+    
+    .mcp-tool-name { font-size: 12px; font-weight: 500; color: var(--text-primary); flex: 1; }
+    .mcp-tool-desc { font-size: 11px; color: var(--text-tertiary); }
+    
+    /* ── Models Panel ── */
+    .models-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .model-select {
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 11px;
+    }
+    
+    .model-item {
+      padding: 12px;
+      background: var(--bg-tertiary);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+    }
+    
+    .model-info { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .model-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .model-provider { font-size: 11px; color: var(--text-tertiary); }
+    .model-cost { font-size: 11px; color: var(--success); }
+    
+    .stat-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+    
+    .stat-label { color: var(--text-tertiary); width: 30px; }
+    .stat-bar { flex: 1; height: 4px; background: var(--bg-primary); border-radius: 2px; overflow: hidden; }
+    .stat-fill { height: 100%; border-radius: 2px; }
+    .stat-val { color: var(--text-secondary); width: 24px; text-align: right; }
+    
+    /* ── Wiki Panel ── */
+    .wiki-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .wiki-badge { font-size: 10px; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 10px; color: var(--text-tertiary); }
+    
+    .wiki-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    
+    .wiki-input {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+    
+    .wiki-input:focus { outline: none; border-color: var(--accent); }
+    
+    .wiki-result-item {
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+      border-left: 2px solid var(--accent);
+    }
+    
+    .wiki-result-id { font-size: 10px; color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+    .wiki-result-score { font-size: 10px; color: var(--text-tertiary); }
+    
     /* ── Buttons ── */
-    .btn { padding: 7px 14px; border-radius: var(--r-sm); font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px; }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-primary:hover { background: var(--primary-dark); }
-    .btn-secondary { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
-    .btn-secondary:hover { background: var(--border); }
-    .btn-sm { padding: 4px 10px; font-size: 11px; }
-    .btn-danger { background: var(--err-bg); color: var(--err); border: 1px solid #fecaca; }
-    .btn-danger:hover { background: #fee2e2; }
-
-    /* ── Modal ── */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
-    .modal { background: var(--surface); border-radius: 14px; width: 500px; max-width: 92vw; box-shadow: var(--shadow-md); }
-    .modal-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-    .modal-header h3 { font-size: 15px; font-weight: 600; }
-    .modal-close { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; padding: 4px; }
-    .modal-close:hover { color: var(--text); }
-    .modal-body { padding: 20px; }
-    .field { margin-bottom: 14px; }
-    .field label { display: block; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 5px; }
-    .field input, .field textarea, .field select { width: 100%; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 9px 12px; font-size: 13px; background: var(--bg); color: var(--text); font-family: inherit; }
-    .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--primary); background: var(--surface); }
-    .field textarea { min-height: 90px; resize: vertical; }
-    .field-row { display: flex; gap: 10px; }
-    .field-row .field { flex: 1; }
-    .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger:hover { border-color: var(--error); color: var(--error); }
+    
+    /* ── Utility ── */
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    
+    .empty-memory, .empty-state-sm {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-tertiary);
+      font-size: 12px;
+    }
+    
     .hidden { display: none !important; }
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+    
+    /* ── Loading ── */
+    .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    
+    /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      .app { grid-template-columns: 200px 1fr 280px; }
+    }
+    
+    @media (max-width: 768px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar, .right-panel { display: none; }
+    }
   </style>
 </head>
 <body>
-<div class="app">
-  <!-- ═══ Left Sidebar ═══ -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="logo"><span>🚀</span> biz-delivery</div>
-      <div class="ver">v3.0 · 智能交付平台</div>
-    </div>
-    <div class="sidebar-body" id="sidebar-body">
-      <div class="sidebar-section">任务</div>
-      <div id="task-list"></div>
-    </div>
-    <button class="new-btn" onclick="showNewTaskModal()">+ 新建任务</button>
-  </aside>
-
-  <!-- ═══ Center ═══ -->
-  <main class="main">
-    <div class="topbar">
-      <div class="topbar-left">
-        <h2 id="top-title">新建任务</h2>
-        <div class="sub" id="top-sub">在左侧创建或选择任务开始</div>
-      </div>
-      <div class="topbar-right" id="top-actions"></div>
-    </div>
-    <div class="chat-wrap" id="chat-wrap">
-      <div class="empty-state" id="empty-state">
-        <div class="big-icon">💬</div>
-        <h3>欢迎使用 biz-delivery</h3>
-        <p>新建任务，开启你的智能研发流程</p>
-      </div>
-      <div class="chat-messages hidden" id="chat-messages"></div>
-      <div class="chat-input-area hidden" id="chat-input-area">
-        <div class="stage-tabs" id="stage-tabs"></div>
-        <div class="input-row">
-          <textarea class="chat-input" id="chat-in" placeholder="输入消息...（Enter 发送，Shift+Enter 换行）" rows="2"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
-          <button class="send-btn" id="send-btn" onclick="sendMsg()">↑</button>
+  <div class="app">
+    <!-- ═══ Left Sidebar ═══ -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">🚀</div>
+          <span>biz-delivery</span>
+          <span class="logo-version">v4.2</span>
         </div>
       </div>
-    </div>
-  </main>
+      <div class="sidebar-actions">
+        <button class="btn-new" onclick="showNewTaskModal()">
+          <span>+</span> 新建任务
+        </button>
+      </div>
+      <div class="sidebar-body" id="task-list"></div>
+    </aside>
 
-  <!-- ═══ Right Panel ═══ -->
-  <aside class="right-panel" id="right-panel">
-    <div class="panel-header">
+    <!-- ═══ Main Content ═══ -->
+    <main class="main">
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="topbar-title" id="top-title">新建任务</div>
+          <div class="topbar-sub" id="top-sub">在左侧创建或选择任务开始</div>
+        </div>
+        <div class="topbar-right" id="top-actions"></div>
+      </div>
+      
+      <div class="stage-tabs" id="stage-tabs"></div>
+      
+      <div class="chat-wrap">
+        <div class="chat-messages" id="chat-messages">
+          <div class="empty-state">
+            <div class="big-icon">💬</div>
+            <h3>开始智能交付</h3>
+            <p>选择一个任务，或与 AI 助手对话</p>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <div class="input-row">
+            <textarea class="chat-input" id="chat-in" placeholder="输入消息..." rows="1"></textarea>
+            <button class="send-btn" id="send-btn" onclick="sendMsg()">➤</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ═══ Right Panel ═══ -->
+    <aside class="right-panel">
+      <div class="panel-header">
+        <span id="panel-title">详情</span>
+      </div>
       <div class="panel-tabs">
         <button class="panel-tab active" onclick="switchRightTab('workflow')">流程</button>
-        <button class="panel-tab" onclick="switchRightTab('memory')">🧠 记忆</button>
-        <button class="panel-tab" onclick="switchRightTab('context')">📊 上下文</button>
-        <button class="panel-tab" onclick="switchRightTab('mcp')">🔌 MCP</button>
-        <button class="panel-tab" onclick="switchRightTab('models')">🤖 模型</button>
-        <button class="panel-tab" onclick="switchRightTab('wiki')">📚 Wiki</button>
+        <button class="panel-tab" onclick="switchRightTab('memory')">记忆</button>
+        <button class="panel-tab" onclick="switchRightTab('context')">上下文</button>
+        <button class="panel-tab" onclick="switchRightTab('mcp')">MCP</button>
+        <button class="panel-tab" onclick="switchRightTab('models')">模型</button>
+        <button class="panel-tab" onclick="switchRightTab('wiki')">Wiki</button>
       </div>
-    </div>
-    <div class="panel-body" id="panel-body">
-      <div class="empty-state" style="padding:40px 10px;">
-        <div class="big-icon" style="font-size:32px;">📋</div>
-        <p style="font-size:12px;">选择一个任务查看详情</p>
-      </div>
-    </div>
-  </aside>
-</div>
-
-<!-- ═══ New Task Modal ═══ -->
-<div class="modal-overlay hidden" id="modal-task">
-  <div class="modal" style="width:640px;">
-    <div class="modal-header"><h3>✨ 新建任务</h3><button class="modal-close" onclick="closeModal('modal-task')">&times;</button></div>
-    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <div class="field"><label>任务名称 *</label><input type="text" id="task-name" placeholder="例如：新增广告组审核功能"></div>
-      <div class="field"><label>PRD 内容（可选）</label><textarea id="task-prd" placeholder="粘贴 PRD 文档内容..." rows="3"></textarea></div>
-      
-      <!-- Profile 选择 -->
-      <div class="field">
-        <label>Profile（可选）</label>
-        <select id="task-profile-select" onchange="onProfileChange()">
-          <option value="">— 不使用 Profile，手动配置仓库 —</option>
-        </select>
-      </div>
-      
-      <!-- 仓库配置 -->
-      <div class="field">
-        <label>📦 仓库列表</label>
-        <div id="repo-list" style="margin-top:6px;"></div>
-        <div style="display:flex;gap:6px;margin-top:6px;">
-          <button class="btn btn-secondary btn-sm" onclick="addRepoRow()">+ 手动添加</button>
-          <button class="btn btn-secondary btn-sm" onclick="pickFolder()">📁 选择本地文件夹</button>
+      <div class="panel-body" id="panel-body">
+        <div class="empty-state" style="padding:40px 10px;">
+          <div class="big-icon" style="font-size:32px;">📋</div>
+          <p style="font-size:12px;">选择一个任务查看详情</p>
         </div>
       </div>
-      
-      <div class="field-row">
-        <div class="field"><label>LLM 模型</label><input type="text" id="task-model" value="agnes-2.0-flash"></div>
-        <div class="field"><label>功能分支前缀</label><input type="text" id="task-branch" value="biz-delivery"></div>
-      </div>
-      <div class="field">
-        <label>运行模式</label>
-        <select id="task-mode">
-          <option value="true">🔧 流程模式 — 按 Learn→Review→TD→Tasks→Agent→Test→Auto 顺序执行</option>
-          <option value="false">💬 自由对话 — 不绑流程，纯聊天助手</option>
-        </select>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-task')">取消</button>
-      <button class="btn btn-primary" onclick="createTask()">创建任务</button>
-    </div>
+    </aside>
   </div>
-</div>
-
-<!-- Hidden file input for folder picker -->
-<input type="file" id="folder-picker" webkitdirectory directory multiple style="display:none">
 
 <script>
-const API = '';
+// ═══ Global State ═══
 let activeTask = null;
-let pollTimer = null;
+let currentStage = '';
+const STAGES = ['learn', 'review', 'td', 'agent', 'test', 'automation'];
+const STAGE_NAMES = { learn:'知识提取', review:'PRD审查', td:'技术方案', agent:'代码执行', test:'测试用例', automation:'自动化' };
 
-// ═══ API ═══
+// ═══ API Helper ═══
 async function api(path, opts={}) {
-  const res = await fetch(API + path, {headers:{'Content-Type':'application/json'}, ...opts});
-  if(!res.ok) { const e = await res.json().catch(()=>({detail:res.statusText})); throw new Error(e.detail||res.statusText); }
+  const res = await fetch(path, {
+    headers: {'Content-Type': 'application/json'},
+    ...opts,
+  });
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// ═══ Stage Config ═══
-const STAGES = [
-  { id: 'learn',    name: '知识提取',  desc: '扫描代码仓库，构建 IR' },
-  { id: 'review',   name: 'PRD 审查',  desc: '基于 IR 审查 PRD 完整性' },
-  { id: 'td',       name: '技术方案',  desc: '生成技术设计方案' },
-  { id: 'tasks',    name: 'Agent 任务', desc: '分解为可执行任务' },
-  { id: 'agent',    name: '代码执行',  desc: 'AI Agent 执行开发任务' },
-  { id: 'test',     name: '测试用例',  desc: '生成正向/异常/边界测试' },
-  { id: 'automation',name:'自动化执行', desc: '编译、运行、验证覆盖率' },
-];
+function setLoading(loading) {
+  document.getElementById('send-btn').disabled = loading;
+  document.getElementById('send-btn').innerHTML = loading ? '<span class="loading"></span>' : '➤';
+}
+
+function esc(s) { return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 // ═══ Task List ═══
 async function loadTaskList() {
@@ -299,7 +884,7 @@ async function loadTaskList() {
   const list = document.getElementById('task-list');
   
   if (projects.length === 0) {
-    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px;">暂无任务<br><br>点击「新建任务」开始</div>';
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:12px;">暂无任务<br><br>点击「新建任务」开始</div>';
     return;
   }
   
@@ -307,134 +892,80 @@ async function loadTaskList() {
   for (const proj of projects) {
     const taskArr = Object.values(proj.tasks || {});
     if (taskArr.length === 0) continue;
-    html += `<div style="padding:6px 16px 2px;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;">${esc(proj.name)}</div>`;
+    html += `<div class="project-group">
+      <div class="project-header">📁 ${esc(proj.name)}</div>`;
     for (const t of taskArr) {
       const prog = t.progress || {};
       const st = prog.percent >= 100 ? 'done' : (prog.percent > 0 ? 'running' : 'idle');
-      const isActive = activeTask && activeTask.id === t.id;
-      html += `<div class="task-item ${isActive?'active':''}" onclick="selectTask('${t.id}')">
-        <div class="name">${esc(t.name)}</div>
-        <div class="meta">
-          <span class="status-dot ${st}"></span>
-          <span>${t.use_pipeline ? `${prog.completed}/${prog.total}阶段` : '自由对话'}</span>
-          <span style="margin-left:auto;">${t.model_name.split('-').pop()}</span>
+      html += `<div class="task-item ${activeTask?.id===t.id?'active':''}" onclick="selectTask('${proj.id}','${t.id}')">
+        <div class="task-name">${esc(t.name)}</div>
+        <div class="task-meta">
+          <span class="task-status ${st}"></span>
+          <span>${prog.completed||0}/${prog.total||0} 阶段</span>
+          <span style="margin-left:auto">${t.model_name?.split('-')[1]||'demo'}</span>
         </div>
       </div>`;
     }
+    html += '</div>';
   }
   list.innerHTML = html;
 }
 
 // ═══ Select Task ═══
-async function selectTask(tid) {
-  activeTask = await api(`/api/projects/${getProjectIdForTask(tid)}/tasks/${tid}`);
-  const stages = await api(`/api/projects/${getProjectIdForTask(tid)}/tasks/${tid}/stages`);
-  activeTask.stages = stages.stages;
-  activeTask.current_stage = stages.current_stage;
+async function selectTask(projectId, taskId) {
+  window._currentProjectId = projectId;
+  const tasks = await api(`/api/projects/${projectId}/tasks`);
+  activeTask = tasks.find(t => t.id === taskId);
   
-  renderTopbar();
-  renderChat();
-  renderWorkflow();
-  loadRepoFiles();
-  startPolling();
-  
-  // Highlight in sidebar
-  document.querySelectorAll('.task-item').forEach(el => el.classList.remove('active'));
-  event?.target?.closest?.('.task-item')?.classList.add('active');
-}
-
-function getProjectIdForTask(tid) {
-  // Find project containing this task
-  return window._currentProjectId || '';
-}
-
-// Override selectTask to also track project
-const _origSelectTask = selectTask;
-selectTask = async function(tid) {
-  // Find project
-  const projects = await api('/api/projects');
-  let pid = '';
-  for (const p of projects) {
-    if (p.tasks && p.tasks[tid]) { pid = p.id; break; }
-    for (const [ttid] of Object.entries(p.tasks || {})) {
-      if (ttid === tid) { pid = p.id; break; }
-    }
-    if (pid) break;
-  }
-  window._currentProjectId = pid;
-  await _origSelectTask(tid);
-};
-
-// ═══ Topbar ═══
-function renderTopbar() {
-  if (!activeTask) {
-    document.getElementById('top-title').textContent = '新建任务';
-    document.getElementById('top-sub').textContent = '在左侧创建或选择任务开始';
-    document.getElementById('top-actions').innerHTML = '';
-    return;
-  }
-  const prog = activeTask.progress || {};
   document.getElementById('top-title').textContent = activeTask.name;
+  const prog = activeTask.progress || {};
   document.getElementById('top-sub').textContent = 
-    `${activeTask.model_name} · ${activeTask.use_pipeline ? `${prog.completed}/${prog.total} 阶段 · ${prog.current_stage || '就绪'}` : '自由对话模式'}`;
+    `${activeTask.model_name} · ${prog.completed}/${prog.total} 阶段 · ${prog.current_stage || '就绪'}`;
   document.getElementById('top-actions').innerHTML = `
-    <button class="btn btn-secondary btn-sm" onclick="runCurrentStage()">▶ 执行当前阶段</button>
+    <button class="btn btn-primary btn-sm" onclick="runCurrentStage()">▶ 执行当前阶段</button>
     <button class="btn btn-danger btn-sm" onclick="deleteTask()">🗑</button>`;
+  
+  renderStageTabs();
+  renderChat();
+  loadTaskList();
+  switchRightTab('workflow');
+}
+
+// ═══ Stage Tabs ═══
+function renderStageTabs() {
+  if (!activeTask) return;
+  const tabs = document.getElementById('stage-tabs');
+  let html = '<button class="stage-tab active" onclick="setStage(\'\')">💬 对话</button>';
+  for (const s of STAGES) {
+    const rec = activeTask.stages?.[s] || {};
+    const done = rec.status === 'completed';
+    html += `<button class="stage-tab ${done?'done':''} ${currentStage===s&&!done?'active':''}" onclick="setStage('${s}')">${STAGE_NAMES[s]}</button>`;
+  }
+  tabs.innerHTML = html;
+}
+
+function setStage(s) {
+  currentStage = s;
+  renderStageTabs();
+  switchRightTab('workflow');
 }
 
 // ═══ Chat ═══
 function renderChat() {
-  const wrap = document.getElementById('chat-wrap');
-  const empty = document.getElementById('empty-state');
-  const msgs = document.getElementById('chat-messages');
-  const input = document.getElementById('chat-input-area');
-  
-  empty.classList.add('hidden');
-  msgs.classList.remove('hidden');
-  input.classList.remove('hidden');
-  
-  renderStageTabs();
-  loadMessages();
-}
-
-function renderStageTabs() {
-  const container = document.getElementById('stage-tabs');
-  if (!activeTask || !activeTask.use_pipeline) {
-    container.innerHTML = '';
+  const wrap = document.getElementById('chat-messages');
+  if (!activeTask || !activeTask.messages?.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="big-icon">💬</div><h3>开始智能交付</h3><p>选择一个任务，或与 AI 助手对话</p></div>';
     return;
   }
-  const stageStatuses = activeTask.stages || {};
-  container.innerHTML = STAGES.map(s => {
-    const st = stageStatuses[s.id]?.status || 'pending';
-    const cls = st === 'completed' ? 'done' : (st === 'running' ? 'active' : '');
-    const isCurrent = s.id === activeTask.current_stage;
-    return `<button class="stage-tab ${cls} ${isCurrent?'active':''}" onclick="selectStage('${s.id}')">${s.name}</button>`;
-  }).join('');
-}
-
-async function loadMessages() {
-  if (!activeTask) return;
-  try {
-    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/chat?limit=50`);
-    const c = document.getElementById('chat-messages');
-    if (!c) return;
-    
-    if (data.messages.length === 0) {
-      const hint = activeTask.prd_text 
-        ? `PRD 已加载：${activeTask.prd_text.slice(0, 80)}${activeTask.prd_text.length>80?'...':''}\n\n可以开始对话，或点击右侧流程节点执行各阶段。`
-        : activeTask.use_pipeline 
-          ? '这是一个 Pipeline 模式的任务。\n\n可以：\n• 输入消息与 AI 对话\n• 点击右侧流程图节点执行各阶段\n• 点击「执行当前阶段」自动推进'
-          : '这是一个自由对话任务。\n\n直接输入你的需求开始对话即可。';
-      c.innerHTML = `<div class="msg system"><div class="avatar">💡</div><div class="bubble">${esc(hint)}</div></div>`;
-    } else {
-      c.innerHTML = data.messages.map(m => `
-        <div class="msg ${m.role}">
-          <div class="avatar">${m.role==='user'?'👤':'🤖'}</div>
-          <div class="bubble">${m.stage ? `<div class="stage-tag">${esc(m.stage)}</div>` : ''}${esc(m.content)}</div>
-        </div>`).join('');
-    }
-    c.scrollTop = c.scrollHeight;
-  } catch(e) { console.error(e); }
+  wrap.innerHTML = activeTask.messages.map(m => `
+    <div class="msg ${m.role}">
+      <div class="avatar">${m.role==='user'?'👤':'🤖'}</div>
+      <div class="bubble">
+        ${m.stage?`<span class="stage-tag">${STAGE_NAMES[m.stage]||m.stage}</span>`:''}
+        ${esc(m.content)}
+      </div>
+    </div>`).join('');
+  wrap.scrollTop = wrap.scrollHeight;
 }
 
 async function sendMsg() {
@@ -444,882 +975,330 @@ async function sendMsg() {
   input.value = '';
   setLoading(true);
   
-  const stage = document.querySelector('.stage-tab.active')?.textContent?.toLowerCase() || '';
   const c = document.getElementById('chat-messages');
   c.innerHTML += `<div class="msg user"><div class="avatar">👤</div><div class="bubble">${esc(msg)}</div></div>`;
   c.scrollTop = c.scrollHeight;
   
   try {
     const r = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/chat`, {
-      method:'POST', body: JSON.stringify({message: msg, stage: stage || null})
+      method:'POST', body: JSON.stringify({message: msg, stage: currentStage || null})
     });
     c.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble">${esc(r.reply)}</div></div>`;
     c.scrollTop = c.scrollHeight;
     refreshTask();
   } catch(e) {
-    c.innerHTML += `<div class="msg assistant"><div class="avatar">🤖</div><div class="bubble" style="color:var(--err)">❌ ${esc(e.message)}</div></div>`;
+    c.innerHTML += `<div class="msg system"><div class="bubble">错误: ${esc(e.message)}</div></div>`;
   }
   setLoading(false);
 }
 
-// ═══ Workflow Panel ═══
-function renderWorkflow() {
-  const panel = document.getElementById('panel-body');
-  if (!activeTask) {
-    panel.innerHTML = '<div class="empty-state" style="padding:40px 10px;"><div class="big-icon" style="font-size:32px;">📋</div><p style="font-size:12px;">选择一个任务查看详情</p></div>';
-    return;
-  }
-  
-  const stageStatuses = activeTask.stages || {};
-  const currentIdx = STAGES.findIndex(s => s.id === activeTask.current_stage);
-  
-  panel.innerHTML = `
-    <div class="workflow">
-      ${STAGES.map((s, i) => {
-        const rec = stageStatuses[s.id];
-        let status = 'pending';
-        if (rec) {
-          if (rec.status === 'completed') status = 'done';
-          else if (rec.status === 'running') status = 'running';
-          else if (rec.status === 'failed') status = 'failed';
-        }
-        const isCurrent = i === currentIdx && status === 'pending';
-        if (isCurrent) status = 'current';
-        
-        const statusText = {done:'✅ 已完成', running:'⟳ 执行中', current:'👈 当前', failed:'❌ 失败', pending:'○ 待开始'}[status];
-        
-        return `<div class="wf-node ${status}" onclick="${status==='pending'||status==='current'?"runStage('"+s.id+"')":"\""}">
-          <div class="wf-dot">${status==='done'?'✓':(status==='failed'?'✗':(i+1))}</div>
-          <div class="wf-info">
-            <div class="wf-name">${s.name}</div>
-            <div class="wf-desc">${s.desc}</div>
-            ${rec?.summary ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(rec.summary)}</div>` : ''}
-            <div class="wf-status ${status}">${statusText}</div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div class="artifact-section" id="artifact-section">
-      <div style="display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border);">
-        <button class="tab-btn ${!activeTask?.git_managers?'hidden':''}" id="tab-artifacts" onclick="switchPanel('artifacts')">📄 产物</button>
-        <button class="tab-btn ${!activeTask?.git_managers?'':'active'}" id="tab-repo" onclick="switchPanel('repo')">🗂️ 仓库</button>
-      </div>
-      <div id="artifact-content"></div>
-      <div id="repo-content" class="hidden"></div>
-    </div>`;
-  
-  loadArtifacts();
-}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('chat-in')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  });
+  loadTaskList();
+});
 
-async function loadArtifacts() {
-  if (!activeTask) return;
-  const stage = activeTask.current_stage;
-  if (!stage) return;
-  try {
-    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/artifacts/${stage}`);
-    const el = document.getElementById('artifact-content');
-    if (!el) return;
-    const arts = data.artifacts || {};
-    // Remove _repos from artifacts display
-    delete arts['_repos'];
-    if (Object.keys(arts).length === 0) {
-      el.innerHTML = '<span style="font-size:11px;color:var(--text3);">暂无产物，执行阶段后生成</span>';
-    } else {
-      el.innerHTML = Object.entries(arts).map(([name, content]) => `
-        <div class="artifact-item">
-          <div class="title">${esc(name)}</div>
-          <pre>${esc(content.substring(0, 800))}${content.length>800?'...':''}</pre>
-        </div>`).join('');
-    }
-  } catch(e) {
-    const el = document.getElementById('artifact-content');
-    if (el) el.innerHTML = '<span style="font-size:11px;color:var(--err);">加载失败</span>';
-  }
-}
-
-async function loadRepoFiles() {
-  if (!activeTask || !activeTask.git_managers) return;
-  const el = document.getElementById('repo-content');
-  if (!el) return;
-  
-  let html = '';
-  for (const [name, gm] of Object.entries(activeTask.git_managers)) {
-    html += `<div class="repo-block">
-      <div class="repo-header">
-        <span class="repo-name">📦 ${esc(name)}</span>
-        <span class="repo-branch">分支: ${gm.branch || 'unknown'}</span>
-      </div>`;
-    
-    // Show status
-    const status = gm.status || {};
-    if (status.dirty) {
-      html += `<div class="repo-status dirty">⚠️ 有未提交变更</div>`;
-    }
-    
-    // File tree
-    html += `<div class="file-tree">`;
-    const files = gm.files || [];
-    if (files.length === 0) {
-      html += '<div class="empty-tree">暂无文件</div>';
-    } else {
-      // Group by directory
-      const dirs = {};
-      files.forEach(f => {
-        const parts = f.split('/');
-        const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
-        if (!dirs[dir]) dirs[dir] = [];
-        dirs[dir].push(f);
-      });
-      
-      for (const [dir, filelist] of Object.entries(dirs).slice(0, 5)) {
-        html += `<div class="file-dir">
-          <div class="dir-name">${esc(dir === '.' ? '根目录' : dir)}</div>
-          <div class="file-list">`;
-        filelist.slice(0, 10).forEach(f => {
-          const fname = f.split('/').pop();
-          const ext = fname.split('.').pop();
-          const icon = getExtIcon(ext);
-          html += `<div class="file-item" onclick="showFile('${name}', '${f.replace(/'/g, "\\'")}')">
-            <span class="file-icon">${icon}</span>
-            <span class="file-name">${esc(fname)}</span>
-          </div>`;
-        });
-        if (filelist.length > 10) {
-          html += `<div class="more-files">+${filelist.length - 10} more</div>`;
-        }
-        html += `</div></div>`;
-      }
-    }
-    html += `</div></div>`;
-  }
-  el.innerHTML = html || '<span style="font-size:11px;color:var(--text3);">未配置仓库</span>';
-}
-
-function getExtIcon(ext) {
-  const icons = {
-    'go': '🔷', 'py': '🐍', 'java': '☕', 'js': '📜', 'ts': '🔷',
-    'md': '📝', 'json': '📋', 'yaml': '⚙', 'yml': '⚙', 'txt': '📄',
-    'html': '🌐', 'css': '🎨', 'xml': '📰', 'sh': '⚡',
-  };
-  return icons[ext] || '📄';
-}
-
-async function showFile(repoName, filePath) {
-  try {
-    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/repo-file/${repoName}/${encodeURIComponent(filePath)}`);
-    const el = document.getElementById('repo-content');
-    if (!el) return;
-    el.innerHTML = `
-      <div class="file-viewer">
-        <div class="file-viewer-header">
-          <span class="file-path">${esc(filePath)}</span>
-          <button class="btn btn-sm" onclick="loadRepoFiles()">← 返回</button>
-        </div>
-        <pre class="file-code">${esc(data.content)}</pre>
-      </div>`;
-  } catch(e) {
-    const el = document.getElementById('repo-content');
-    if (el) el.innerHTML = `<div style="color:var(--err);padding:10px;">无法读取: ${esc(e.message)}</div>`;
-  }
-}
-
-function switchPanel(panel) {
-  document.getElementById('artifact-content').classList.toggle('hidden', panel !== 'artifacts');
-  document.getElementById('repo-content').classList.toggle('hidden', panel !== 'repo');
-  document.getElementById('tab-artifacts').classList.toggle('active', panel === 'artifacts');
-  document.getElementById('tab-repo').classList.toggle('active', panel === 'repo');
-}
-
-// ═══ Right Panel Tabs ═══
-let _currentRightTab = 'workflow';
-
-function switchRightTab(tab) {
-  _currentRightTab = tab;
+// ═══ Right Panel ═══
+async function switchRightTab(tab) {
   document.querySelectorAll('.panel-tab').forEach((el, i) => {
     el.classList.toggle('active', 
-      (tab === 'workflow' && i === 0) || 
-      (tab === 'memory' && i === 1) || 
-      (tab === 'context' && i === 2) ||
-      (tab === 'mcp' && i === 3) ||
-      (tab === 'models' && i === 4) ||
-      (tab === 'wiki' && i === 5)
+      (tab==='workflow'&&i===0)||(tab==='memory'&&i===1)||(tab==='context'&&i===2)||
+      (tab==='mcp'&&i===3)||(tab==='models'&&i===4)||(tab==='wiki'&&i===5)
     );
   });
-  
   const panel = document.getElementById('panel-body');
-  if (tab === 'workflow') {
-    renderWorkflow();
-  } else if (tab === 'memory') {
-    loadMemoryPanel();
-  } else if (tab === 'context') {
-    loadContextPanel();
-  } else if (tab === 'mcp') {
-    loadMCPPanel();
-  } else if (tab === 'models') {
-    loadModelsPanel();
-  } else if (tab === 'wiki') {
-    loadWikiPanel();
+  if (tab==='workflow') renderWorkflow();
+  else if (tab==='memory') await loadMemoryPanel();
+  else if (tab==='context') await loadContextPanel();
+  else if (tab==='mcp') await loadMCPPanel();
+  else if (tab==='models') await loadModelsPanel();
+  else if (tab==='wiki') await loadWikiPanel();
+}
+
+async function renderWorkflow() {
+  if (!activeTask) return;
+  const panel = document.getElementById('panel-body');
+  const stages = activeTask.stages || {};
+  let html = '';
+  
+  for (let i=0; i<STAGES.length; i++) {
+    const s = STAGES[i];
+    const rec = stages[s] || {status:'pending'};
+    const status = rec.status || 'pending';
+    const icon = status==='completed'?'✓':(status==='running'?'⟳':'○');
+    html += `<div class="workflow-stage ${status} ${status==='running'?'running':''}" onclick="runStage('${s}')">
+      <div class="stage-icon">${icon}</div>
+      <div class="stage-info">
+        <div class="stage-name">${STAGE_NAMES[s]}</div>
+        <div class="stage-desc">${rec.summary?.substring(0,40)||'待执行'}</div>
+      </div>
+      ${i<STAGES.length-1?'<div class="stage-arrow">↓</div>':''}
+    </div>`;
   }
+  panel.innerHTML = html;
+}
+
+async function runStage(stage) {
+  if (!activeTask) return;
+  setLoading(true);
+  try {
+    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/run-stage`, {
+      method:'POST', body: JSON.stringify({stage})
+    });
+    await refreshTask();
+    renderWorkflow();
+  } catch(e) { alert('执行失败: '+e.message); }
+  setLoading(false);
+}
+
+async function loadMemoryPanel() {
+  if (!activeTask||!window._currentProjectId) return;
+  const panel = document.getElementById('panel-body');
+  try {
+    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/context`);
+    const memories = data.memories||[];
+    panel.innerHTML = `
+      <div class="memory-header">
+        <div class="memory-stats">
+          <span class="stat">💾 ${data.memory_stats?.total||0} 条记忆</span>
+          <span class="stat">📁 ${data.memory_stats?.by_task||0} 个任务</span>
+        </div>
+        <button class="btn-sm" onclick="showAddMemoryModal()">+ 添加</button>
+      </div>
+      <div class="memory-list">`;
+    if (!memories.length) {
+      panel.innerHTML += '<div class="empty-memory">暂无记忆<br><small style="color:var(--text-tertiary)">对话中会自动保存关键决策和偏好</small></div>';
+    } else {
+      for (const mem of memories) {
+        panel.innerHTML += `<div class="memory-item ${mem.type}">
+          <div class="memory-type">${mem.type}</div>
+          <div class="memory-content">${esc(mem.content)}</div>
+          ${mem.tags?.length?`<div class="memory-tags">#${mem.tags.join(' #')}</div>`:''}
+        </div>`;
+      }
+    }
+    panel.innerHTML += '</div>';
+  } catch(e) { panel.innerHTML = `<div style="color:var(--error);padding:10px;">加载失败: ${esc(e.message)}</div>`; }
+}
+
+async function loadContextPanel() {
+  if (!activeTask||!window._currentProjectId) return;
+  const panel = document.getElementById('panel-body');
+  try {
+    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/context`);
+    const stats = data.context_stats||{};
+    const tokens = stats.total_tokens||0;
+    const maxTokens = 8000;
+    const percent = Math.min(100, Math.round(tokens/maxTokens*100));
+    const color = percent>80?'error':(percent>50?'warn':'');
+    panel.innerHTML = `
+      <div class="token-meter">
+        <div class="meter-label"><span>Token 使用</span><span style="color:var(--${color==='error'?'error':color==='warn'?'warn':'success'})">${tokens.toFixed(0)} / ${maxTokens}</span></div>
+        <div class="meter-bar"><div class="meter-fill ${color}" style="width:${percent}%"></div></div>
+      </div>
+      <div class="info-row"><span class="info-label">消息数量</span><span class="info-value">${data.message_count||0}</span></div>
+      <div class="info-row"><span class="info-label">已压缩</span><span class="info-value" style="color:var(--${stats.truncated?'warn':'success'})">${stats.truncated?'是':'否'}</span></div>
+      <div class="info-row"><span class="info-label">记忆数量</span><span class="info-value">${data.memory_stats?.total||0}</span></div>
+      <button class="btn btn-sm" style="width:100%;margin-top:12px;" onclick="compressContext()">🔄 手动压缩</button>`;
+  } catch(e) { panel.innerHTML = `<div style="color:var(--error);padding:10px;">加载失败: ${esc(e.message)}</div>`; }
+}
+
+async function compressContext() {
+  if (!activeTask||!window._currentProjectId) return;
+  setLoading(true);
+  try {
+    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/compress`, {method:'POST'});
+    loadContextPanel();
+    refreshTask();
+  } catch(e) { alert('压缩失败: '+e.message); }
+  setLoading(false);
 }
 
 async function loadMCPPanel() {
   const panel = document.getElementById('panel-body');
-  
   try {
     const data = await api('/api/mcp/tools');
-    const tools = data.tools || [];
-    
-    let html = `
-      <div class="mcp-panel">
-        <div class="mcp-header">
-          <span class="mcp-server">🔌 ${esc(data.server)} v${esc(data.version)}</span>
-          <span class="mcp-badge">${tools.length} 工具</span>
-        </div>
-        <div class="mcp-tools" style="margin-top:12px;">
-    `;
-    
-    for (const tool of tools) {
-      html += `
-        <div class="mcp-tool-item">
-          <div class="mcp-tool-name">${esc(tool.name)}</div>
-          <div class="mcp-tool-desc">${esc(tool.description.substring(0, 60))}...</div>
-          <button class="btn btn-sm" onclick="testMCPTool('${esc(tool.name)}')">测试</button>
-        </div>
-      `;
+    const tools = data.tools||[];
+    panel.innerHTML = `
+      <div class="mcp-header">
+        <span class="mcp-server">🔌 ${esc(data.server)}</span>
+        <span class="mcp-badge">${tools.length} 工具</span>
+      </div>
+      <div style="margin-top:12px;">`;
+    for (const t of tools) {
+      panel.innerHTML += `<div class="mcp-tool-item">
+        <div class="mcp-tool-name">${esc(t.name)}</div>
+        <button class="btn-sm" onclick="testMCPTool('${esc(t.name)}')">测试</button>
+      </div>`;
     }
-    
-    html += '</div></div>';
-    panel.innerHTML = html;
-  } catch(e) {
-    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
-  }
+    panel.innerHTML += '</div>';
+  } catch(e) { panel.innerHTML = `<div style="color:var(--error);padding:10px;">加载失败: ${esc(e.message)}</div>`; }
 }
 
-async function testMCPTool(toolName) {
-  const panel = document.getElementById('panel-body');
-  
-  // 简单测试：只测试不需要参数的工具
-  const simpleTools = ['list_projects', 'list_tasks', 'get_task_context'];
-  
-  if (!simpleTools.includes(toolName)) {
-    alert('此工具需要参数，暂不支持直接测试');
-    return;
-  }
-  
+async function testMCPTool(name) {
   setLoading(true);
   try {
-    const result = await api('/api/mcp/call', {
-      method: 'POST',
-      body: JSON.stringify({tool: toolName, args: {}})
-    });
-    
-    panel.innerHTML = `
-      <div class="mcp-result">
-        <div class="result-title">✅ ${esc(toolName)} 结果</div>
-        <pre class="result-content">${esc(JSON.stringify(result, null, 2))}</pre>
-        <button class="btn btn-secondary" style="margin-top:10px;" onclick="loadMCPPanel()">返回</button>
-      </div>
-    `;
-  } catch(e) {
-    panel.innerHTML = `<div style="color:var(--err);padding:10px;">调用失败: ${esc(e.message)}</div>`;
-  }
+    const result = await api('/api/mcp/call', {method:'POST', body: JSON.stringify({tool:name,args:{}})});
+    alert(JSON.stringify(result, null, 2));
+  } catch(e) { alert('调用失败: '+e.message); }
   setLoading(false);
 }
 
 async function loadModelsPanel() {
   const panel = document.getElementById('panel-body');
-  
   try {
     const data = await api('/api/models');
-    const models = data.models || [];
-    
-    let html = `
-      <div class="models-panel">
-        <div class="models-header">
-          <span>🤖 可用模型</span>
-          <select class="model-select" onchange="changeStrategy(this.value)">
-            <option value="balanced" ${data.strategy==='balanced'?'selected':''}>平衡</option>
-            <option value="best_quality" ${data.strategy==='best_quality'?'selected':''}>最佳质量</option>
-            <option value="fastest" ${data.strategy==='fastest'?'selected':''}>最快响应</option>
-            <option value="cheapest" ${data.strategy==='cheapest'?'selected':''}>最经济</option>
-          </select>
+    panel.innerHTML = `
+      <div class="models-header">
+        <span>🤖 可用模型</span>
+        <select class="model-select" onchange="changeStrategy(this.value)">
+          <option value="balanced" ${data.strategy==='balanced'?'selected':''}>平衡</option>
+          <option value="best_quality" ${data.strategy==='best_quality'?'selected':''}>最佳质量</option>
+          <option value="fastest" ${data.strategy==='fastest'?'selected':''}>最快</option>
+          <option value="cheapest" ${data.strategy==='cheapest'?'selected':''}>最经济</option>
+        </select>
+      </div>
+      <div style="margin-top:12px;">`;
+    for (const m of data.models) {
+      const cap = m.capabilities||{};
+      panel.innerHTML += `<div class="model-item">
+        <div class="model-info">
+          <div><div class="model-name">${esc(m.name)}</div><div class="model-provider">${esc(m.provider)}</div></div>
+          <div class="model-cost">$${(m.cost_per_token*1000000).toFixed(2)}/M</div>
         </div>
-        <div class="models-list" style="margin-top:12px;">
-    `;
-    
-    for (const model of models) {
-      const cap = model.capabilities || {};
-      html += `
-        <div class="model-item">
-          <div class="model-info">
-            <div class="model-name">${esc(model.name)}</div>
-            <div class="model-provider">${esc(model.provider)}</div>
-          </div>
-          <div class="model-stats">
-            <div class="stat-row">
-              <span class="stat-label">代码</span>
-              <div class="stat-bar"><div class="stat-fill" style="width:${cap.code || 0}%;background:var(--primary);"></div></div>
-              <span class="stat-val">${cap.code || 0}</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">分析</span>
-              <div class="stat-bar"><div class="stat-fill" style="width:${cap.analysis || 0}%;background:var(--success);"></div></div>
-              <span class="stat-val">${cap.analysis || 0}</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">速度</span>
-              <div class="stat-bar"><div class="stat-fill" style="width:${cap.fast || 0}%;background:var(--warn);"></div></div>
-              <span class="stat-val">${cap.fast || 0}</span>
-            </div>
-          </div>
-          <div class="model-cost">$${(model.cost_per_token * 1000000).toFixed(2)}/M token</div>
-        </div>
-      `;
+        <div class="stat-row"><span class="stat-label">代码</span><div class="stat-bar"><div class="stat-fill" style="width:${cap.code||0}%;background:var(--accent)"></div></div><span class="stat-val">${cap.code||0}</span></div>
+        <div class="stat-row"><span class="stat-label">分析</span><div class="stat-bar"><div class="stat-fill" style="width:${cap.analysis||0}%;background:var(--success)"></div></div><span class="stat-val">${cap.analysis||0}</span></div>
+        <div class="stat-row"><span class="stat-label">速度</span><div class="stat-bar"><div class="stat-fill" style="width:${cap.fast||0}%;background:var(--warn)"></div></div><span class="stat-val">${cap.fast||0}</span></div>
+      </div>`;
     }
-    
-    html += '</div></div>';
-    panel.innerHTML = html;
-  } catch(e) {
-    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
-  }
+    panel.innerHTML += '</div>';
+  } catch(e) { panel.innerHTML = `<div style="color:var(--error);padding:10px;">加载失败: ${esc(e.message)}</div>`; }
 }
 
-async function changeStrategy(strategy) {
+async function changeStrategy(s) {
   try {
-    await api('/api/models/set-strategy', {
-      method: 'POST',
-      body: JSON.stringify({strategy})
-    });
+    await api('/api/models/set-strategy', {method:'POST', body: JSON.stringify({strategy:s})});
     loadModelsPanel();
-  } catch(e) {
-    alert('策略切换失败: ' + e.message);
-  }
+  } catch(e) { alert('切换失败: '+e.message); }
 }
 
-// ═══ Wiki Panel ═══
 async function loadWikiPanel() {
   const panel = document.getElementById('panel-body');
-  
   try {
     const stats = await api('/api/wiki/stats');
-    
-    let html = `
-      <div class="wiki-panel">
-        <div class="wiki-header">
-          <span>📚 LLM Wiki 知识库</span>
-          <span class="wiki-badge">${stats.total_entries || 0} 条目</span>
-        </div>
-        
-        <div class="wiki-stats" style="margin-top:12px;">
-          <div class="info-row">
-            <span class="info-label">知识节点</span>
-            <span class="info-value">${stats.total_nodes || 0}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">索引大小</span>
-            <span class="info-value">${stats.index_size || 0}</span>
-          </div>
-        </div>
-        
-        <div style="margin-top:16px;">
-          <div class="section-title">🔍 查询知识库</div>
-          <div style="display:flex;gap:8px;margin-top:8px;">
-            <input type="text" id="wiki-query" placeholder="输入问题..." 
-              style="flex:1;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;">
-            <button class="btn btn-sm" onclick="searchWiki()">查询</button>
-          </div>
-          <div id="wiki-results" style="margin-top:12px;"></div>
-        </div>
-        
-        <div style="margin-top:20px;">
-          <div class="section-title">⚙️ 重建知识库</div>
-          <div style="display:flex;gap:8px;margin-top:8px;">
-            <select id="wiki-lang" style="padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;">
-              <option value="python">Python</option>
-              <option value="go">Go</option>
-              <option value="java">Java</option>
-            </select>
-            <button class="btn btn-sm" onclick="buildWiki()">🔄 重建</button>
-          </div>
-          <p style="font-size:11px;color:var(--text3);margin-top:8px;">从当前项目代码重新构建知识库</p>
-        </div>
+    panel.innerHTML = `
+      <div class="wiki-header">
+        <span>📚 LLM Wiki</span>
+        <span class="wiki-badge">${stats.total_entries||0} 条目</span>
       </div>
-    `;
-    
-    panel.innerHTML = html;
-  } catch(e) {
-    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
-  }
+      <div style="margin-top:12px;">
+        <div class="info-row"><span class="info-label">知识节点</span><span class="info-value">${stats.total_nodes||0}</span></div>
+        <div class="info-row"><span class="info-label">索引大小</span><span class="info-value">${stats.index_size||0}</span></div>
+      </div>
+      <div style="margin-top:16px;">
+        <div class="section-title">🔍 查询知识库</div>
+        <div class="wiki-input-row">
+          <input type="text" class="wiki-input" id="wiki-query" placeholder="输入问题...">
+          <button class="btn-sm" onclick="searchWiki()">查询</button>
+        </div>
+        <div id="wiki-results" style="margin-top:8px;"></div>
+      </div>
+      <div style="margin-top:20px;">
+        <div class="section-title">⚙️ 重建知识库</div>
+        <div class="wiki-input-row">
+          <select class="wiki-input" id="wiki-lang" style="flex:0 0 80px;">
+            <option value="python">Python</option>
+            <option value="go">Go</option>
+            <option value="java">Java</option>
+          </select>
+          <button class="btn-sm" onclick="buildWiki()">🔄 重建</button>
+        </div>
+      </div>`;
+  } catch(e) { panel.innerHTML = `<div style="color:var(--error);padding:10px;">加载失败: ${esc(e.message)}</div>`; }
 }
 
 async function searchWiki() {
   const query = document.getElementById('wiki-query').value.trim();
   if (!query) return;
-  
-  const resultsDiv = document.getElementById('wiki-results');
-  resultsDiv.innerHTML = '<div style="color:var(--text3);font-size:11px;">搜索中...</div>';
-  
+  const r = document.getElementById('wiki-results');
+  r.innerHTML = '<div style="color:var(--text-tertiary);font-size:11px;">搜索中...</div>';
   try {
-    const result = await api('/api/wiki/query', {
-      method: 'POST',
-      body: JSON.stringify({question: query, top_k: 5})
-    });
-    
-    if (result.results.length === 0) {
-      resultsDiv.innerHTML = '<div style="color:var(--text3);font-size:11px;margin-top:8px;">未找到相关知识点</div>';
-      return;
-    }
-    
-    let html = '';
-    for (const r of result.results) {
-      // 查找对应的知识条目
-      const entry = result.context.split('[').find(s => s.includes(r.id));
-      html += `
-        <div class="wiki-result-item" style="padding:8px;margin-bottom:6px;background:var(--bg);border-radius:4px;border-left:3px solid var(--primary);">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:11px;color:var(--primary);font-weight:600;">${r.id}</span>
-            <span style="font-size:10px;color:var(--text3);">score: ${r.score.toFixed(3)}</span>
-          </div>
-        </div>
-      `;
-    }
-    
-    resultsDiv.innerHTML = html || '<div style="color:var(--text3);font-size:11px;">未找到相关知识点</div>';
-  } catch(e) {
-    resultsDiv.innerHTML = `<div style="color:var(--err);font-size:11px;margin-top:8px;">搜索失败: ${esc(e.message)}</div>`;
-  }
+    const result = await api('/api/wiki/query', {method:'POST', body: JSON.stringify({question:query,top_k:5})});
+    if (!result.results.length) { r.innerHTML = '<div style="color:var(--text-tertiary);font-size:11px;margin-top:8px;">未找到相关知识点</div>'; return; }
+    r.innerHTML = result.results.map(r=>`<div class="wiki-result-item">
+      <div style="display:flex;justify-content:space-between;"><span class="wiki-result-id">${r.id}</span><span class="wiki-result-score">${r.score.toFixed(3)}</span></div>
+    </div>`).join('');
+  } catch(e) { r.innerHTML = `<div style="color:var(--error);font-size:11px;margin-top:8px;">搜索失败: ${esc(e.message)}</div>`; }
 }
 
 async function buildWiki() {
   const lang = document.getElementById('wiki-lang').value;
   setLoading(true);
-  
   try {
-    const result = await api('/api/wiki/build', {
-      method: 'POST',
-      body: JSON.stringify({repo_path: '.', language: lang})
-    });
-    
+    const result = await api('/api/wiki/build', {method:'POST', body: JSON.stringify({repo_path:'.',language:lang})});
     alert(`✅ 知识库重建完成！\n- 知识条目: ${result.total_entries}\n- 源文件数: ${result.total_files}`);
     loadWikiPanel();
-  } catch(e) {
-    alert('重建失败: ' + e.message);
-  }
+  } catch(e) { alert('重建失败: '+e.message); }
   setLoading(false);
 }
 
-async function loadMemoryPanel() {
-  if (!activeTask || !window._currentProjectId) return;
-  const panel = document.getElementById('panel-body');
-  
-  try {
-    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/context`);
-    const memories = data.memories || [];
-    
-    let html = `
-      <div class="memory-header">
-        <div class="memory-stats">
-          <span class="stat">💾 ${data.memory_stats?.total || 0} 条记忆</span>
-          <span class="stat">📁 ${data.memory_stats?.by_task || 0} 个任务</span>
-        </div>
-        <button class="btn btn-sm" onclick="showAddMemoryModal()">+ 添加</button>
-      </div>
-      <div class="memory-list" style="margin-top:10px;">
-    `;
-    
-    if (memories.length === 0) {
-      html += '<div class="empty-memory">暂无记忆<br><small>对话中会自动保存关键决策和偏好</small></div>';
-    } else {
-      for (const mem of memories) {
-        const typeColors = {
-          'preference': 'var(--primary)',
-          'fact': 'var(--success)',
-          'decision': 'var(--warn)',
-          'context': 'var(--text3)',
-        };
-        const typeIcons = {
-          'preference': '⭐',
-          'fact': '📌',
-          'decision': '✅',
-          'context': '💭',
-        };
-        html += `
-          <div class="memory-item" style="border-left:3px solid ${typeColors[mem.type] || 'var(--border)'};padding:8px;margin-bottom:6px;background:var(--bg);border-radius:4px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:10px;color:${typeColors[mem.type]};font-weight:600;">${typeIcons[mem.type]} ${mem.type}</span>
-              <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:10px;" onclick="deleteMemory('${mem.id}')">✕</button>
-            </div>
-            <div style="font-size:12px;margin-top:4px;">${esc(mem.content)}</div>
-            ${mem.tags?.length ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">#${mem.tags.join(' #')}</div>` : ''}
-          </div>
-        `;
-      }
-    }
-    
-    html += '</div>';
-    panel.innerHTML = html;
-  } catch(e) {
-    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
-  }
-}
-
-async function loadContextPanel() {
-  if (!activeTask || !window._currentProjectId) return;
-  const panel = document.getElementById('panel-body');
-  
-  try {
-    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/context`);
-    const stats = data.context_stats || {};
-    
-    // 计算使用率
-    const tokens = stats.total_tokens || 0;
-    const maxTokens = 8000;
-    const percent = Math.min(100, Math.round(tokens / maxTokens * 100));
-    const color = percent > 80 ? 'var(--err)' : (percent > 50 ? 'var(--warn)' : 'var(--success)');
-    
-    panel.innerHTML = `
-      <div class="context-panel">
-        <div class="token-meter">
-          <div class="meter-label">
-            <span>Token 使用</span>
-            <span style="color:${color};font-weight:600;">${tokens.toFixed(0)} / ${maxTokens}</span>
-          </div>
-          <div class="meter-bar">
-            <div class="meter-fill" style="width:${percent}%;background:${color};"></div>
-          </div>
-          <div class="meter-percent" style="color:${color};">${percent}%</div>
-        </div>
-        
-        <div class="context-info" style="margin-top:16px;">
-          <div class="info-row">
-            <span class="info-label">消息数量</span>
-            <span class="info-value">${data.message_count || 0}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">已压缩</span>
-            <span class="info-value" style="color:${stats.truncated ? 'var(--warn)' : 'var(--success)'};">
-              ${stats.truncated ? '是' : '否'}
-            </span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">记忆数量</span>
-            <span class="info-value">${data.memory_stats?.total || 0}</span>
-          </div>
-        </div>
-        
-        <button class="btn btn-secondary" style="width:100%;margin-top:16px;" onclick="compressContext()">
-          🔄 手动压缩上下文
-        </button>
-        
-        <div style="margin-top:16px;font-size:11px;color:var(--text3);line-height:1.6;">
-          <div class="section-title">💡 说明</div>
-          <p>• 当对话过长时，系统会自动压缩早期消息</p>
-          <p>• 压缩后会生成摘要并保存到记忆</p>
-          <p>• 可手动触发压缩以释放上下文空间</p>
-        </div>
-      </div>
-    `;
-  } catch(e) {
-    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
-  }
-}
-
-async function compressContext() {
-  if (!activeTask || !window._currentProjectId) return;
-  setLoading(true);
-  try {
-    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/compress`, {method: 'POST'});
-    loadContextPanel();
-    refreshTask();
-  } catch(e) {
-    alert('压缩失败: ' + e.message);
-  }
-  setLoading(false);
-}
-
-async function showAddMemoryModal() {
-  const content = prompt('输入记忆内容:');
-  if (!content) return;
-  
-  const type = prompt('记忆类型 (preference/fact/decision/context):', 'fact') || 'fact';
-  const tags = prompt('标签（逗号分隔）:', '');
-  
-  try {
-    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory`, {
-      method: 'POST',
-      body: JSON.stringify({
-        type,
-        content,
-        tags: tags ? tags.split(',').map(t => t.trim()) : [],
-      })
-    });
-    loadMemoryPanel();
-  } catch(e) {
-    alert('添加失败: ' + e.message);
-  }
-}
-
-async function deleteMemory(memId) {
-  if (!confirm('确定删除这条记忆？')) return;
-  try {
-    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory/${memId}`, {method: 'DELETE'});
-    loadMemoryPanel();
-  } catch(e) {
-    alert('删除失败: ' + e.message);
-  }
-}
-
-async function runStage(stageId) {
-  if (!activeTask) return;
-  setLoading(true);
-  try {
-    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/run-stage`, {
-      method:'POST', body: JSON.stringify({stage: stageId})
-    });
-    await refreshTask();
-  } catch(e) {
-    alert('执行失败: ' + e.message);
-  }
-  setLoading(false);
-}
-
-async function selectStage(stageId) {
-  if (!activeTask) return;
-  activeTask.current_stage = stageId;
-  renderStageTabs();
-  renderWorkflow();
-}
-
+// ═══ Task Actions ═══
 async function refreshTask() {
-  if (!activeTask || !window._currentProjectId) return;
-  try {
-    const [t, stages] = await Promise.all([
-      api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}`),
-      api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/stages`),
-    ]);
-    activeTask = {...t, stages: stages.stages, current_stage: stages.current_stage};
-    renderTopbar();
-    renderStageTabs();
-    renderWorkflow();
-    loadTaskList();
-  } catch(e) { console.error(e); }
-}
-
-function startPolling() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => {
-    if (activeTask && window._currentProjectId) refreshTask();
-  }, 4000);
-}
-
-function setLoading(on) {
-  document.getElementById('send-btn').disabled = on;
-}
-
-// ═══ Modals ═══
-let _profiles = [];
-
-async function loadProfiles() {
-  try {
-    _profiles = (await api('/api/profiles')).profiles || [];
-    const sel = document.getElementById('task-profile-select');
-    sel.innerHTML = '<option value="">— 不使用 Profile，手动配置仓库 —</option>' + 
-      _profiles.map(p => `<option value="${p.path}" data-repos='${JSON.stringify(p.repos)}'>${p.name}${p.domain ? ` (${p.domain})` : ''} — ${p.repo_count} 仓库</option>`).join('');
-  } catch(e) { console.error('loadProfiles', e); }
-}
-
-function onProfileChange() {
-  const sel = document.getElementById('task-profile-select');
-  if (sel.value) {
-    try {
-      const repos = JSON.parse(sel.options[sel.selectedIndex].getAttribute('data-repos') || '[]');
-      renderRepoList(repos);
-    } catch(e) { renderRepoList([]); }
-  } else {
-    // Clear repo list when no profile selected
-    if (document.querySelectorAll('.repo-row').length === 0) {
-      addRepoRow(); // Add one empty row by default
-    }
-  }
-}
-
-function renderRepoList(repos) {
-  const container = document.getElementById('repo-list');
-  if (!repos || repos.length === 0) {
-    container.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px;">未配置仓库，请手动添加或选择本地文件夹</div>';
-    return;
-  }
-  container.innerHTML = repos.map((r, i) => `
-    <div class="repo-row" style="display:flex;gap:6px;margin-bottom:4px;align-items:center;background:var(--bg);padding:6px 8px;border-radius:6px;">
-      <input type="text" class="repo-name" value="${esc(r.name)}" placeholder="名称" style="flex:1;" onchange="updateRepoNames()">
-      <input type="text" class="repo-path" value="${esc(r.path)}" placeholder="路径/URL" style="flex:2;">
-      <select class="repo-lang" style="flex:0.6;">
-        <option ${r.language==='go'?'selected':''}>Go</option>
-        <option ${r.language==='python'?'selected':''}>Python</option>
-        <option ${r.language==='java'?'selected':''}>Java</option>
-      </select>
-      <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()" title="删除">✕</button>
-    </div>
-  `).join('');
-}
-
-function updateRepoNames() {
-  // Auto-fill name from path
-  document.querySelectorAll('.repo-row').forEach(row => {
-    const pathInput = row.querySelector('.repo-path');
-    const nameInput = row.querySelector('.repo-name');
-    if (pathInput && nameInput && !nameInput.dataset.manual) {
-      const path = pathInput.value.trim();
-      if (path) nameInput.value = path.split('/').pop() || path;
-    }
-  });
-}
-
-function addRepoRow(repo = null) {
-  const container = document.getElementById('repo-list');
-  const div = document.createElement('div');
-  div.className = 'repo-row';
-  div.style.cssText = 'display:flex;gap:6px;margin-bottom:4px;align-items:center;background:var(--bg);padding:6px 8px;border-radius:6px;';
-  const r = repo || { name: '', path: '', language: 'go' };
-  div.innerHTML = `
-    <input type="text" class="repo-name" value="${esc(r.name)}" placeholder="名称" style="flex:1;" data-manual="1" onchange="updateRepoNames()">
-    <input type="text" class="repo-path" value="${esc(r.path)}" placeholder="路径或 URL" style="flex:2;" onchange="updateRepoNames()">
-    <select class="repo-lang" style="flex:0.6;">
-      <option ${r.language==='go'?'selected':''}>Go</option>
-      <option ${r.language==='python'?'selected':''}>Python</option>
-      <option ${r.language==='java'?'selected':''}>Java</option>
-    </select>
-    <button class="btn btn-danger btn-sm" onclick="this.closest('.repo-row').remove()" title="删除">✕</button>
-  `;
-  container.appendChild(div);
-}
-
-async function pickFolder() {
-  // Use Web File System Access API or input[type=file]
-  const input = document.getElementById('folder-picker');
-  input.click();
-  input.onchange = async (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    
-    // Extract unique top-level directories as repos
-    const dirs = new Set();
-    for (const file of files) {
-      const parts = file.webkitRelativePath.split('/');
-      if (parts.length > 1) dirs.add(parts[0]);
-    }
-    
-    // Auto-detect language and name
-    const repos = [];
-    for (const dir of dirs) {
-      const lang = detectLanguage(dir, files);
-      repos.push({ name: dir, path: dir, language: lang });
-    }
-    
-    if (repos.length > 0) {
-      renderRepoList(repos);
-    }
-    // Reset input so same folder can be picked again
-    input.value = '';
-  };
-}
-
-function detectLanguage(dirName, files) {
-  // Check first few files in this dir for language detection
-  const dirFiles = Array.from(files).filter(f => f.webkitRelativePath.startsWith(dirName + '/')).slice(0, 20);
-  const extCounts = {};
-  for (const f of dirFiles) {
-    const ext = f.name.split('.').pop().toLowerCase();
-    extCounts[ext] = (extCounts[ext] || 0) + 1;
-  }
-  // Most common extension → language
-  const topExt = Object.entries(extCounts).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
-  if (['go'].includes(topExt)) return 'go';
-  if (['py'].includes(topExt)) return 'python';
-  if (['java'].includes(topExt)) return 'java';
-  if (['js','ts'].includes(topExt)) return 'javascript';
-  return 'go'; // default
-}
-
-async function showNewTaskModal() { 
-  document.getElementById('modal-task').classList.remove('hidden');
-  await loadProfiles();
-  // Start with one empty repo row if none exist
-  if (document.querySelectorAll('.repo-row').length === 0) {
-    addRepoRow();
-  }
-}
-
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-async function createTask() {
-  const name = document.getElementById('task-name').value.trim();
-  const prd = document.getElementById('task-prd').value.trim();
-  const profilePath = document.getElementById('task-profile').value.trim();
-  const model = document.getElementById('task-model').value.trim();
-  const branchPrefix = document.getElementById('task-branch').value.trim() || 'biz-delivery';
-  const usePipeline = document.getElementById('task-mode').value === 'true';
-  
-  if (!name) { alert('请填写任务名称'); return; }
-  if (!profilePath) { alert('请选择或输入 Profile'); return; }
-  
-  // 收集仓库配置
-  const repos = [];
-  document.querySelectorAll('.repo-row').forEach(row => {
-    const rname = row.querySelector('.repo-name')?.value.trim();
-    const rpath = row.querySelector('.repo-path')?.value.trim();
-    const rlang = row.querySelector('.repo-lang')?.value.toLowerCase();
-    if (rname && rpath) {
-      repos.push({ name: rname, path: rpath, language: rlang || 'go' });
-    }
-  });
-  
-  // Find or create project
-  let projects = await api('/api/projects');
-  let pid = '';
-  if (projects.length > 0) {
-    pid = projects[0].id;
-  } else {
-    const p = await api('/api/projects', {method:'POST', body: JSON.stringify({name:'默认项目', output_root:'/tmp/biz-delivery'})});
-    pid = p.id;
-  }
-  window._currentProjectId = pid;
-  
-  const body = {name, prd_text: prd, profile_path: profilePath, use_pipeline: usePipeline, model_name: model};
-  if (repos.length > 0) body.repositories = repos;
-  if (branchPrefix) body.branch_prefix = branchPrefix;
-  
-  const t = await api(`/api/projects/${pid}/tasks`, {method:'POST', body: JSON.stringify(body)});
-  closeModal('modal-task');
-  document.getElementById('task-name').value = '';
-  document.getElementById('task-prd').value = '';
-  document.getElementById('task-profile').value = '';
-  await loadTaskList();
-  selectTask(t.id);
-}
-
-async function deleteTask() {
-  if (!activeTask || !confirm('确定删除这个任务？')) return;
-  await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}`, {method:'DELETE'});
-  activeTask = null;
-  if (pollTimer) clearInterval(pollTimer);
-  document.getElementById('empty-state').classList.remove('hidden');
-  document.getElementById('chat-messages').classList.add('hidden');
-  document.getElementById('chat-input-area').classList.add('hidden');
-  document.getElementById('panel-body').innerHTML = '<div class="empty-state" style="padding:40px 10px;"><div class="big-icon" style="font-size:32px;">📋</div><p style="font-size:12px;">选择一个任务查看详情</p></div>';
-  document.getElementById('top-title').textContent = '新建任务';
-  document.getElementById('top-sub').textContent = '在左侧创建或选择任务开始';
-  document.getElementById('top-actions').innerHTML = '';
+  if (!activeTask||!window._currentProjectId) return;
+  const tasks = await api(`/api/projects/${window._currentProjectId}/tasks`);
+  activeTask = tasks.find(t=>t.id===activeTask.id);
+  renderStageTabs();
+  renderChat();
   loadTaskList();
+  if (document.getElementById('panel-body')) {
+    const activeTab = document.querySelector('.panel-tab.active')?.textContent||'';
+    if (activeTab.includes('流程')) renderWorkflow();
+  }
 }
 
 function runCurrentStage() {
-  if (!activeTask || !activeTask.use_pipeline) return;
-  runStage(activeTask.current_stage || 'learn');
+  if (!activeTask) return;
+  const next = STAGES.find(s => !(activeTask.stages?.[s]?.status==='completed'));
+  if (next) runStage(next);
+  else alert('所有阶段已完成');
 }
 
-// ═══ Init ═══
-loadTaskList();
+async function deleteTask() {
+  if (!confirm('确定删除此任务？')) return;
+  await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}`, {method:'DELETE'});
+  activeTask = null;
+  document.getElementById('top-title').textContent = '新建任务';
+  document.getElementById('top-sub').textContent = '在左侧创建或选择任务开始';
+  document.getElementById('top-actions').innerHTML = '';
+  document.getElementById('chat-messages').innerHTML = '<div class="empty-state"><div class="big-icon">💬</div><h3>开始智能交付</h3><p>选择一个任务，或与 AI 助手对话</p></div>';
+  loadTaskList();
+}
+
+// ═══ New Task Modal ═══
+function showNewTaskModal() {
+  const name = prompt('任务名称:');
+  if (!name) return;
+  const prd = prompt('PRD 内容（可选）:','')||'';
+  const profile = prompt('Profile（default/test-multi-repo/ad-platform）:','default')||'default';
+  setLoading(true);
+  api('/api/projects', {method:'POST', body: JSON.stringify({name:'默认项目'})})
+    .then(async proj => {
+      await api(`/api/projects/${proj.id}/tasks`, {method:'POST', body: JSON.stringify({name,prd_text:prd,profile_path:`profiles/${profile}.json`})});
+      await loadTaskList();
+    })
+    .catch(e => alert('创建失败: '+e.message))
+    .finally(()=>setLoading(false));
+}
+
+function showAddMemoryModal() {
+  const content = prompt('输入记忆内容:');
+  if (!content) return;
+  const type = prompt('类型 (preference/fact/decision/context):','fact')||'fact';
+  api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory`, {
+    method:'POST', body: JSON.stringify({type,content,tags:[]})
+  }).then(()=>loadMemoryPanel()).catch(e=>alert('添加失败: '+e.message));
+}
 </script>
 </body>
 </html>
