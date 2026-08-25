@@ -1345,37 +1345,40 @@ async function searchWiki() {
       const docContent = entity.content || '';
       
       // 提取与查询相关的段落摘要
-      const queryLower = query.toLowerCase().split(' ');
-      const lines = docContent.split('\n');
+      const queryLower = query.toLowerCase();
+      const allLines = docContent.split('\n');
       let summaryLines = [];
-      let capturing = false;
-      let lineCount = 0;
       
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+      // 方法：找到包含关键词的行，然后捕获前后几行
+      for (let i = 0; i < allLines.length; i++) {
+        const line = allLines[i];
         const lineLower = line.toLowerCase();
         
-        // 检查是否包含关键词
-        const hasKeyword = queryLower.some(kw => lineLower.includes(kw));
-        const isHeader = /^#{1,4}\s/.test(line);
-        
-        if (hasKeyword || isHeader) {
-          if (isHeader && !hasKeyword && summaryLines.length > 0 && lineCount > 3) {
-            break; // 新章节开始，停止捕获
-          }
-          summaryLines.push(line);
-          lineCount++;
-          capturing = true;
-        } else if (capturing) {
-          summaryLines.push(line);
-          lineCount++;
-          if (lineCount > 6) break; // 最多捕获 6 行
+        if (lineLower.includes(queryLower)) {
+          // 从这行开始向前最多 2 行，向后最多 6 行
+          const start = Math.max(0, i - 2);
+          const end = Math.min(allLines.length, i + 7);
+          summaryLines = allLines.slice(start, end).filter(l => l.trim());
+          break;
         }
       }
       
-      // 如果没有匹配内容，取前几行
+      // 如果没有精确匹配，找包含关键词的标题附近的段落
       if (summaryLines.length === 0) {
-        summaryLines = lines.filter(l => l.trim()).slice(0, 4);
+        for (let i = 0; i < allLines.length; i++) {
+          const line = allLines[i];
+          if (/^#{1,4}\s/.test(line) && line.toLowerCase().includes(queryLower)) {
+            const start = i;
+            const end = Math.min(allLines.length, i + 6);
+            summaryLines = allLines.slice(start, end).filter(l => l.trim());
+            break;
+          }
+        }
+      }
+      
+      // 降级方案
+      if (summaryLines.length === 0) {
+        summaryLines = allLines.filter(l => l.trim()).slice(0, 4);
       }
       
       let summary = summaryLines.join(' ').substring(0, 180);
