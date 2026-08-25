@@ -1342,27 +1342,47 @@ async function searchWiki() {
     let html = '';
     for (const item of result.results) {
       const entity = await api(`/api/wiki/entries/${item.id}`);
-      const content = entity.content || '';
+      const docContent = entity.content || '';
       
-      // 提取摘要：取标题后、第一个 "---" 前的内容
-      let summary = '';
-      const lines = content.split('\n').filter(l => l.trim());
-      let inContent = false;
-      for (const line of lines) {
-        if (line.startsWith('# ')) {
-          inContent = true;
-          continue;
-        }
-        if (line.startsWith('---') || line.startsWith('*创建于')) continue;
-        if (inContent && line.trim()) {
-          summary += line + ' ';
-          if (summary.length > 150) break;
+      // 提取与查询相关的段落摘要
+      const queryLower = query.toLowerCase().split(' ');
+      const lines = docContent.split('\n');
+      let summaryLines = [];
+      let capturing = false;
+      let lineCount = 0;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineLower = line.toLowerCase();
+        
+        // 检查是否包含关键词
+        const hasKeyword = queryLower.some(kw => lineLower.includes(kw));
+        const isHeader = /^#{1,4}\s/.test(line);
+        
+        if (hasKeyword || isHeader) {
+          if (isHeader && !hasKeyword && summaryLines.length > 0 && lineCount > 3) {
+            break; // 新章节开始，停止捕获
+          }
+          summaryLines.push(line);
+          lineCount++;
+          capturing = true;
+        } else if (capturing) {
+          summaryLines.push(line);
+          lineCount++;
+          if (lineCount > 6) break; // 最多捕获 6 行
         }
       }
-      summary = summary.trim();
       
-      // 提取标签
-      const tags = content.match(/- #\w+/g) || [];
+      // 如果没有匹配内容，取前几行
+      if (summaryLines.length === 0) {
+        summaryLines = lines.filter(l => l.trim()).slice(0, 4);
+      }
+      
+      let summary = summaryLines.join(' ').substring(0, 180);
+      if (summaryLines.join('').length > 180) summary += '...';
+      
+      // 标签
+      const tags = docContent.match(/- #\w+/g) || [];
       const tagsHtml = tags.slice(0, 3).map(t => `<span style="display:inline-block;padding:2px 6px;background:var(--bg-primary);border-radius:4px;font-size:11px;margin-right:4px;">${t.replace('- #', '#')}</span>`).join('');
       
       html += `
@@ -1372,7 +1392,7 @@ async function searchWiki() {
             <span style="font-size:11px;color:var(--text-tertiary);">得分: ${item.score.toFixed(2)}</span>
           </div>
           ${tagsHtml ? '<div style="margin-bottom:6px;">' + tagsHtml + '</div>' : ''}
-          <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">${summary || '暂无摘要'}</div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">${esc(summary)}</div>
           <div style="font-size:11px;color:var(--accent);margin-top:6px;">点击查看完整内容 →</div>
         </div>`;
     }
