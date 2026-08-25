@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>biz-delivery v4.2</title>
+  <title>biz-delivery v4.2-debug</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -855,7 +855,26 @@
   </div>
 
 <script>
+// Immediate test
+(function() {
+  try {
+    if (typeof document === 'undefined') return;
+    console.log('Page loaded, DOM accessible');
+    console.log('window._jsTest = true');
+    window._jsTest = true;
+  } catch(e) {
+    console.error('Immediate test failed:', e);
+  }
+})();
+
+// Global error handler
+window.onerror = function(msg, url, line, col, err) {
+  console.error('Global error:', msg, 'Line:', line);
+  return false;
+};
+
 // ═══ Global State ═══
+
 let activeTask = null;
 let currentStage = '';
 const STAGES = ['learn', 'review', 'td', 'agent', 'test', 'automation'];
@@ -897,7 +916,7 @@ async function loadTaskList() {
     for (const t of taskArr) {
       const prog = t.progress || {};
       const st = prog.percent >= 100 ? 'done' : (prog.percent > 0 ? 'running' : 'idle');
-      html += `<div class="task-item ${activeTask?.id===t.id?'active':''}" onclick="selectTask('${proj.id}','${t.id}')">
+      html += `<div class="task-item ${activeTask?.id===t.id?'active':''}" data-project="${proj.id}" data-task="${t.id}" style="cursor:pointer;">
         <div class="task-name">${esc(t.name)}</div>
         <div class="task-meta">
           <span class="task-status ${st}"></span>
@@ -909,8 +928,17 @@ async function loadTaskList() {
     html += '</div>';
   }
   list.innerHTML = html;
+  
+  // Add click handlers using event delegation
+  list.addEventListener('click', (e) => {
+    const item = e.target.closest('.task-item');
+    if (item) {
+      const projectId = item.dataset.project;
+      const taskId = item.dataset.task;
+      selectTask(projectId, taskId);
+    }
+  });
 }
-
 // ═══ Select Task ═══
 async function selectTask(projectId, taskId) {
   window._currentProjectId = projectId;
@@ -1297,6 +1325,12 @@ function showAddMemoryModal() {
   const type = prompt('类型 (preference/fact/decision/context):','fact')||'fact';
   api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory`, {
     method:'POST', body: JSON.stringify({type,content,tags:[]})
+  }).then(()=>loadMemoryPanel()).catch(e=>alert('添加失败: '+e.message));
+}
+</script>
+</body>
+</html>
+ body: JSON.stringify({type,content,tags:[]})
   }).then(()=>loadMemoryPanel()).catch(e=>alert('添加失败: '+e.message));
 }
 </script>
