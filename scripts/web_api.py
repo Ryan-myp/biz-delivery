@@ -537,6 +537,45 @@ def create_app():
             raise HTTPException(404, "Entry not found")
         return entry
     
+    @app.post("/api/wiki/entries")
+    async def create_wiki_entry(req: dict):
+        """创建知识条目"""
+        try:
+            from scripts.llm_wiki import KnowledgeEntry, RAGEngine
+            import uuid
+            
+            entry_type = req.get("type", "concept")
+            name = req.get("name", "")
+            content = req.get("content", "")
+            description = req.get("description", "")
+            tags = req.get("tags", [])
+            source_file = req.get("source_file", "")
+            
+            wiki_path = "/tmp/biz-delivery/wiki"
+            rag = RAGEngine(wiki_path)
+            
+            # 生成唯一 ID
+            entry_id = str(uuid.uuid4())[:8]
+            
+            # 构建完整内容（描述 + 文档内容）
+            full_content = content
+            if description:
+                full_content = f"# {name}\n\n{description}\n\n---\n\n{content}"
+            
+            # 添加到 RAG
+            rag.add_document(entry_id, full_content)
+            
+            return {
+                "success": True, 
+                "id": entry_id,
+                "name": name,
+                "type": entry_type
+            }
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
+    
     @app.get("/")
     async def index():
         index_file = static_dir / "index.html" if static_dir.exists() else None

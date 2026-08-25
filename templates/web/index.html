@@ -1540,16 +1540,17 @@ async function showAddWikiEntryModal() {
       <input type="text" class="modal-input" id="modal-wiki-name" placeholder="输入名称...">
     </div>
     <div class="modal-field">
-      <label class="modal-label">描述 *</label>
-      <textarea class="modal-input modal-textarea" id="modal-wiki-desc" placeholder="输入详细描述，或点击下方导入文件..."></textarea>
+      <label class="modal-label">描述</label>
+      <textarea class="modal-input modal-textarea" id="modal-wiki-desc" placeholder="输入简要描述（可选，主要内容由文件提供）"></textarea>
     </div>
     <div class="modal-field">
-      <label class="modal-label">导入文件</label>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input type="file" id="modal-wiki-file" accept=".txt,.md,.doc,.docx" style="font-size:12px;color:var(--text-tertiary)">
-        <button class="modal-btn" onclick="document.getElementById('modal-wiki-file').click()">选择文件</button>
+      <label class="modal-label">导入文档 *</label>
+      <div style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s" onclick="document.getElementById('modal-wiki-file').click()" onmouseover="this.style.borderColor='#58a6ff'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="font-size:24px;margin-bottom:8px">📄</div>
+        <div id="modal-wiki-file-label" style="font-size:13px;color:var(--text-secondary)">点击选择文件或拖拽到此处</div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">支持 .md, .txt, .doc, .docx</div>
+        <input type="file" id="modal-wiki-file" accept=".md,.txt,.doc,.docx" style="display:none" onchange="handleWikiFile(this)">
       </div>
-      <span id="modal-wiki-filename" style="font-size:11px;color:var(--text-tertiary);margin-top:4px;display:block;"></span>
     </div>
     <div class="modal-field">
       <label class="modal-label">标签（逗号分隔）</label>
@@ -1560,28 +1561,30 @@ async function showAddWikiEntryModal() {
       <button class="modal-btn primary" onclick="confirmAddWikiEntry()">保存</button>
     </div>
   `);
-  setTimeout(() => {
-    const nameInput = document.getElementById('modal-wiki-name');
-    if (nameInput) nameInput.focus();
-    const fileInput = document.getElementById('modal-wiki-file');
-    if (fileInput) {
-      fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        const filenameSpan = document.getElementById('modal-wiki-filename');
-        if (file && filenameSpan) {
-          filenameSpan.textContent = '已选择: ' + file.name;
-          const reader = new FileReader();
-          reader.onload = function(ev) {
-            const descArea = document.getElementById('modal-wiki-desc');
-            if (descArea && ev.target.result) {
-              descArea.value = ev.target.result;
-            }
-          };
-          reader.readAsText(file);
-        }
-      });
-    }
-  }, 50);
+  setTimeout(() => document.getElementById('modal-wiki-name')?.focus(), 50);
+}
+
+function handleWikiFile(input) {
+  const file = input.files[0];
+  const label = document.getElementById('modal-wiki-file-label');
+  if (file) {
+    label.innerHTML = '✅ ' + file.name + ' (<span id="modal-wiki-filesize"></span>)';
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      window._wikiFileContent = e.target.result;
+      window._wikiFileName = file.name;
+      document.getElementById('modal-wiki-filesize').textContent = formatFileSize(file.size);
+    };
+    reader.readAsText(file);
+  }
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 async function confirmAddWikiEntry() {
@@ -1590,21 +1593,41 @@ async function confirmAddWikiEntry() {
   const desc = document.getElementById('modal-wiki-desc').value.trim();
   const tags = document.getElementById('modal-wiki-tags').value.split(',').map(t => t.trim()).filter(Boolean);
   
-  if (!name || !desc) {
-    alert('请填写名称和描述');
+  if (!name) {
+    alert('请填写名称');
+    return;
+  }
+  
+  if (!window._wikiFileContent) {
+    alert('请导入文档文件');
     return;
   }
   
   hideModal();
+  setLoading(true);
   try {
-    await api('/api/wiki/entries', {
+    // 上传文件内容
+    const resp = await api('/api/wiki/entries', {
       method:'POST',
-      body: JSON.stringify({type, name, content:desc, tags})
+      body: JSON.stringify({
+        type, 
+        name, 
+        content: window._wikiFileContent,
+        description: desc,
+        tags,
+        source_file: window._wikiFileName
+      })
     });
+    
+    // 清空临时数据
+    delete window._wikiFileContent;
+    delete window._wikiFileName;
+    
     loadWikiPanel();
   } catch(e) {
     alert('添加失败: '+e.message);
   }
+  setLoading(false);
 }
 </script>
   <!-- ═══ Modal Container ═══ -->
