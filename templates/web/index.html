@@ -1036,6 +1036,8 @@ async function switchRightTab(tab) {
     );
   });
   const panel = document.getElementById('panel-body');
+  // Clear panel before loading new content
+  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:12px;"><span class="loading"></span></div>';
   if (tab==='workflow') renderWorkflow();
   else if (tab==='memory') await loadMemoryPanel();
   else if (tab==='context') await loadContextPanel();
