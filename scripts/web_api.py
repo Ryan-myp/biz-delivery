@@ -29,7 +29,7 @@ def create_app():
     from fastapi.responses import HTMLResponse, JSONResponse
     from pydantic import BaseModel
     
-    app = FastAPI(title="biz-delivery", version="3.0.0")
+    app = FastAPI(title="biz-delivery", version="4.0.0")
     
     static_dir = Path(__file__).parent.parent / "templates" / "web"
     if static_dir.exists():
