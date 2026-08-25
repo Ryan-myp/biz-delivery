@@ -501,9 +501,12 @@ def create_app():
     @app.get("/api/wiki/stats")
     async def get_wiki_stats():
         """获取知识库统计"""
-        wiki_path = "/tmp/biz-delivery/wiki"
-        rag = RAGEngine(wiki_path)
-        return rag.stats()
+        rag = RAGEngine()
+        stats = rag.stats()
+        # 兼容旧前端字段
+        stats["total_nodes"] = stats.get("total_entries", 0)
+        stats["index_size"] = stats.get("total_pages", 0)
+        return stats
     
     @app.post("/api/wiki/build")
     async def build_wiki(req: dict):
@@ -521,17 +524,15 @@ def create_app():
         """查询知识库"""
         question = req.get("question", "")
         top_k = req.get("top_k", 5)
-        wiki_path = "/tmp/biz-delivery/wiki"
         
-        rag = RAGEngine(wiki_path)
+        rag = RAGEngine()
         result = rag.query(question, top_k=top_k)
         return result
     
     @app.get("/api/wiki/entries/{entry_id}")
     async def get_wiki_entry(entry_id: str):
         """获取知识条目详情"""
-        wiki_path = "/tmp/biz-delivery/wiki"
-        rag = RAGEngine(wiki_path)
+        rag = RAGEngine()
         entry = rag.get_entity(entry_id)
         if not entry:
             raise HTTPException(404, "Entry not found")
@@ -539,54 +540,43 @@ def create_app():
     
     @app.post("/api/wiki/entries")
     async def create_wiki_entry(req: dict):
-        """创建知识条目"""
+        """创建知识条目 — Karpathy 风格 Markdown 存储"""
         try:
-            from scripts.llm_wiki import KnowledgeEntry, RAGEngine
+            from scripts.llm_wiki import RAGEngine
             import uuid
             
-            entry_type = req.get("type", "concept")
+            entry_type = req.get("type", "source")
             name = req.get("name", "")
             content = req.get("content", "")
             description = req.get("description", "")
             tags = req.get("tags", [])
             source_file = req.get("source_file", "")
             
-            wiki_path = "/tmp/biz-delivery/wiki"
-            rag = RAGEngine(wiki_path)
+            rag = RAGEngine()
             
             # 生成唯一 ID
-            entry_id = str(uuid.uuid4())[:8]
+            entry_id = name.lower().replace(' ', '_')[:20] + "_" + str(uuid.uuid4())[:4]
             
-            # 构建完整内容（描述 + 文档内容）
+            # 构建完整内容
             full_content = content
             if description:
-                full_content = f"# {name}\n\n{description}\n\n---\n\n{content}"
+                full_content = f"{description}\n\n---\n\n{content}"
             
-            # 创建条目对象
-            entry = KnowledgeEntry(
-                id=entry_id,
-                type=entry_type,
+            # 使用新的 Markdown 存储
+            result = rag.ingest_document(
+                doc_id=entry_id,
                 title=name,
                 content=full_content,
-                source_file=source_file,
-                source_line=0,
+                doc_type=entry_type,
                 tags=tags
             )
-            
-            # 添加到向量索引
-            rag.index.add_document(entry_id, full_content)
-            
-            # 添加到条目列表
-            rag.entries.append(entry)
-            
-            # 保存知识库
-            rag._save_wiki()
             
             return {
                 "success": True, 
                 "id": entry_id,
                 "name": name,
-                "type": entry_type
+                "type": entry_type,
+                "path": result.get("path", "")
             }
         except Exception as e:
             import traceback
