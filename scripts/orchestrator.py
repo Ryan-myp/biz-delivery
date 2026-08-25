@@ -29,6 +29,8 @@ from enum import Enum
 from scripts.llm_client import LLMClient
 from scripts.git_manager import GitManager, RepoConfig
 from scripts.context_manager import MemorySystem, ContextWindow, TokenEstimator
+from scripts.mcp_adapter import MCPServer, register_builtin_tools, JSONRPC
+from scripts.multi_model_router import MultiModelRouter, RoutingStrategy
 
 
 # ──────────────────────────────────────────────

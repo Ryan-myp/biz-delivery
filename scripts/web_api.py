@@ -21,6 +21,8 @@ from typing import Optional, List, Dict
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.orchestrator import get_store, get_orchestrator, STAGE_ORDER
 from scripts.context_manager import MemorySystem, ContextWindow, TokenEstimator
+from scripts.mcp_adapter import MCPServer, register_builtin_tools, JSONRPC
+from scripts.multi_model_router import MultiModelRouter, RoutingStrategy
 
 
 def create_app():
@@ -429,6 +431,69 @@ def create_app():
             "compressed_count": len(ctx_msgs),
             "truncated": task.context_truncated,
         }
+    
+    # ── MCP API ──
+    # 创建独立的 MCP 服务器实例
+    mcp_server = MCPServer("biz-delivery-mcp", "4.0.0")
+    register_builtin_tools(mcp_server)
+    
+    # 创建独立的路由器实例
+    model_router = MultiModelRouter()
+    
+    @app.get("/api/mcp/tools")
+    async def get_mcp_tools():
+        """获取 MCP 可用工具列表"""
+        return {
+            "server": mcp_server.name,
+            "version": mcp_server.version,
+            "tools": mcp_server.get_tools(),
+            "resources": mcp_server.get_resources(),
+        }
+    
+    @app.post("/api/mcp/call")
+    async def call_mcp_tool(req: dict):
+        """调用 MCP 工具"""
+        import asyncio
+        msg = JSONRPC.create_request(
+            "tools/call",
+            {"name": req["tool"], "arguments": req.get("args", {})},
+            "web-request"
+        )
+        result = await mcp_server.handle_message(msg)
+        return result.get("result", {})
+    
+    # ── Model Routing API ──
+    
+    @app.get("/api/models")
+    async def list_models():
+        """列出可用模型"""
+        return {
+            "models": [m.to_dict() for m in model_router.models.values()],
+            "strategy": model_router.strategy.value,
+        }
+    
+    @app.post("/api/models/route")
+    async def route_model(req: dict):
+        """智能路由到最佳模型"""
+        task_type = req.get("task_type", "code")
+        context_length = req.get("context_length", 4000)
+        
+        model_id = model_router.route(task_type, context_length)
+        rec = model_router.get_recommendation(task_type, context_length)
+        
+        return rec
+    
+    @app.post("/api/models/set-strategy")
+    async def set_strategy(req: dict):
+        """设置路由策略"""
+        strategy = RoutingStrategy(req.get("strategy", "balanced"))
+        model_router.set_strategy(strategy)
+        return {"strategy": strategy.value}
+    
+    @app.get("/api/models/stats")
+    async def get_model_stats():
+        """获取模型使用统计"""
+        return model_router.get_all_stats()
     
     @app.get("/")
     async def index():
