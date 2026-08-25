@@ -66,7 +66,7 @@ def create_app():
     
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "version": "3.0.0", "projects": len(store.list_projects())}
+        return {"status": "ok", "version": "4.0.0", "projects": len(store.list_projects())}
     
     @app.get("/api/profiles")
     async def list_profiles():
