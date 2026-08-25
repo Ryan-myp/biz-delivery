@@ -562,8 +562,25 @@ def create_app():
             if description:
                 full_content = f"# {name}\n\n{description}\n\n---\n\n{content}"
             
-            # 添加到 RAG
-            rag.add_document(entry_id, full_content)
+            # 创建条目对象
+            entry = KnowledgeEntry(
+                id=entry_id,
+                type=entry_type,
+                title=name,
+                content=full_content,
+                source_file=source_file,
+                source_line=0,
+                tags=tags
+            )
+            
+            # 添加到向量索引
+            rag.index.add_document(entry_id, full_content)
+            
+            # 添加到条目列表
+            rag.entries.append(entry)
+            
+            # 保存知识库
+            rag._save_wiki()
             
             return {
                 "success": True, 
