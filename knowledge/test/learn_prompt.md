@@ -4,7 +4,7 @@
 总结这个系统的架构、业务流程、数据模型和关键技术决策。
 
 ## 仓库信息
-- **testrepo**: go @ /private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1027/test_run_with_no_stages0/testrepo
+- **testrepo**: go @ /private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1055/test_run_with_no_stages0/testrepo
 
 ## 代码结构摘要
 - Structs: 1

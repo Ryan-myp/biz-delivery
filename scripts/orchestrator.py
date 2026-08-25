@@ -28,6 +28,7 @@ from enum import Enum
 
 from scripts.llm_client import LLMClient
 from scripts.git_manager import GitManager, RepoConfig
+from scripts.context_manager import MemorySystem, ContextWindow, TokenEstimator
 
 
 # ──────────────────────────────────────────────
@@ -96,6 +97,11 @@ class TaskSession:
     
     # Conversation
     messages: List[ChatMessage] = field(default_factory=list)
+    
+    # 上下文管理
+    context_window: Optional[ContextWindow] = None
+    memory_system: Optional[MemorySystem] = None
+    context_truncated: bool = False  # 是否已触发压缩
     
     # Metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -184,9 +190,55 @@ class TaskSession:
             "current_stage": self.current_stage,
             "progress": self.progress,
             "messages": [asdict(m) for m in self.messages[-20:]],  # last 20
+            "context_stats": {
+                "total_tokens": TokenEstimator.count_messages([asdict(m) for m in self.messages]) if self.messages else 0,
+                "truncated": self.context_truncated,
+                "memory_count": len(self.memory_system.memories) if self.memory_system else 0,
+            },
             "stages": {k: {"status": v.status.value if hasattr(v.status, "value") else v.status, **{"started_at": v.started_at, "completed_at": v.completed_at, "output_dir": v.output_dir, "artifacts": v.artifacts, "error": v.error, "summary": v.summary}} for k, v in self.stages.items()},
             "metadata": self.metadata,
         }
+    
+    def get_context_messages(self) -> List[Dict]:
+        """获取适配后的上下文消息（自动压缩）"""
+        if not self.messages:
+            return []
+        
+        msg_dicts = [asdict(m) for m in self.messages]
+        
+        # 初始化 context window
+        if not self.context_window:
+            self.context_window = ContextWindow(max_tokens=8000, model=self.model_name)
+        
+        # 检查是否需要压缩
+        if self.context_window.should_compress(msg_dicts) and not self.context_truncated:
+            self.context_truncated = True
+            # 生成记忆
+            if self.memory_system:
+                summary = self.context_window.summarizer.summarize(msg_dicts)
+                self.memory_system.add(
+                    "context", 
+                    f"会话摘要: {summary[:200]}",
+                    tags=["auto_summary", self.id],
+                    task_id=self.id
+                )
+        
+        return self.context_window.fit_messages(msg_dicts)
+    
+    def get_memory_context(self) -> str:
+        """获取相关记忆上下文"""
+        if not self.memory_system:
+            return ""
+        # 基于 PRD 搜索相关记忆
+        query = self.prd_text[:100] if self.prd_text else ""
+        memories = self.memory_system.search(query, limit=3)
+        if not memories:
+            memories = self.memory_system.get_by_task(self.id)[:3]
+        
+        if not memories:
+            return ""
+        
+        return "\n".join(f"- [{m.type}] {m.content}" for m in memories)
 
 
 # ──────────────────────────────────────────────
@@ -393,25 +445,46 @@ class PipelineOrchestrator:
             return {"status": "failed", "error": str(e)}
     
     def chat(self, task: TaskSession, message: str, stage: Optional[str] = None) -> dict:
-        """对话接口"""
+        """对话接口 — 集成记忆和上下文管理"""
         target_stage = stage or task.current_stage
+        
+        # 初始化记忆系统
+        if not task.memory_system:
+            task.memory_system = MemorySystem()
         
         task.add_message("user", message, target_stage)
         
+        # 构建系统提示（包含记忆上下文）
         system_prompt = self._build_system_prompt(task, target_stage)
-        user_prompt = self._build_user_prompt(task, target_stage, message)
+        memory_context = task.get_memory_context()
+        if memory_context:
+            system_prompt += f"\n\n【相关记忆】\n{memory_context}"
+        
+        # 获取适配后的上下文
+        context_messages = task.get_context_messages()
         
         try:
             if task.llm_client:
-                response = task.llm_client.chat(user_prompt, system=system_prompt)
+                # 使用完整的上下文消息列表
+                response = task.llm_client.chat_with_messages(
+                    context_messages + [{"role": "user", "content": message}]
+                )
                 reply = response.get("content", "")
+                # 记录 token 使用
+                task.metadata["last_tokens"] = response.get("usage", {}).get("total_tokens", 0)
             else:
                 reply = f"[Demo mode] 收到消息: {message}"
         except Exception as e:
             reply = f"LLM 调用失败: {e}"
         
         task.add_message("assistant", reply, target_stage)
-        return {"stage": target_stage, "reply": reply, "model": task.model_name}
+        return {
+            "stage": target_stage, 
+            "reply": reply, 
+            "model": task.model_name,
+            "tokens_used": task.metadata.get("last_tokens", 0),
+            "context_truncated": task.context_truncated,
+        }
     
     def _build_system_prompt(self, task: TaskSession, stage: str) -> str:
         desc = {

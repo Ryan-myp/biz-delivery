@@ -16,10 +16,11 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.orchestrator import get_store, get_orchestrator, STAGE_ORDER
+from scripts.context_manager import MemorySystem, ContextWindow, TokenEstimator
 
 
 def create_app():
@@ -48,6 +49,8 @@ def create_app():
         profile_path: str = ""
         use_pipeline: bool = True
         model_name: str = "agnes-2.0-flash"
+        repositories: List[Dict] = []
+        branch_prefix: str = "biz-delivery"
     
     class ChatRequest(BaseModel):
         message: str
@@ -127,6 +130,10 @@ def create_app():
             use_pipeline=req.use_pipeline,
             model_name=req.model_name,
         )
+        if req.repositories:
+            task.repositories = req.repositories
+        if req.branch_prefix:
+            task.branch_prefix = req.branch_prefix
         return task.to_dict()
     
     @app.delete("/api/projects/{project_id}/tasks/{task_id}")
@@ -322,6 +329,106 @@ def create_app():
             raise HTTPException(404, f"Repo {repo_name} not found")
         content = gm.get_file_content(file_path)
         return {"path": file_path, "content": content}
+    
+    # ── Memory & Context APIs ──
+    
+    @app.get("/api/projects/{project_id}/tasks/{task_id}/context")
+    async def get_context(project_id: str, task_id: str):
+        """获取任务上下文状态"""
+        project = store.get_project(project_id)
+        if not project:
+            raise HTTPException(404, "Project not found")
+        task = project.get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        
+        # 确保初始化
+        if not task.memory_system:
+            task.memory_system = MemorySystem()
+        
+        return {
+            "task_id": task_id,
+            "message_count": len(task.messages),
+            "context_stats": task.to_dict().get("context_stats", {}),
+            "memories": [m.to_dict() for m in task.memory_system.memories[-10:]],
+            "memory_stats": task.memory_system.stats(),
+        }
+    
+    @app.post("/api/projects/{project_id}/tasks/{task_id}/memory")
+    async def add_memory(project_id: str, task_id: str, req: dict):
+        """添加记忆"""
+        project = store.get_project(project_id)
+        if not project:
+            raise HTTPException(404, "Project not found")
+        task = project.get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        
+        if not task.memory_system:
+            task.memory_system = MemorySystem()
+        
+        mem = task.memory_system.add(
+            mem_type=req.get("type", "fact"),
+            content=req.get("content", ""),
+            tags=req.get("tags", []),
+            task_id=task_id,
+        )
+        return {"id": mem.id, "type": mem.type, "content": mem.content}
+    
+    @app.get("/api/projects/{project_id}/tasks/{task_id}/memory/search")
+    async def search_memory(project_id: str, task_id: str, q: str = "", limit: int = 10):
+        """搜索记忆"""
+        project = store.get_project(project_id)
+        if not project:
+            raise HTTPException(404, "Project not found")
+        task = project.get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        
+        if not task.memory_system:
+            return {"memories": [], "total": 0}
+        
+        memories = task.memory_system.search(q, limit=limit)
+        return {"memories": [m.to_dict() for m in memories], "total": len(memories)}
+    
+    @app.delete("/api/projects/{project_id}/tasks/{task_id}/memory/{mem_id}")
+    async def delete_memory(project_id: str, task_id: str, mem_id: str):
+        """删除记忆"""
+        project = store.get_project(project_id)
+        if not project:
+            raise HTTPException(404, "Project not found")
+        task = project.get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        
+        if not task.memory_system:
+            raise HTTPException(404, "No memory system")
+        
+        # 找到并删除
+        task.memory_system.memories = [m for m in task.memory_system.memories if m.id != mem_id]
+        task.memory_system._save()
+        return {"ok": True}
+    
+    @app.post("/api/projects/{project_id}/tasks/{task_id}/compress")
+    async def compress_context(project_id: str, task_id: str):
+        """手动压缩上下文"""
+        project = store.get_project(project_id)
+        if not project:
+            raise HTTPException(404, "Project not found")
+        task = project.get_task(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        
+        if not task.context_window:
+            task.context_window = ContextWindow(max_tokens=8000, model=task.model_name)
+        
+        # 强制压缩
+        ctx_msgs = task.get_context_messages()
+        return {
+            "original_count": len(task.messages),
+            "compressed_count": len(ctx_msgs),
+            "truncated": task.context_truncated,
+        }
     
     @app.get("/")
     async def index():

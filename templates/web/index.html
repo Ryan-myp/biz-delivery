@@ -202,7 +202,13 @@
 
   <!-- ═══ Right Panel ═══ -->
   <aside class="right-panel" id="right-panel">
-    <div class="panel-header">工作流程</div>
+    <div class="panel-header">
+      <div class="panel-tabs">
+        <button class="panel-tab active" onclick="switchRightTab('workflow')">流程</button>
+        <button class="panel-tab" onclick="switchRightTab('memory')">🧠 记忆</button>
+        <button class="panel-tab" onclick="switchRightTab('context')">📊 上下文</button>
+      </div>
+    </div>
     <div class="panel-body" id="panel-body">
       <div class="empty-state" style="padding:40px 10px;">
         <div class="big-icon" style="font-size:32px;">📋</div>
@@ -619,6 +625,190 @@ function switchPanel(panel) {
   document.getElementById('repo-content').classList.toggle('hidden', panel !== 'repo');
   document.getElementById('tab-artifacts').classList.toggle('active', panel === 'artifacts');
   document.getElementById('tab-repo').classList.toggle('active', panel === 'repo');
+}
+
+// ═══ Right Panel Tabs ═══
+let _currentRightTab = 'workflow';
+
+function switchRightTab(tab) {
+  _currentRightTab = tab;
+  document.querySelectorAll('.panel-tab').forEach((el, i) => {
+    el.classList.toggle('active', 
+      (tab === 'workflow' && i === 0) || 
+      (tab === 'memory' && i === 1) || 
+      (tab === 'context' && i === 2)
+    );
+  });
+  
+  const panel = document.getElementById('panel-body');
+  if (tab === 'workflow') {
+    renderWorkflow();
+  } else if (tab === 'memory') {
+    loadMemoryPanel();
+  } else if (tab === 'context') {
+    loadContextPanel();
+  }
+}
+
+async function loadMemoryPanel() {
+  if (!activeTask || !window._currentProjectId) return;
+  const panel = document.getElementById('panel-body');
+  
+  try {
+    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/context`);
+    const memories = data.memories || [];
+    
+    let html = `
+      <div class="memory-header">
+        <div class="memory-stats">
+          <span class="stat">💾 ${data.memory_stats?.total || 0} 条记忆</span>
+          <span class="stat">📁 ${data.memory_stats?.by_task || 0} 个任务</span>
+        </div>
+        <button class="btn btn-sm" onclick="showAddMemoryModal()">+ 添加</button>
+      </div>
+      <div class="memory-list" style="margin-top:10px;">
+    `;
+    
+    if (memories.length === 0) {
+      html += '<div class="empty-memory">暂无记忆<br><small>对话中会自动保存关键决策和偏好</small></div>';
+    } else {
+      for (const mem of memories) {
+        const typeColors = {
+          'preference': 'var(--primary)',
+          'fact': 'var(--success)',
+          'decision': 'var(--warn)',
+          'context': 'var(--text3)',
+        };
+        const typeIcons = {
+          'preference': '⭐',
+          'fact': '📌',
+          'decision': '✅',
+          'context': '💭',
+        };
+        html += `
+          <div class="memory-item" style="border-left:3px solid ${typeColors[mem.type] || 'var(--border)'};padding:8px;margin-bottom:6px;background:var(--bg);border-radius:4px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:10px;color:${typeColors[mem.type]};font-weight:600;">${typeIcons[mem.type]} ${mem.type}</span>
+              <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:10px;" onclick="deleteMemory('${mem.id}')">✕</button>
+            </div>
+            <div style="font-size:12px;margin-top:4px;">${esc(mem.content)}</div>
+            ${mem.tags?.length ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;">#${mem.tags.join(' #')}</div>` : ''}
+          </div>
+        `;
+      }
+    }
+    
+    html += '</div>';
+    panel.innerHTML = html;
+  } catch(e) {
+    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
+  }
+}
+
+async function loadContextPanel() {
+  if (!activeTask || !window._currentProjectId) return;
+  const panel = document.getElementById('panel-body');
+  
+  try {
+    const data = await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/context`);
+    const stats = data.context_stats || {};
+    
+    // 计算使用率
+    const tokens = stats.total_tokens || 0;
+    const maxTokens = 8000;
+    const percent = Math.min(100, Math.round(tokens / maxTokens * 100));
+    const color = percent > 80 ? 'var(--err)' : (percent > 50 ? 'var(--warn)' : 'var(--success)');
+    
+    panel.innerHTML = `
+      <div class="context-panel">
+        <div class="token-meter">
+          <div class="meter-label">
+            <span>Token 使用</span>
+            <span style="color:${color};font-weight:600;">${tokens.toFixed(0)} / ${maxTokens}</span>
+          </div>
+          <div class="meter-bar">
+            <div class="meter-fill" style="width:${percent}%;background:${color};"></div>
+          </div>
+          <div class="meter-percent" style="color:${color};">${percent}%</div>
+        </div>
+        
+        <div class="context-info" style="margin-top:16px;">
+          <div class="info-row">
+            <span class="info-label">消息数量</span>
+            <span class="info-value">${data.message_count || 0}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">已压缩</span>
+            <span class="info-value" style="color:${stats.truncated ? 'var(--warn)' : 'var(--success)'};">
+              ${stats.truncated ? '是' : '否'}
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">记忆数量</span>
+            <span class="info-value">${data.memory_stats?.total || 0}</span>
+          </div>
+        </div>
+        
+        <button class="btn btn-secondary" style="width:100%;margin-top:16px;" onclick="compressContext()">
+          🔄 手动压缩上下文
+        </button>
+        
+        <div style="margin-top:16px;font-size:11px;color:var(--text3);line-height:1.6;">
+          <div class="section-title">💡 说明</div>
+          <p>• 当对话过长时，系统会自动压缩早期消息</p>
+          <p>• 压缩后会生成摘要并保存到记忆</p>
+          <p>• 可手动触发压缩以释放上下文空间</p>
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    panel.innerHTML = `<div style="color:var(--err);padding:10px;">加载失败: ${esc(e.message)}</div>`;
+  }
+}
+
+async function compressContext() {
+  if (!activeTask || !window._currentProjectId) return;
+  setLoading(true);
+  try {
+    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/compress`, {method: 'POST'});
+    loadContextPanel();
+    refreshTask();
+  } catch(e) {
+    alert('压缩失败: ' + e.message);
+  }
+  setLoading(false);
+}
+
+async function showAddMemoryModal() {
+  const content = prompt('输入记忆内容:');
+  if (!content) return;
+  
+  const type = prompt('记忆类型 (preference/fact/decision/context):', 'fact') || 'fact';
+  const tags = prompt('标签（逗号分隔）:', '');
+  
+  try {
+    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory`, {
+      method: 'POST',
+      body: JSON.stringify({
+        type,
+        content,
+        tags: tags ? tags.split(',').map(t => t.trim()) : [],
+      })
+    });
+    loadMemoryPanel();
+  } catch(e) {
+    alert('添加失败: ' + e.message);
+  }
+}
+
+async function deleteMemory(memId) {
+  if (!confirm('确定删除这条记忆？')) return;
+  try {
+    await api(`/api/projects/${window._currentProjectId}/tasks/${activeTask.id}/memory/${memId}`, {method: 'DELETE'});
+    loadMemoryPanel();
+  } catch(e) {
+    alert('删除失败: ' + e.message);
+  }
 }
 
 async function runStage(stageId) {

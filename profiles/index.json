@@ -1,15 +1,15 @@
 {
   "profiles": [
     {
-      "path": "/private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1027/test_main_register_and_list0/svc.json",
+      "path": "/private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1055/test_main_register_and_list0/svc.json",
       "domain": "cli-test",
-      "last_updated": "2026-08-17 18:31:30"
+      "last_updated": "2026-08-25 14:55:16"
     },
     {
-      "path": "/private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1027/test_main_info_found0/info_svc.json",
+      "path": "/private/var/folders/h5/mz5tfzb90_349cwbr68lcv3r0000gq/T/pytest-of-yanping.ma/pytest-1055/test_main_info_found0/info_svc.json",
       "domain": "info-svc",
-      "last_updated": "2026-08-17 18:31:30"
+      "last_updated": "2026-08-25 14:55:16"
     }
   ],
-  "last_updated": "2026-08-17 18:31:30"
+  "last_updated": "2026-08-25 14:55:16"
 }
