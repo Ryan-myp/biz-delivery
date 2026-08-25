@@ -1343,10 +1343,43 @@ async function searchWiki() {
   try {
     const result = await api('/api/wiki/query', {method:'POST', body: JSON.stringify({question:query,top_k:5})});
     if (!result.results.length) { r.innerHTML = '<div style="color:var(--text-tertiary);font-size:11px;margin-top:8px;">未找到相关知识点</div>'; return; }
-    r.innerHTML = result.results.map(r=>`<div class="wiki-result-item">
-      <div style="display:flex;justify-content:space-between;"><span class="wiki-result-id">${r.id}</span><span class="wiki-result-score">${r.score.toFixed(3)}</span></div>
-    </div>`).join('');
+    
+    let html = '';
+    for (const item of result.results) {
+      // 获取完整内容
+      const entity = await api(`/api/wiki/entries/${item.id}`);
+      const content = entity.content || '暂无内容';
+      const preview = content.substring(0, 200) + (content.length > 200 ? '...' : '');
+      html += `
+        <div class="wiki-result-item" style="cursor:pointer;" onclick="showWikiDetail('${item.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span class="wiki-result-id" style="font-size:13px;">${entity.title || item.id}</span>
+            <span class="wiki-result-score" style="font-size:11px;">得分: ${item.score.toFixed(2)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">${preview}</div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">点击展开完整内容 →</div>
+        </div>`;
+    }
+    r.innerHTML = html;
   } catch(e) { r.innerHTML = `<div style="color:var(--error);font-size:11px;margin-top:8px;">搜索失败: ${esc(e.message)}</div>`; }
+}
+
+async function showWikiDetail(id) {
+  try {
+    const entity = await api(`/api/wiki/entries/${id}`);
+    const modalHtml = `
+      <div class="modal-title">📄 ${entity.title || id}</div>
+      <div style="max-height:60vh;overflow-y:auto;font-size:13px;line-height:1.6;">
+        <pre style="background:var(--bg-primary);padding:12px;border-radius:6px;white-space:pre-wrap;font-family:inherit;">${esc(entity.content || '暂无内容')}</pre>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn primary" onclick="hideModal()">关闭</button>
+      </div>
+    `;
+    showModal(modalHtml);
+  } catch(e) {
+    alert('加载失败: '+e.message);
+  }
 }
 
 async function buildWiki() {
