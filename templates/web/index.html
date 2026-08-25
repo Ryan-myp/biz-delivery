@@ -1321,16 +1321,11 @@ async function loadWikiPanel() {
         </div>
         <div id="wiki-results" style="margin-top:8px;"></div>
       </div>
-      <div style="margin-top:20px;">
-        <div class="section-title">⚙️ 重建知识库</div>
-        <div class="wiki-input-row">
-          <select class="wiki-input" id="wiki-lang" style="flex:0 0 80px;">
-            <option value="python">Python</option>
-            <option value="go">Go</option>
-            <option value="java">Java</option>
-          </select>
-          <button class="btn-sm" onclick="buildWiki()">🔄 重建</button>
-        </div>
+      <div style="margin-top:20px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; font-size: 12px; color: var(--text-tertiary); line-height: 1.6;">
+        <div style="font-weight: 500; color: var(--text-secondary); margin-bottom: 8px;">💡 使用提示</div>
+        • 添加文档时建议填写「描述」字段，LLM 会基于描述生成摘要<br>
+        • 支持 [[双向链接]] 语法关联相关页面<br>
+        • 点击搜索结果可查看完整内容
       </div>`;
   } catch(e) { panel.innerHTML = `<div style="color:var(--error);padding:10px;">加载失败: ${esc(e.message)}</div>`; }
 }
@@ -1346,18 +1341,39 @@ async function searchWiki() {
     
     let html = '';
     for (const item of result.results) {
-      // 获取完整内容
       const entity = await api(`/api/wiki/entries/${item.id}`);
-      const content = entity.content || '暂无内容';
-      const preview = content.substring(0, 200) + (content.length > 200 ? '...' : '');
+      const content = entity.content || '';
+      
+      // 提取摘要：取标题后、第一个 "---" 前的内容
+      let summary = '';
+      const lines = content.split('\n').filter(l => l.trim());
+      let inContent = false;
+      for (const line of lines) {
+        if (line.startsWith('# ')) {
+          inContent = true;
+          continue;
+        }
+        if (line.startsWith('---') || line.startsWith('*创建于')) continue;
+        if (inContent && line.trim()) {
+          summary += line + ' ';
+          if (summary.length > 150) break;
+        }
+      }
+      summary = summary.trim();
+      
+      // 提取标签
+      const tags = content.match(/- #\w+/g) || [];
+      const tagsHtml = tags.slice(0, 3).map(t => `<span style="display:inline-block;padding:2px 6px;background:var(--bg-primary);border-radius:4px;font-size:11px;margin-right:4px;">${t.replace('- #', '#')}</span>`).join('');
+      
       html += `
-        <div class="wiki-result-item" style="cursor:pointer;" onclick="showWikiDetail('${item.id}')">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <span class="wiki-result-id" style="font-size:13px;">${entity.title || item.id}</span>
-            <span class="wiki-result-score" style="font-size:11px;">得分: ${item.score.toFixed(2)}</span>
+        <div class="wiki-result-item" style="cursor:pointer;padding:12px;background:var(--bg-tertiary);border-radius:8px;margin-bottom:8px;border:1px solid var(--border);" onclick="showWikiDetail('${item.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:14px;font-weight:500;color:var(--text-primary);">${entity.title || item.id}</span>
+            <span style="font-size:11px;color:var(--text-tertiary);">得分: ${item.score.toFixed(2)}</span>
           </div>
-          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">${preview}</div>
-          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">点击展开完整内容 →</div>
+          ${tagsHtml ? '<div style="margin-bottom:6px;">' + tagsHtml + '</div>' : ''}
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">${summary || '暂无摘要'}</div>
+          <div style="font-size:11px;color:var(--accent);margin-top:6px;">点击查看完整内容 →</div>
         </div>`;
     }
     r.innerHTML = html;
@@ -1382,16 +1398,7 @@ async function showWikiDetail(id) {
   }
 }
 
-async function buildWiki() {
-  const lang = document.getElementById('wiki-lang').value;
-  setLoading(true);
-  try {
-    const result = await api('/api/wiki/build', {method:'POST', body: JSON.stringify({repo_path:'.',language:lang})});
-    alert(`✅ 知识库重建完成！\n- 知识条目: ${result.total_entries}\n- 源文件数: ${result.total_files}`);
-    loadWikiPanel();
-  } catch(e) { alert('重建失败: '+e.message); }
-  setLoading(false);
-}
+
 
 // ═══ Task Actions ═══
 async function refreshTask() {
